@@ -22,3 +22,12 @@ Thumbs.db
 
 # generated first-admin SQL files (contain a password hash; delete after import)
 /.private/
+
+# local database data, logs and backups (db:local keeps its data outside the repo by default;
+# these cover DEV_DB_DIR pointed inside it, and manual dumps)
+/.mysql-data/
+/mysql-data/
+*.log
+/backups/
+*.sql.gz
+*.dump
