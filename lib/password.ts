@@ -3,7 +3,7 @@ import { z } from "zod";
 /**
  * Strong-password rule: at least 12 characters, and at least 3 of: lowercase,
  * uppercase, digit, symbol. Must not contain the email's name part.
- * (Also turn on "leaked password protection" in Supabase Auth settings.)
+ * Hashing is argon2id (lib/auth/hash.ts).
  */
 export const PASSWORD_MIN = 12;
 

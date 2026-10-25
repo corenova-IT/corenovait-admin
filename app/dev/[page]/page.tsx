@@ -19,7 +19,7 @@ import { previewAction } from "../preview-actions";
 
 /**
  * DEVELOPMENT ONLY design preview, so the UI can be reviewed before a
- * Supabase project is connected. Returns 404 in production builds.
+ * database is connected. Returns 404 in production builds.
  * Every name, email and number here is fake.
  */
 export default async function DevPreview({ params }: { params: Promise<{ page: string }> }) {
@@ -60,7 +60,7 @@ export default async function DevPreview({ params }: { params: Promise<{ page: s
           presets={previewPresets}
           canManage
           currentUserId={previewMembers[0].id}
-          actions={{ inviteMember: previewAction, saveDetails: previewAction, applyPreset: previewAction, savePermissions: previewAction, setActive: previewAction, resetSessions: previewAction, savePreset: previewAction }}
+          actions={{ inviteMember: previewAction, resendInvite: previewAction, resetTwoFactor: previewAction, saveDetails: previewAction, applyPreset: previewAction, savePermissions: previewAction, setActive: previewAction, resetSessions: previewAction, savePreset: previewAction }}
         />
       </>
     );

@@ -10,7 +10,7 @@ export const metadata = { title: "Overview" };
 
 export default async function HomePage() {
   const user = await requirePerm("home");
-  const first = (user.profile.full_name || "there").split(" ")[0];
+  const first = (user.fullName || "there").split(" ")[0];
   const financeAccess = can(user.perms, "finances");
 
   return (

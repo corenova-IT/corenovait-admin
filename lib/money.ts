@@ -4,7 +4,8 @@
  * integers and decimal strings.
  */
 
-const MAX_MINOR = 9_000_000_000_000_000n; // well inside Postgres bigint
+// below Number.MAX_SAFE_INTEGER, so amounts survive JSON and MySQL BIGINT round trips
+const MAX_MINOR = 9_000_000_000_000_000n / 1000n;
 
 /** "1,234.56" -> 123456. Rejects more than 2 decimals, negatives and junk. */
 export function parseMoneyToMinor(input: string): bigint {
@@ -29,7 +30,7 @@ export function parseRate(input: string): bigint {
 
 /**
  * Convert to the base currency, rounding half away from zero exactly like
- * Postgres round(numeric), so the app and the DB generated column agree.
+ * MySQL ROUND() on DECIMAL, so the app and the generated column agree.
  */
 export function convertToBaseMinor(amountMinor: bigint, rate: string): bigint {
   const scaled = parseRate(rate);

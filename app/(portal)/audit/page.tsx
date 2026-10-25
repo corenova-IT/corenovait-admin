@@ -1,50 +1,22 @@
-import { z } from "zod";
-import { ACTION_LABELS, AuditTable, ENTITY_LABELS, type AuditRow } from "@/components/audit/AuditTable";
+import { ACTION_LABELS, AuditTable, ENTITY_LABELS } from "@/components/audit/AuditTable";
 import { ButtonLink, buttonClass } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Pagination } from "@/components/ui/DataTable";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { ErrorState } from "@/components/ui/States";
 import { requirePerm } from "@/lib/auth/session";
-import { createClient } from "@/lib/supabase/server";
+import { auditFilters, listAudit } from "@/lib/dal/audit";
+import { getCompanySettings } from "@/lib/dal/settings";
 
 export const metadata = { title: "Audit log" };
 
 const PAGE_SIZE = 50;
 
-const filtersSchema = z.object({
-  q: z.string().trim().max(100).optional().catch(undefined),
-  action: z.enum(Object.keys(ACTION_LABELS) as [string, ...string[]]).optional().catch(undefined),
-  entity: z.enum(Object.keys(ENTITY_LABELS) as [string, ...string[]]).optional().catch(undefined),
-  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().catch(undefined),
-  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().catch(undefined),
-  page: z.coerce.number().int().min(1).max(10_000).optional().catch(1),
-});
-
 export default async function AuditPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
-  await requirePerm("audit");
-  const f = filtersSchema.parse(await searchParams);
+  const actor = await requirePerm("audit");
+  const f = auditFilters.parse(await searchParams);
   const page = f.page ?? 1;
-  const supabase = await createClient();
-
-  let query = supabase
-    .from("audit_log")
-    .select("id, at, actor_email, action, entity, entity_id, summary, before, after", { count: "exact" })
-    .order("at", { ascending: false })
-    .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
-  if (f.action) query = query.eq("action", f.action);
-  if (f.entity) query = query.eq("entity", f.entity);
-  if (f.from) query = query.gte("at", `${f.from}T00:00:00Z`);
-  if (f.to) query = query.lt("at", new Date(Date.parse(`${f.to}T00:00:00Z`) + 86_400_000).toISOString());
-  if (f.q) {
-    // strip characters that have meaning in PostgREST filter syntax
-    const term = f.q.replace(/[,()*%\\:."']/g, " ").trim();
-    if (term) query = query.or(`actor_email.ilike.*${term}*,summary.ilike.*${term}*,entity_id.ilike.*${term}*`);
-  }
-
-  const [{ data, count, error }, settings] = await Promise.all([query, supabase.from("settings").select("timezone").maybeSingle()]);
-  const timeZone = settings.data?.timezone ?? "Australia/Sydney";
+  const [{ rows, total }, { timezone: timeZone }] = await Promise.all([listAudit(actor, f, PAGE_SIZE), getCompanySettings(actor)]);
 
   const params = new URLSearchParams();
   for (const [k, v] of Object.entries(f)) if (v && k !== "page") params.set(k, String(v));
@@ -88,14 +60,8 @@ export default async function AuditPage({ searchParams }: { searchParams: Promis
         </form>
       </Card>
       <Card>
-        {error ? (
-          <ErrorState title="The audit log couldn't be loaded" />
-        ) : (
-          <>
-            <AuditTable rows={(data ?? []) as AuditRow[]} timeZone={timeZone} />
-            <Pagination page={page} pageSize={PAGE_SIZE} total={count ?? 0} hrefFor={hrefFor} />
-          </>
-        )}
+        <AuditTable rows={rows} timeZone={timeZone} />
+        <Pagination page={page} pageSize={PAGE_SIZE} total={total} hrefFor={hrefFor} />
       </Card>
     </>
   );

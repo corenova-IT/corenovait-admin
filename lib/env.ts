@@ -1,26 +1,41 @@
-import { z } from "zod";
-
-const publicSchema = z.object({
-  NEXT_PUBLIC_SUPABASE_URL: z.string().url("Set NEXT_PUBLIC_SUPABASE_URL in .env.local"),
-  NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(20, "Set NEXT_PUBLIC_SUPABASE_ANON_KEY in .env.local"),
-});
-
-let cached: z.infer<typeof publicSchema> | null = null;
-
 /**
- * Public values: safe to ship to the browser. Parsed on first use (not at
- * import) so pages that never touch Supabase still render without them.
+ * Server configuration, read on first use (not at import) so pages that never
+ * touch the database, like the /dev design preview, render without a .env.local.
+ * Nothing here is sent to the browser: there are no NEXT_PUBLIC_ variables.
  */
-export function publicEnv() {
-  cached ??= publicSchema.parse({
-    NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
-    NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-  });
-  return cached;
+
+function required(name: string, hint: string): string {
+  const v = process.env[name]?.trim();
+  if (!v) throw new Error(`${name} is not set. ${hint}`);
+  return v;
+}
+
+export function databaseUrl(): string {
+  const url = required("DATABASE_URL", "Add it to .env.local (see .env.example).");
+  if (!/^mysql:\/\//.test(url)) throw new Error("DATABASE_URL must start with mysql://");
+  return url;
+}
+
+/** 32-byte key (base64) that encrypts two-factor secrets at rest. */
+export function encryptionKey(): Buffer {
+  const raw = required("APP_ENCRYPTION_KEY", "Generate one with: npm run gen:key");
+  const key = Buffer.from(raw, "base64");
+  if (key.length !== 32) throw new Error("APP_ENCRYPTION_KEY must be 32 bytes, base64-encoded (npm run gen:key).");
+  return key;
 }
 
 export const SESSION_IDLE_MINUTES = Math.max(5, Number(process.env.SESSION_IDLE_MINUTES ?? 30) || 30);
+/** A session ends after this long even if it stays active. */
+export const SESSION_MAX_HOURS = Math.min(72, Math.max(1, Number(process.env.SESSION_MAX_HOURS ?? 12) || 12));
 
 export function siteUrl(): string {
   return (process.env.SITE_URL ?? "http://localhost:3000").replace(/\/$/, "");
 }
+
+export function mailConfig(): { apiKey: string; from: string } | null {
+  const apiKey = process.env.RESEND_API_KEY?.trim();
+  const from = process.env.MAIL_FROM?.trim();
+  return apiKey && from ? { apiKey, from } : null;
+}
+
+export const isProduction = () => process.env.NODE_ENV === "production";

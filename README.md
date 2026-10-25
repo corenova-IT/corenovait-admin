@@ -1,151 +1,207 @@
 # CoreNovaIT Admin and Staff Portal
 
 Private portal for CoreNovaIT finances, marketing, calendar, tasks and team chat.
-It is a separate app from the public website, with its own Supabase project.
+It is a separate app from the public website, with its own database.
 
 - Next.js 16 (App Router, TypeScript), Tailwind CSS 4
-- Supabase: Postgres with row-level security, Auth with TOTP two-factor
-- Permissions are enforced in the database. Hiding a button is never the only check.
+- MySQL 8 with Drizzle ORM and versioned migrations (`/drizzle`)
+- Sign-in built into the app: argon2id passwords, database sessions, TOTP two-factor
+- Permissions are enforced on the server by one data-access layer (`lib/dal`).
+  Nothing else may query the database; a test fails the build if anything tries.
 
 **Phase 1 (this build):** design system, sign-in, two-factor, roles and permissions,
-row-level security, Team page, audit log. Later modules show a "coming in Phase N" page.
+the data-access layer, Team page, audit log. Later modules show a "coming in Phase N" page.
 
 ---
 
 ## 1. Local setup
 
-Requires Node.js 20.9 or newer.
+Requires Node.js 20.9+ and a local MySQL 8 (pick one):
+
+- **Docker:**
+  ```bash
+  docker run -d --name corenovait-mysql -p 3306:3306 -e MYSQL_ROOT_PASSWORD=devroot -e MYSQL_DATABASE=corenovait_admin mysql:8.4
+  ```
+  Then `DATABASE_URL=mysql://root:devroot@127.0.0.1:3306/corenovait_admin`.
+- **Normal install:** MySQL Community Server 8.4 from mysql.com (or `winget install Oracle.MySQL`),
+  then create a database and user:
+  ```sql
+  CREATE DATABASE corenovait_admin CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+  CREATE USER 'corenovait'@'localhost' IDENTIFIED BY 'a-local-password';
+  GRANT ALL ON corenovait_admin.* TO 'corenovait'@'localhost';
+  ```
+
+Then:
 
 ```bash
 npm install
-cp .env.example .env.local      # then fill in the values (see section 2)
+cp .env.example .env.local      # fill in DATABASE_URL and APP_ENCRYPTION_KEY (npm run gen:key)
+npm run db:migrate              # creates the tables
 npm run dev                     # http://localhost:3000
 ```
 
-Without a Supabase project you can still review the design at these
-development-only pages (they return 404 in production and every name on them is fake):
+Create your admin with `npm run seed:admin` (section 4). In development, invite and
+password-reset emails are printed in the `npm run dev` terminal unless `RESEND_API_KEY` is set.
 
-- `/dev/ui`: components, stat cards, states
-- `/dev/team`: Team and permissions page, with the Manage drawer
-- `/dev/audit`: audit log
-- `/login`: the real sign-in page
+**Design preview without a database** (development only, returns 404 in production, every name is fake):
+`/dev/ui`, `/dev/team`, `/dev/audit`, `/dev/login`.
 
 ## 2. Environment variables
 
-| Name | Where it's used | Notes |
+All are server-only. See `.env.example` for comments.
+
+| Name | Required | Notes |
 | --- | --- | --- |
-| `NEXT_PUBLIC_SUPABASE_URL` | browser + server | Supabase → Project Settings → API |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | browser + server | the anon / publishable key |
-| `SUPABASE_SERVICE_ROLE_KEY` | **server only** | Bypasses row-level security. Never prefix it with `NEXT_PUBLIC_`, never commit it. |
-| `SITE_URL` | server | The portal's public URL, e.g. `https://admin.corenovait.com.au`. Used in invite and reset links. |
-| `SESSION_IDLE_MINUTES` | server | Sign out after this many idle minutes (default 30, minimum 5). |
-| `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD`, `SEED_ADMIN_NAME` | seed script only | Set locally, run the seed once, then delete them. |
+| `DATABASE_URL` | yes | `mysql://user:password@host:3306/database` |
+| `APP_ENCRYPTION_KEY` | yes | 32 bytes base64 (`npm run gen:key`). Encrypts two-factor secrets. Keep a copy in your password manager. If it's lost, everyone must set up two-factor again. |
+| `SITE_URL` | yes | e.g. `https://admin.corenovait.com.au`. Used in email links. |
+| `RESEND_API_KEY`, `MAIL_FROM` | production | Resend key and a sender on your verified domain. |
+| `UPLOAD_DIR` | production | Absolute path **outside** the app folder and `public_html`. |
+| `SESSION_IDLE_MINUTES` | no | Default 30. |
+| `SESSION_MAX_HOURS` | no | Default 12. Sessions end after this even if active. |
+| `DATABASE_POOL_SIZE` | no | Default 5. |
+| `UPLOAD_MAX_MB` | no | Default 10. |
+| `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD`, `SEED_ADMIN_NAME` | once | Only while running `npm run seed:admin`. Delete afterwards. |
+| `TEST_DATABASE_URL` | no | Run tests on an existing MySQL server instead of a temporary one. |
 
 `.env`, `.env.local` and every other `.env.*` file except `.env.example` are git-ignored.
 
-## 3. Create the Supabase project
+## 3. Database and migrations
 
-1. In Supabase, create a **new** project (do not reuse the public site's project).
-   Pick the Sydney region if available.
-2. **Run the migrations**, in order. Either paste each file into SQL Editor and run it:
-   - `supabase/migrations/0001_core.sql`
-   - `supabase/migrations/0002_finance_core.sql`
+- The schema lives in `lib/db/schema.ts`. Migrations in `/drizzle` are generated from it:
+  ```bash
+  npm run db:generate   # writes a new SQL file to /drizzle; connects to nothing
+  ```
+  Review the SQL, commit it, and never edit a migration that has been deployed.
+- `npm run db:migrate` applies new migrations to `DATABASE_URL`. It is safe to repeat
+  (applied ones are recorded in `__drizzle_migrations`).
+- **`npm start` runs `db:migrate` first**, so every deploy upgrades the schema before serving.
+- `0000_core_schema.sql` creates the tables; `0001_seed_reference_data.sql` adds the role
+  presets, the 5 revenue streams and the 3 countries.
 
-   or with the Supabase CLI: `supabase link --project-ref <ref>` then `supabase db push`.
-3. **Authentication → Sign In / Providers**
-   - Turn **off** "Allow new users to sign up". People only get in by invite.
-   - Email provider: on. Turn on "Secure email change" and leaked-password protection.
-   - Minimum password length: 12.
-4. **Authentication → Multi-Factor**: enable **TOTP** (authenticator app).
-5. **Authentication → URL Configuration**
-   - Site URL: your `SITE_URL`
-   - Redirect URLs: `SITE_URL/auth/confirm` (and `http://localhost:3000/auth/confirm` for development)
-6. **Authentication → Sessions** (if on a paid plan): set an inactivity timeout to match
-   `SESSION_IDLE_MINUTES`. The app enforces the idle timeout either way.
-7. **Authentication → Emails → SMTP**: use Resend (host `smtp.resend.com`, port 465,
-   user `resend`, password = a Resend API key) with a sender on a verified domain.
-   Supabase's built-in mailer is rate-limited and not for production.
-8. **Email templates**: change the link in these two templates so it goes through the portal:
-   - **Invite user**: `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=invite&next=/set-password`
-   - **Reset password**: `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=recovery&next=/set-password`
+Conventions: timestamps are UTC `DATETIME(3)`; money is `BIGINT` minor units (cents/pence);
+exchange rates are `DECIMAL(18,8)`; the base-currency amount is a MySQL generated column.
 
 ## 4. Create the first admin
 
-1. In `.env.local`, add `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD` (12+ characters,
-   at least 3 of: lowercase, uppercase, number, symbol) and optionally `SEED_ADMIN_NAME`.
-2. Run:
-
-   ```bash
-   npm run seed:admin
-   ```
-
-   It refuses to run if an active admin already exists, and never prints the password.
-3. **Delete the `SEED_ADMIN_*` lines** from `.env.local`.
-4. Sign in. You'll be asked to set up two-factor before anything else loads.
+1. Set `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD` (12+ characters, at least 3 of: lowercase,
+   uppercase, number, symbol) and optionally `SEED_ADMIN_NAME`, in `.env.local` locally or as
+   environment variables on the server.
+2. Run `npm run seed:admin`. It refuses if an active admin exists and never prints the password.
+3. Delete the `SEED_ADMIN_*` values.
+4. Sign in. You'll set up two-factor before anything else loads, and get 10 recovery codes.
+   Save them in a password manager.
 5. Invite the second admin from **Team and permissions → Invite person** with the Admin role.
    Keep at least two admins so one can recover the other's access.
 
-## 5. Roles and permissions
+## 5. Sign-in security
 
-- Each person has a role preset: **Admin**, **Manager**, **Staff** or **Custom**.
-- Admins can edit what Manager and Staff allow; everyone on that preset updates.
-  Admin is fixed (full access) so you can't lock yourself out.
+- **Passwords:** argon2id (19 MiB, 2 passes). 12+ characters, mixed types, not containing your email name.
+- **Sessions:** the cookie holds a random token (`__Host-cn_session`, httpOnly, Secure, SameSite=Lax);
+  the database stores only its SHA-256. Sessions end after 30 idle minutes or 12 hours, when an admin
+  resets them or deactivates the person, or after a password reset.
+- **Lockout:** 5 wrong passwords in a row lock the account for 15 minutes. Separately, each IP gets
+  20 attempts per 15 minutes. Unknown emails get exactly the same answer, in the same time.
+- **Two-factor:** required for admins and anyone with Team, Settings or Audit access; optional for
+  everyone else. Secrets are AES-256-GCM encrypted with `APP_ENCRYPTION_KEY`; codes can't be reused.
+- **CSRF:** server actions only accept same-origin requests (Next.js checks Origin vs Host);
+  cookies are SameSite=Lax.
+
+### Lost authenticator: how access is recovered
+
+1. **Recovery code.** On the two-factor screen choose "Lost your phone? Use a recovery code".
+   Each of the 10 codes works once. Then go to **Security → Move to a new phone**, which also
+   issues new recovery codes.
+2. **Another admin.** If the codes are gone too, another admin opens **Team → Manage → Reset
+   two-factor** (after confirming it's really them, for example by phone). The person is signed
+   out everywhere and sets up a new authenticator at their next sign-in. It's audit-logged.
+3. **Server command (last resort).** If no other admin can help, run on the server over SSH:
+   ```bash
+   npm run reset-2fa -- person@corenovait.com.au --yes
+   ```
+   Same effect as step 2, also audit-logged. This is why you should keep two admins.
+
+## 6. Roles and permissions
+
+- Presets: **Admin**, **Manager**, **Staff**, **Custom**. Admins can edit Manager and Staff;
+  everyone on that preset updates. Admin is fixed so you can't lock yourself out.
 - Editing one person's matrix switches them to **Custom**.
-- Every module has view / create / edit / delete / export, plus a scope:
-  **own** (rows they created), **assigned** (rows assigned to them), or **all**.
+- Every module has view / create / edit / delete / export, plus a scope: **own** (rows they
+  created), **assigned** (also rows assigned to them), or **all**.
 - New people start as **Staff**: home, their own tasks, calendar and chat. No finance access.
-- Anyone with access to Team, Settings or the Audit log must use two-factor. The
-  database refuses their requests until they have.
 - The last active admin can't be deactivated or demoted.
 
-## 6. Tests
+**How it's enforced:** pages, server actions and route handlers never touch the database.
+They call `lib/dal/*`, where every function takes the signed-in `Actor` and checks
+`has_perm(module, action)` and the data scope before querying. An `Actor` can only be created
+from a real database session, so a hand-made one is rejected.
+
+## 7. Uploads
+
+Files are stored in `UPLOAD_DIR` under random names, never in `public/`. Only PDF, PNG, JPG and WebP
+are accepted (checked from the file's bytes, not its name), up to `UPLOAD_MAX_MB`. They're served only
+by `/api/files/[id]`, which checks the person's permission and scope on every download.
+
+## 8. Tests
 
 ```bash
-npm test          # all tests
+npm test
 npm run typecheck
 ```
 
-- `tests/db/`: runs the real migrations in an in-memory Postgres (PGlite) with
-  Supabase's roles and default grants, then checks row-level security directly:
-  a staff user can't read, add, change or delete finance rows, can't read the
-  audit log or other people's profiles, and can't raise their own permissions;
-  an admin without two-factor is blocked; scopes, deactivation, session resets,
-  last-admin guards and audit before/after records all behave.
-- `tests/unit/`: money (integer cents, exchange-rate rounding), password rules,
-  rate limiting, safe redirects.
+Tests run against a real MySQL 8.4: if `TEST_DATABASE_URL` isn't set, the first run downloads the
+official MySQL build once (cached afterwards) and starts it temporarily. Each test file gets
+a fresh database with the real migrations. Nothing touches your local or production data.
 
-Money is stored as integer minor units (cents/pence) with exchange rates as
-`numeric(18,8)`. The base-currency amount is computed by the database.
+- `tests/dal/permissions.test.ts`: staff can't read or change finance, team or audit data; forged
+  Actors are rejected; two-factor gating; own/assigned/all scopes; money; last-admin guards; audit
+  before/after.
+- `tests/dal/routes.test.ts`: **every** server action, the guarded pages and the file route, called
+  as a signed-in staff user: each is refused and the database is unchanged.
+- `tests/dal/auth.test.ts`: argon2id, lockout, idle and absolute timeouts, TOTP setup, replay and
+  recovery codes, reset and invite links, server-side two-factor reset.
+- `tests/dal/boundaries.test.ts`: nothing outside `lib/dal` imports the database.
+- `tests/unit/`: TOTP against the RFC test vectors, encryption, upload type checks, money, passwords.
 
-## 7. Deploy to Hostinger (Node.js)
+## 9. Deploy to Hostinger (Node.js)
+
+**Create the database (hPanel → Databases → MySQL Databases):**
+
+1. Create a database (e.g. `u123_corenovait`) and a user with a long random password.
+2. Leave **Remote MySQL** off. The app connects as `localhost` from the same server; your PC never
+   connects to the production database.
+3. `DATABASE_URL=mysql://u123_user:PASSWORD@localhost:3306/u123_corenovait` (URL-encode special
+   characters in the password).
+
+**Create the app:**
 
 1. Push this repo to GitHub (`corenova-IT/corenovait-admin`).
-2. In hPanel: **Websites → Add website → Node.js app**, connect the GitHub repo,
-   branch `main`, and turn on auto-deploy.
-3. Build settings:
-   - Node version: 20 or 22
-   - Install: `npm ci`
-   - Build: `npm run build`
-   - Start: `npm start`
-4. Add the environment variables from section 2 (not the `SEED_ADMIN_*` ones).
-   Set `SITE_URL` to `https://admin.corenovait.com.au`.
-5. Domain: add the subdomain `admin.corenovait.com.au` to the app and turn on SSL.
-6. Update Supabase **URL Configuration** (section 3, step 5) with the live URL.
-7. Sign in at the live URL to confirm, then check **Audit log** shows the sign-in.
+2. hPanel → **Websites → Add website → Node.js app**, connect the GitHub repo, branch `main`, auto-deploy on.
+3. Build settings: Node 20 or 22 · install `npm ci` · build `npm run build` · start `npm start`
+   (which migrates, then starts).
+4. Environment variables: everything in section 2 except `SEED_ADMIN_*` and `TEST_DATABASE_URL`.
+   Set `SITE_URL=https://admin.corenovait.com.au` and `UPLOAD_DIR` to a folder in your home
+   directory outside the app, e.g. `/home/u123/corenovait-uploads`.
+5. Domain: attach `admin.corenovait.com.au` and turn on SSL.
+6. Seed the first admin once over SSH (hPanel → Advanced → SSH access), from the app folder:
+   `SEED_ADMIN_EMAIL=... SEED_ADMIN_PASSWORD=... npm run seed:admin`, then clear your shell
+   history (`history -c`).
+7. Sign in at the live URL, set up two-factor, and check **Audit log** shows the sign-in.
 
-The app sends `noindex` headers and a strict Content-Security-Policy. Sign-in rate
-limits are kept in memory, which is right for a single Hostinger Node process.
+**Email:** in Resend, verify `corenovait.com.au` (the public site may already have done this), create an
+API key, and set `RESEND_API_KEY` and `MAIL_FROM`.
 
-## 8. Backups
+## 10. Backups
 
-- Supabase Pro includes daily backups (7 days); add Point-in-Time Recovery if you
-  need finer restores. The free plan has **no** backups, so use Pro for real data.
-- Also take your own copy monthly (and before each migration):
-
+- **Hostinger:** hPanel → Files → Backups keeps automatic daily backups of files and databases
+  (retention depends on your plan). Restore a database from there in a few clicks.
+- **Your own copy (monthly, and before risky migrations):** over SSH on the server:
   ```bash
-  pg_dump "<connection string from Project Settings → Database>" -Fc -f corenovait-admin-YYYY-MM-DD.dump
+  mysqldump --single-transaction --routines --no-tablespaces -u u123_user -p u123_corenovait | gzip > ~/backups/corenovait-$(date +%F).sql.gz
   ```
-
-  Store it somewhere private and encrypted, not in this repo.
-- To restore into a fresh project: run `pg_restore -d "<connection string>" <file>.dump`.
-- Receipts (from Phase 2) live in Supabase Storage. Back up that bucket too.
+  Download it via the File Manager and store it encrypted (not in this repo). hPanel →
+  Databases → phpMyAdmin → Export does the same thing from the browser.
+- **Uploads:** back up `UPLOAD_DIR` too (`tar czf ~/backups/uploads-$(date +%F).tgz /home/u123/corenovait-uploads`).
+- **Keys:** keep `APP_ENCRYPTION_KEY` in your password manager. A database backup without it
+  can't verify two-factor codes.
+- **Restore:** `gunzip < corenovait-YYYY-MM-DD.sql.gz | mysql -u u123_user -p u123_corenovait`.

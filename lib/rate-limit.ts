@@ -1,7 +1,7 @@
 /**
  * Small fixed-window limiter for login, password-reset and 2FA attempts.
  * Hostinger runs this app as one Node process, so in-memory state is enough.
- * Supabase Auth applies its own limits on top of this.
+ * Each account also locks for 15 minutes after 5 wrong passwords (in the database).
  */
 type Bucket = { count: number; resetAt: number };
 

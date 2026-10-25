@@ -27,12 +27,12 @@ const managerPerms = perms(
 );
 
 export const previewMembers: Member[] = [
-  { id: "00000000-0000-4000-8000-000000000001", email: "admin.one@example.test", name: "Alex Example", jobTitle: "Co-founder", presetId: "admin", status: "active", mfaRequired: true, mfaEnabled: true, lastSignIn: "2026-10-25T08:00:00Z", perms: adminPerms },
-  { id: "00000000-0000-4000-8000-000000000002", email: "admin.two@example.test", name: "Blair Sample", jobTitle: "Co-founder", presetId: "admin", status: "active", mfaRequired: true, mfaEnabled: false, lastSignIn: "2026-10-24T08:00:00Z", perms: adminPerms },
-  { id: "00000000-0000-4000-8000-000000000003", email: "web.dev@example.test", name: "Casey Demo", jobTitle: "Web developer", presetId: "staff", status: "active", mfaRequired: false, mfaEnabled: false, lastSignIn: "2026-10-25T07:00:00Z", perms: staffPerms },
-  { id: "00000000-0000-4000-8000-000000000004", email: "design@example.test", name: "Devon Placeholder", jobTitle: "Designer", presetId: "manager", status: "active", mfaRequired: false, mfaEnabled: true, lastSignIn: "2026-10-22T07:00:00Z", perms: managerPerms },
-  { id: "00000000-0000-4000-8000-000000000005", email: "marketing@example.test", name: "Emery Test", jobTitle: "Marketing", presetId: "staff", status: "invited", mfaRequired: false, mfaEnabled: false, lastSignIn: null, perms: staffPerms },
-  { id: "00000000-0000-4000-8000-000000000006", email: "former@example.test", name: "Frankie Fixture", jobTitle: "Contractor", presetId: "custom", status: "deactivated", mfaRequired: false, mfaEnabled: false, lastSignIn: "2026-09-01T07:00:00Z", perms: staffPerms },
+  { id: "00000000-0000-4000-8000-000000000001", email: "admin.one@example.test", name: "Alex Example", jobTitle: "Co-founder", presetId: "admin", status: "active", mfaRequired: true, mfaEnabled: true, lockedUntil: null, lastSignIn: "2026-10-25T08:00:00Z", perms: adminPerms },
+  { id: "00000000-0000-4000-8000-000000000002", email: "admin.two@example.test", name: "Blair Sample", jobTitle: "Co-founder", presetId: "admin", status: "active", mfaRequired: true, mfaEnabled: false, lockedUntil: null, lastSignIn: "2026-10-24T08:00:00Z", perms: adminPerms },
+  { id: "00000000-0000-4000-8000-000000000003", email: "web.dev@example.test", name: "Casey Demo", jobTitle: "Web developer", presetId: "staff", status: "active", mfaRequired: false, mfaEnabled: false, lockedUntil: null, lastSignIn: "2026-10-25T07:00:00Z", perms: staffPerms },
+  { id: "00000000-0000-4000-8000-000000000004", email: "design@example.test", name: "Devon Placeholder", jobTitle: "Designer", presetId: "manager", status: "active", mfaRequired: false, mfaEnabled: true, lockedUntil: null, lastSignIn: "2026-10-22T07:00:00Z", perms: managerPerms },
+  { id: "00000000-0000-4000-8000-000000000005", email: "marketing@example.test", name: "Emery Test", jobTitle: "Marketing", presetId: "staff", status: "invited", mfaRequired: false, mfaEnabled: false, lockedUntil: null, lastSignIn: null, perms: staffPerms },
+  { id: "00000000-0000-4000-8000-000000000006", email: "former@example.test", name: "Frankie Fixture", jobTitle: "Contractor", presetId: "custom", status: "deactivated", mfaRequired: false, mfaEnabled: false, lockedUntil: null, lastSignIn: "2026-09-01T07:00:00Z", perms: staffPerms },
 ];
 
 export const previewPresets: Preset[] = [
@@ -44,10 +44,10 @@ export const previewPresets: Preset[] = [
 
 export const previewAudit: AuditRow[] = [
   { id: 6, at: "2026-10-25T09:12:00Z", actor_email: "admin.one@example.test", action: "update", entity: "income_entries", entity_id: "8f1c2a90-0000-4000-8000-00000000aa01", summary: null, before: { amount_minor: 1234500, status: "pending", client: "Example Client Pty" }, after: { amount_minor: 1290000, status: "paid", client: "Example Client Pty" } },
-  { id: 5, at: "2026-10-25T08:41:00Z", actor_email: "admin.one@example.test", action: "permissions", entity: "profiles", entity_id: "00000000-0000-4000-8000-000000000006", summary: "Custom permissions set", before: [{ module: "home", view: true }], after: [{ module: "home", view: true }, { module: "tasks", view: true, create: true }] },
-  { id: 4, at: "2026-10-25T08:30:00Z", actor_email: "admin.one@example.test", action: "invite", entity: "profiles", entity_id: "00000000-0000-4000-8000-000000000005", summary: "Invited marketing@example.test", before: null, after: null },
+  { id: 5, at: "2026-10-25T08:41:00Z", actor_email: "admin.one@example.test", action: "permissions", entity: "users", entity_id: "00000000-0000-4000-8000-000000000006", summary: "Custom permissions set", before: [{ module: "home", view: true }], after: [{ module: "home", view: true }, { module: "tasks", view: true, create: true }] },
+  { id: 4, at: "2026-10-25T08:30:00Z", actor_email: "admin.one@example.test", action: "invite", entity: "users", entity_id: "00000000-0000-4000-8000-000000000005", summary: "Invited marketing@example.test", before: null, after: null },
   { id: 3, at: "2026-10-24T16:05:00Z", actor_email: "admin.two@example.test", action: "export", entity: "transactions", entity_id: null, summary: "income-oct-2026.csv", before: null, after: null },
-  { id: 2, at: "2026-10-24T11:00:00Z", actor_email: "admin.two@example.test", action: "deactivate", entity: "profiles", entity_id: "00000000-0000-4000-8000-000000000006", summary: null, before: null, after: null },
+  { id: 2, at: "2026-10-24T11:00:00Z", actor_email: "admin.two@example.test", action: "deactivate", entity: "users", entity_id: "00000000-0000-4000-8000-000000000006", summary: null, before: null, after: null },
   { id: 1, at: "2026-10-24T08:00:00Z", actor_email: "web.dev@example.test", action: "sign_in", entity: "auth", entity_id: null, summary: "Signed in", before: null, after: null },
 ];
 

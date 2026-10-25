@@ -17,6 +17,5 @@ npm-debug.log*
 .DS_Store
 Thumbs.db
 
-# local Supabase CLI state
-/supabase/.temp/
-/supabase/.branches/
+# uploaded files in development (production uses UPLOAD_DIR outside the app)
+/.uploads/

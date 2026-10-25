@@ -1,8 +1,5 @@
 import type { NextConfig } from "next";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
-const supabaseOrigin = supabaseUrl ? new URL(supabaseUrl).origin : "";
-const supabaseWs = supabaseOrigin.replace(/^http/, "ws");
 const isDev = process.env.NODE_ENV !== "production";
 
 const csp = [
@@ -10,10 +7,11 @@ const csp = [
   // Next injects inline bootstrap scripts; dev also needs eval for fast refresh
   `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
   "style-src 'self' 'unsafe-inline'",
-  // Supabase MFA returns the TOTP QR code as a data: SVG
+  // the two-factor QR code is a data: SVG
   "img-src 'self' data: blob:",
   "font-src 'self'",
-  `connect-src 'self' ${supabaseOrigin} ${supabaseWs}`.trim(),
+  // chat (Phase 5) uses Server-Sent Events and polling on the same origin
+  "connect-src 'self'",
   "frame-ancestors 'none'",
   "base-uri 'self'",
   "form-action 'self'",
@@ -22,6 +20,8 @@ const csp = [
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  // native argon2 binary and the MySQL driver run as normal Node modules, not bundled
+  serverExternalPackages: ["@node-rs/argon2", "mysql2"],
   async headers() {
     return [
       {

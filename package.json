@@ -5,31 +5,42 @@
   "scripts": {
     "dev": "next dev --webpack",
     "build": "next build --webpack",
-    "start": "next start",
+    "start": "node scripts/migrate.mjs && next start",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "seed:admin": "tsx scripts/seed-admin.ts"
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "node scripts/migrate.mjs",
+    "seed:admin": "tsx --conditions=react-server scripts/seed-admin.ts",
+    "reset-2fa": "tsx --conditions=react-server scripts/reset-2fa.ts",
+    "gen:key": "node scripts/gen-key.mjs"
   },
   "dependencies": {
-    "@supabase/ssr": "^0.12.7",
-    "@supabase/supabase-js": "^2.118.0",
+    "@node-rs/argon2": "^2.2.2",
+    "drizzle-orm": "^0.45.4",
+    "mysql2": "^3.24.6",
     "next": "^16.3.4",
+    "qrcode": "^1.5.4",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "server-only": "^0.0.1",
+    "tsx": "^4.23.15",
     "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@electric-sql/pglite": "^0.5.11",
     "@tailwindcss/postcss": "^4.3.3",
     "@types/node": "^26.6.5",
+    "@types/qrcode": "^1.5.6",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
+    "drizzle-kit": "^0.31.11",
+    "mysql-memory-server": "^1.18.0",
     "tailwindcss": "^4.3.3",
-    "tsx": "^4.23.15",
     "typescript": "~5.9",
     "vitest": "^5.0.5"
   },
-  "type": "module"
+  "type": "module",
+  "engines": {
+    "node": ">=20.9"
+  }
 }

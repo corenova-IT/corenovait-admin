@@ -10,8 +10,9 @@ export type Member = {
   presetId: string;
   status: MemberStatus;
   mfaRequired: boolean;
-  /** null when it couldn't be checked (service key not configured) */
-  mfaEnabled: boolean | null;
+  mfaEnabled: boolean;
+  /** set while the account is locked after too many wrong passwords */
+  lockedUntil: string | null;
   lastSignIn: string | null;
   perms: PermMap;
 };
@@ -27,11 +28,13 @@ export type Preset = {
 
 export type TeamActions = {
   inviteMember: Action;
+  resendInvite: Action;
   saveDetails: Action;
   applyPreset: Action;
   savePermissions: Action;
   setActive: Action;
   resetSessions: Action;
+  resetTwoFactor: Action;
   savePreset: Action;
 };
 

@@ -24,6 +24,7 @@ function Msg({ state }: { state: TeamState }) {
 }
 
 function statusBadge(m: Member) {
+  if (m.status === "active" && m.lockedUntil) return <Badge tone="red">Locked</Badge>;
   if (m.status === "active") return <Badge tone="green">Active</Badge>;
   if (m.status === "invited") return <Badge tone="amber">Invite sent</Badge>;
   return <Badge tone="red">Deactivated</Badge>;
@@ -32,7 +33,6 @@ function statusBadge(m: Member) {
 function mfaBadge(m: Member) {
   if (m.mfaEnabled) return <Badge tone="green">On</Badge>;
   if (m.mfaRequired) return <Badge tone="amber">Required, not set</Badge>;
-  if (m.mfaEnabled === null) return <Badge>Unknown</Badge>;
   return <Badge>Off</Badge>;
 }
 
@@ -93,6 +93,9 @@ function ManageDrawer({
   const [perms, permsAction, permsPending] = useActionState(actions.savePermissions, empty);
   const [access, accessAction, accessPending] = useActionState(actions.setActive, empty);
   const [sessions, sessionsAction, sessionsPending] = useActionState(actions.resetSessions, empty);
+  const [invite, inviteAction, invitePending] = useActionState(actions.resendInvite, empty);
+  const [mfa, mfaAction, mfaPending] = useActionState(actions.resetTwoFactor, empty);
+  const [confirmMfa, setConfirmMfa] = useState(false);
   const [matrix, setMatrix] = useState<PermMap | null>(null);
   const [confirmDeactivate, setConfirmDeactivate] = useState(false);
 
@@ -170,6 +173,19 @@ function ManageDrawer({
                 {sessionsPending ? "Ending sessions…" : "Reset sessions"}
               </Button>
             </form>
+            {member.status === "invited" && (
+              <form action={inviteAction}>
+                <input type="hidden" name="userId" value={member.id} />
+                <Button type="submit" variant="secondary" disabled={invitePending}>
+                  {invitePending ? "Sending…" : "Resend invite"}
+                </Button>
+              </form>
+            )}
+            {!isSelf && member.mfaEnabled && (
+              <Button variant="secondary" onClick={() => setConfirmMfa(true)}>
+                Reset two-factor
+              </Button>
+            )}
             {!isSelf && (
               <Button variant={deactivating ? "danger" : "secondary"} onClick={() => setConfirmDeactivate(true)}>
                 {deactivating ? "Deactivate account" : "Reactivate account"}
@@ -177,10 +193,12 @@ function ManageDrawer({
             )}
           </div>
           <p className="mt-3 text-xs text-muted">
-            Reset sessions signs them out on every device. Deactivating also blocks sign-in until you reactivate them; their records stay.
+            Reset sessions signs them out on every device. Reset two-factor is for a lost phone: they set up a new authenticator at their next sign-in. Deactivating blocks sign-in until you reactivate them; their records stay.
           </p>
           <div className="mt-3 flex flex-col gap-2">
             <Msg state={sessions} />
+            <Msg state={invite} />
+            <Msg state={mfa} />
             <Msg state={access} />
           </div>
         </section>
@@ -204,6 +222,23 @@ function ManageDrawer({
           </Button>
           <Button type="submit" variant={deactivating ? "danger" : "primary"} disabled={accessPending}>
             {deactivating ? "Deactivate" : "Reactivate"}
+          </Button>
+        </form>
+      </Modal>
+
+      <Modal
+        open={confirmMfa}
+        onClose={() => setConfirmMfa(false)}
+        title={`Reset two-factor for ${member.name || member.email}?`}
+        description="Only do this once you've confirmed it's really them, for example by phone. Their authenticator and recovery codes stop working, they're signed out, and they set up a new authenticator at their next sign-in."
+      >
+        <form action={mfaAction} onSubmit={() => setConfirmMfa(false)} className="flex justify-end gap-3">
+          <input type="hidden" name="userId" value={member.id} />
+          <Button variant="ghost" onClick={() => setConfirmMfa(false)}>
+            Cancel
+          </Button>
+          <Button type="submit" variant="danger" disabled={mfaPending}>
+            Reset two-factor
           </Button>
         </form>
       </Modal>

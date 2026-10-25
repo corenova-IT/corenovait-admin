@@ -1,42 +1,39 @@
 import { redirect } from "next/navigation";
 import { AuthCard } from "@/components/auth/AuthCard";
-import { TotpSetup, TotpVerifyForm } from "@/components/auth/forms";
-import { getSession } from "@/lib/auth/session";
+import { SecondFactorForm, TotpSetup } from "@/components/auth/forms";
+import { getSessionState } from "@/lib/auth/session";
 import { safeNextPath } from "@/lib/safe-redirect";
-import { createClient } from "@/lib/supabase/server";
 
 export const metadata = { title: "Two-factor" };
 
 export default async function MfaPage({ searchParams }: { searchParams: Promise<{ next?: string; setup?: string }> }) {
-  const session = await getSession();
-  if (!session) redirect("/login");
-  if (!session.profile?.active) redirect("/auth/signout?reason=inactive");
-  const next = safeNextPath((await searchParams).next);
-  const wantsSetup = (await searchParams).setup === "1";
+  const sp = await searchParams;
+  const next = safeNextPath(sp.next);
+  const s = await getSessionState();
+  if (s.status === "ended") redirect(s.reason === "none" ? "/login" : `/auth/signout?reason=${s.reason}`);
 
-  const supabase = await createClient();
-  const { data } = await supabase.auth.mfa.listFactors();
-  const verified = (data?.totp ?? []).find((f) => f.status === "verified");
-
-  if (verified && session.aal === "aal2" && !wantsSetup) redirect(next);
-
-  if (verified) {
+  if (s.status === "mfa_verify") {
     return (
       <AuthCard title="Two-factor check" subtitle="Enter the 6-digit code from your authenticator app.">
-        <TotpVerifyForm factorId={verified.id} next={next} />
+        <SecondFactorForm next={next} />
       </AuthCard>
     );
   }
 
-  if (!session.profile.mfa_required && !wantsSetup) redirect(next);
+  // Signed in already: only stay if they asked to set up (or move) two-factor.
+  if (s.status === "ok" && sp.setup !== "1") redirect(next);
 
+  const required = s.status === "mfa_setup" ? s.mfaRequired : s.actor.mfaRequired;
+  const moving = s.status === "ok" && s.actor.mfaEnabled;
   return (
     <AuthCard
-      title="Set up two-factor"
+      title={moving ? "Move two-factor to a new phone" : "Set up two-factor"}
       subtitle={
-        session.profile.mfa_required
-          ? "Your role can see sensitive company data, so two-factor is required before you continue."
-          : "Add a second step to your sign-in."
+        moving
+          ? "Scanning a new QR code replaces your old authenticator and recovery codes."
+          : required
+            ? "Your role can see sensitive company data, so two-factor is required before you continue."
+            : "Add a second step to your sign-in."
       }
     >
       <TotpSetup next={next} />

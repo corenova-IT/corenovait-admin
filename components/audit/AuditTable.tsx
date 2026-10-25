@@ -21,12 +21,19 @@ export const ACTION_LABELS: Record<string, { label: string; tone: BadgeTone }> =
   export: { label: "Exported", tone: "neutral" },
   sign_in: { label: "Signed in", tone: "neutral" },
   sign_out: { label: "Signed out", tone: "neutral" },
+  lockout: { label: "Locked out", tone: "red" },
   invite: { label: "Invited", tone: "green" },
+  invite_accepted: { label: "Invite accepted", tone: "green" },
+  password_reset: { label: "Password reset", tone: "amber" },
   permissions: { label: "Permissions", tone: "red" },
   preset: { label: "Preset edited", tone: "red" },
   sessions_reset: { label: "Sessions reset", tone: "amber" },
   activate: { label: "Reactivated", tone: "green" },
   deactivate: { label: "Deactivated", tone: "red" },
+  mfa_enabled: { label: "Two-factor on", tone: "green" },
+  mfa_reset: { label: "Two-factor reset", tone: "red" },
+  recovery_code_used: { label: "Recovery code used", tone: "amber" },
+  recovery_codes_regenerated: { label: "New recovery codes", tone: "neutral" },
 };
 
 export const ENTITY_LABELS: Record<string, string> = {
@@ -36,13 +43,14 @@ export const ENTITY_LABELS: Record<string, string> = {
   streams: "Revenue stream",
   countries: "Country",
   settings: "Settings",
-  profiles: "Team member",
+  users: "Team member",
+  files: "File",
   role_presets: "Role preset",
   auth: "Sign-in",
   transactions: "Transactions",
 };
 
-const HIDDEN_FIELDS = new Set(["updated_at", "created_at"]);
+const HIDDEN_FIELDS = new Set(["updated_at", "created_at", "updatedAt", "createdAt"]);
 
 function fmtValue(v: unknown): string {
   if (v === null || v === undefined || v === "") return "—";

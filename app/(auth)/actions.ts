@@ -1,19 +1,36 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import QRCode from "qrcode";
 import { z } from "zod";
-import { getSession } from "@/lib/auth/session";
-import { siteUrl } from "@/lib/env";
+import {
+  clearSessionCookie,
+  errorMessage,
+  getSessionState,
+  readSessionToken,
+  setSessionCookie,
+} from "@/lib/auth/session";
+import * as auth from "@/lib/dal/auth";
+import { resetEmail, sendMail } from "@/lib/email";
 import { newPasswordSchema } from "@/lib/password";
 import { limiters } from "@/lib/rate-limit";
-import { clientIp } from "@/lib/request";
+import { requestContext } from "@/lib/request";
 import { safeNextPath } from "@/lib/safe-redirect";
-import { createClient } from "@/lib/supabase/server";
 
-export type FormState = { error?: string; fieldErrors?: Record<string, string>; ok?: string };
+export type FormState = { error?: string; fieldErrors?: Record<string, string>; ok?: string; recoveryCodes?: string[] };
 
 const minutes = (sec: number) => Math.max(1, Math.ceil(sec / 60));
 const GENERIC_SIGNIN_ERROR = "That email and password don't match an active account. Check them and try again.";
+const tooMany = (m: number) => `Too many sign-in attempts. Wait ${m} minute${m === 1 ? "" : "s"} and try again.`;
+
+function fieldErrorsFrom(issues: Array<{ path: PropertyKey[]; message: string }>) {
+  const out: Record<string, string> = {};
+  for (const i of issues) {
+    const k = String(i.path[0] ?? "password");
+    out[k] = out[k] ? `${out[k]} ${i.message}` : i.message;
+  }
+  return out;
+}
 
 // ---------- sign in ----------
 const signInSchema = z.object({
@@ -27,118 +44,129 @@ export async function signIn(_prev: FormState, formData: FormData): Promise<Form
   if (!parsed.success) return { error: "Enter your email address and password." };
   const { email, password } = parsed.data;
   const next = safeNextPath(parsed.data.next);
+  const ctx = await requestContext();
 
-  const ip = await clientIp();
-  const accountKey = `${ip}|${email}`;
+  // in-memory limits catch floods (including unknown emails); the database lockout protects each account
+  const accountKey = `${ctx.ip}|${email}`;
   const perAccount = limiters.loginPerAccount.hit(accountKey);
-  const perIp = limiters.loginPerIp.hit(ip);
-  if (!perAccount.ok || !perIp.ok) {
-    const wait = !perAccount.ok ? perAccount.retryAfterSec : perIp.ok ? 60 : perIp.retryAfterSec;
-    return { error: `Too many sign-in attempts. Wait ${minutes(wait)} minutes and try again.` };
-  }
+  const perIp = limiters.loginPerIp.hit(ctx.ip);
+  if (!perAccount.ok) return { error: tooMany(minutes(perAccount.retryAfterSec)) };
+  if (!perIp.ok) return { error: tooMany(minutes(perIp.retryAfterSec)) };
 
-  const supabase = await createClient();
-  const { error } = await supabase.auth.signInWithPassword({ email, password });
-  if (error) return { error: GENERIC_SIGNIN_ERROR };
+  const result = await auth.signInWithPassword(email, password, ctx);
+  if (!result.ok) return { error: result.reason === "locked" ? tooMany(result.minutes) : GENERIC_SIGNIN_ERROR };
 
-  const session = await getSession();
-  if (!session?.profile?.active) {
-    await supabase.auth.signOut();
-    return { error: GENERIC_SIGNIN_ERROR };
-  }
   limiters.loginPerAccount.reset(accountKey);
-  await supabase.rpc("log_event", { p_action: "sign_in", p_entity: "auth", p_entity_id: null, p_summary: "Signed in" });
-
-  const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-  const needsSecondFactor = aal?.nextLevel === "aal2" && aal.currentLevel !== "aal2";
-  if (needsSecondFactor || session.profile.mfa_required) {
-    redirect(`/mfa?next=${encodeURIComponent(next)}`);
-  }
-  redirect(next);
+  await setSessionCookie(result.token);
+  redirect(result.next === "home" ? next : `/mfa?next=${encodeURIComponent(next)}`);
 }
 
 // ---------- forgot password ----------
 const emailSchema = z.object({ email: z.string().trim().toLowerCase().email().max(254) });
+const RESET_REPLY = "If that email belongs to an active account, a reset link is on its way. It expires in one hour.";
 
 export async function requestPasswordReset(_prev: FormState, formData: FormData): Promise<FormState> {
   const parsed = emailSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { fieldErrors: { email: "Enter a valid email address." } };
-  const ip = await clientIp();
+  const { ip } = await requestContext();
   const rl = limiters.resetPerIp.hit(ip);
   if (!rl.ok) return { error: `Too many requests. Wait ${minutes(rl.retryAfterSec)} minutes and try again.` };
 
-  const supabase = await createClient();
-  // The result is ignored on purpose: the reply is the same whether or not the email has an account.
-  await supabase.auth.resetPasswordForEmail(parsed.data.email, {
-    redirectTo: `${siteUrl()}/auth/confirm?next=/set-password`,
-  });
-  return { ok: "If that email belongs to an active account, a reset link is on its way. It expires in one hour." };
+  // The reply is the same whether or not the email has an account.
+  const link = await auth.createPasswordResetToken(parsed.data.email);
+  if (link) await sendMail(resetEmail(link.email, link.token));
+  return { ok: RESET_REPLY };
 }
 
-// ---------- set a new password (after an invite or reset link) ----------
-export async function setNewPassword(_prev: FormState, formData: FormData): Promise<FormState> {
-  const session = await getSession();
-  if (!session?.profile) return { error: "Your link has expired. Request a new one from the sign-in page." };
+// ---------- choose a password from an email link ----------
+const linkSchema = z.object({ token: z.string().min(20).max(200), password: z.string().max(200), confirm: z.string().max(200) });
 
-  const parsed = newPasswordSchema(session.profile.email).safeParse(Object.fromEntries(formData));
-  if (!parsed.success) {
-    const fieldErrors: Record<string, string> = {};
-    for (const issue of parsed.error.issues) {
-      const key = String(issue.path[0] ?? "password");
-      fieldErrors[key] = fieldErrors[key] ? `${fieldErrors[key]} ${issue.message}` : issue.message;
-    }
-    return { fieldErrors };
+export async function resetPassword(_prev: FormState, formData: FormData): Promise<FormState> {
+  const parsed = linkSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { error: "That link isn't valid. Request a new one." };
+  const who = await auth.peekLinkToken(parsed.data.token, "reset");
+  if (!who) return { error: "That link has expired or was already used. Request a new one." };
+  const pw = newPasswordSchema(who.email).safeParse(parsed.data);
+  if (!pw.success) return { fieldErrors: fieldErrorsFrom(pw.error.issues) };
+  try {
+    await auth.completePasswordReset(parsed.data.token, parsed.data.password, await requestContext());
+  } catch (e) {
+    return { error: errorMessage(e, "We couldn't save your password. Request a new link and try again.") };
   }
-  const supabase = await createClient();
-  const { error } = await supabase.auth.updateUser({ password: parsed.data.password });
-  if (error) {
-    if (/reauthentication|aal2/i.test(error.message)) {
-      return { error: "For security, verify your two-factor code first, then set your password." };
-    }
-    if (/same|different/i.test(error.message)) return { fieldErrors: { password: "Choose a password you haven't used here before." } };
-    if (/weak|pwned|leaked/i.test(error.message)) return { fieldErrors: { password: "That password has appeared in a data breach. Choose a different one." } };
-    return { error: "We couldn't save your password. Try again, or request a new link." };
+  await clearSessionCookie();
+  redirect("/login?reason=password_reset");
+}
+
+export async function acceptInvite(_prev: FormState, formData: FormData): Promise<FormState> {
+  const parsed = linkSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { error: "That invite link isn't valid. Ask an admin to send a new one." };
+  const who = await auth.peekLinkToken(parsed.data.token, "invite");
+  if (!who) return { error: "That invite has expired or was already used. Ask an admin to send a new one." };
+  const pw = newPasswordSchema(who.email).safeParse(parsed.data);
+  if (!pw.success) return { fieldErrors: fieldErrorsFrom(pw.error.issues) };
+  let next: string;
+  try {
+    const result = await auth.acceptInvite(parsed.data.token, parsed.data.password, await requestContext());
+    await setSessionCookie(result.token);
+    next = result.next === "home" ? "/home" : "/mfa?next=/home";
+  } catch (e) {
+    return { error: errorMessage(e, "We couldn't activate your account. Ask an admin to send a new invite.") };
   }
-  redirect(session.profile.mfa_required ? "/mfa?next=/home" : "/home");
+  redirect(next);
 }
 
 // ---------- two-factor ----------
-export type EnrollResult = { factorId: string; qrCode: string; secret: string } | { error: string };
+export type EnrollResult = { qrCode: string; secret: string } | { error: string };
 
 export async function startTotpEnrollment(): Promise<EnrollResult> {
-  const session = await getSession();
-  if (!session?.profile?.active) return { error: "Your session has ended. Sign in again." };
-  const supabase = await createClient();
-  // clear any half-finished setup so stale QR codes stop working
-  const { data: factors } = await supabase.auth.mfa.listFactors();
-  for (const f of factors?.all ?? []) {
-    if (f.factor_type === "totp" && f.status !== "verified") await supabase.auth.mfa.unenroll({ factorId: f.id });
+  const token = await readSessionToken();
+  if (!token) return { error: "Your session has ended. Sign in again." };
+  try {
+    const { secret, uri } = await auth.beginTotpSetup(token);
+    const svg = await QRCode.toString(uri, { type: "svg", margin: 1, errorCorrectionLevel: "M" });
+    return { qrCode: `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`, secret };
+  } catch (e) {
+    return { error: errorMessage(e, "We couldn't start two-factor setup. Refresh the page and try again.") };
   }
-  const { data, error } = await supabase.auth.mfa.enroll({
-    factorType: "totp",
-    friendlyName: `CoreNovaIT ${new Date().toISOString().slice(0, 10)}`,
-  });
-  if (error || !data) return { error: "We couldn't start two-factor setup. Refresh the page and try again." };
-  return { factorId: data.id, qrCode: data.totp.qr_code, secret: data.totp.secret };
 }
 
-const codeSchema = z.object({
-  factorId: z.string().uuid(),
-  code: z.string().trim().regex(/^\d{6}$/, "Enter the 6-digit code from your authenticator app."),
-  next: z.string().max(500).optional(),
-});
+const codeSchema = z.object({ code: z.string().trim().max(20), next: z.string().max(500).optional() });
 
-export async function verifyTotp(_prev: FormState, formData: FormData): Promise<FormState> {
+async function mfaLimit(): Promise<string | null> {
+  const s = await getSessionState();
+  const key = s.status === "ok" ? s.actor.userId : s.status === "ended" ? null : s.userId;
+  if (!key) return "Your session has ended. Sign in again.";
+  const rl = limiters.mfaPerUser.hit(key);
+  return rl.ok ? null : `Too many attempts. Wait ${minutes(rl.retryAfterSec)} minutes and try again.`;
+}
+
+/** Finishes setup. Returns the recovery codes so the page can show them once. */
+export async function confirmTotp(_prev: FormState, formData: FormData): Promise<FormState> {
   const parsed = codeSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) return { fieldErrors: { code: "Enter the 6-digit code from your authenticator app." } };
-  const session = await getSession();
-  if (!session?.profile?.active) return { error: "Your session has ended. Sign in again." };
-  const rl = limiters.mfaPerUser.hit(session.userId);
-  if (!rl.ok) return { error: `Too many attempts. Wait ${minutes(rl.retryAfterSec)} minutes and try again.` };
+  if (!parsed.success || !/^\d{6}$/.test(parsed.data.code)) return { fieldErrors: { code: "Enter the 6-digit code from your authenticator app." } };
+  const limited = await mfaLimit();
+  if (limited) return { error: limited };
+  const token = await readSessionToken();
+  try {
+    const recoveryCodes = await auth.confirmTotpSetup(token ?? "", parsed.data.code);
+    return { ok: "Two-factor is on.", recoveryCodes };
+  } catch (e) {
+    return { fieldErrors: { code: errorMessage(e) } };
+  }
+}
 
-  const supabase = await createClient();
-  const { error } = await supabase.auth.mfa.challengeAndVerify({ factorId: parsed.data.factorId, code: parsed.data.code });
-  if (error) return { fieldErrors: { code: "That code didn't work. Check the time on your phone and use the newest code." } };
-  limiters.mfaPerUser.reset(session.userId);
-  redirect(safeNextPath(parsed.data.next));
+export async function verifySecondFactor(_prev: FormState, formData: FormData): Promise<FormState> {
+  const parsed = codeSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success || !parsed.data.code) return { fieldErrors: { code: "Enter the 6-digit code from your authenticator app." } };
+  const limited = await mfaLimit();
+  if (limited) return { error: limited };
+  const token = await readSessionToken();
+  let destination = safeNextPath(parsed.data.next);
+  try {
+    const r = await auth.verifySecondFactor(token ?? "", parsed.data.code);
+    if (r.usedRecoveryCode) destination = `/account?recovery_left=${r.recoveryCodesLeft}`;
+  } catch (e) {
+    return { fieldErrors: { code: errorMessage(e) } };
+  }
+  redirect(destination);
 }
