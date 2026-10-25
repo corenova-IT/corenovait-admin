@@ -1,0 +1,38 @@
+import type { NavItem } from "@/lib/nav";
+import type { Theme } from "@/lib/theme";
+import { Sidebar } from "./Sidebar";
+import { Topbar } from "./Topbar";
+
+export function PortalShell({
+  nav,
+  user,
+  theme,
+  unread = 0,
+  children,
+}: {
+  nav: NavItem[];
+  user: { name: string; email: string; role: string };
+  theme: Theme;
+  unread?: number;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="lg:flex">
+      <a
+        href="#main"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-xl focus:bg-accent focus:px-4 focus:py-2 focus:text-on-accent"
+      >
+        Skip to content
+      </a>
+      <Sidebar items={nav} userName={user.name} userRole={user.role} />
+      <div className="min-w-0 flex-1">
+        <header className="px-4 pt-5 sm:px-8 sm:pt-7 lg:px-10">
+          <Topbar name={user.name} email={user.email} theme={theme} unread={unread} />
+        </header>
+        <main id="main" className="px-4 pb-16 pt-7 sm:px-8 lg:px-10">
+          {children}
+        </main>
+      </div>
+    </div>
+  );
+}

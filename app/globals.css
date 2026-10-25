@@ -1,0 +1,180 @@
+@import "tailwindcss";
+
+/* =====================================================================
+   CoreNovaIT portal design tokens. Dark is the default; [data-theme=light]
+   overrides. Components use these tokens only, never raw colours.
+   ===================================================================== */
+:root {
+  --bg: #0b0d12;
+  --sidebar: #0d0f15;
+  --surface: #12141b;
+  --surface-2: #181b24;
+  --line: #262a35;
+  --text: #f2efe8;
+  --text-2: #b9bdc9;
+  --muted: #8b93a4;
+  --accent: #d63838;
+  --accent-text: #e25555;
+  --accent-soft: rgba(214, 56, 56, 0.12);
+  --accent-line: rgba(214, 56, 56, 0.45);
+  --on-accent: #ffffff;
+  --success: #4ade9a;
+  --warning: #f2b84b;
+  --warning-soft: rgba(242, 184, 75, 0.1);
+  --success-soft: rgba(74, 222, 154, 0.1);
+  --card-top: #171a22;
+  --card-bottom: #12141b;
+  --glass-border: rgba(255, 255, 255, 0.07);
+  --glass-highlight: rgba(255, 255, 255, 0.05);
+  --glow: rgba(214, 56, 56, 0.34);
+  --glow-strong: rgba(214, 56, 56, 0.55);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.35), 0 12px 32px -18px rgba(0, 0, 0, 0.7);
+  --input: #10121a;
+  --scrim: rgba(5, 6, 9, 0.66);
+  color-scheme: dark;
+}
+
+[data-theme="light"] {
+  --bg: #f5f1ea;
+  --sidebar: #efe9df;
+  --surface: #ffffff;
+  --surface-2: #faf7f1;
+  --line: #e2dbcd;
+  --text: #15171d;
+  --text-2: #3f434d;
+  --muted: #5f6676;
+  --accent: #af2524;
+  --accent-text: #af2524;
+  --accent-soft: rgba(175, 37, 36, 0.08);
+  --accent-line: rgba(175, 37, 36, 0.35);
+  --on-accent: #ffffff;
+  --success: #17804f;
+  --warning: #9a5b07;
+  --warning-soft: rgba(154, 91, 7, 0.08);
+  --success-soft: rgba(23, 128, 79, 0.08);
+  --card-top: #ffffff;
+  --card-bottom: #ffffff;
+  --glass-border: rgba(21, 23, 29, 0.08);
+  --glass-highlight: rgba(255, 255, 255, 0.9);
+  --glow: rgba(175, 37, 36, 0.13);
+  --glow-strong: rgba(175, 37, 36, 0.3);
+  --shadow: 0 1px 2px rgba(21, 23, 29, 0.06), 0 12px 32px -20px rgba(21, 23, 29, 0.25);
+  --input: #ffffff;
+  --scrim: rgba(21, 23, 29, 0.35);
+  color-scheme: light;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-sidebar: var(--sidebar);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--line);
+  --color-ink: var(--text);
+  --color-ink-2: var(--text-2);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-text: var(--accent-text);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-line: var(--accent-line);
+  --color-on-accent: var(--on-accent);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-input: var(--input);
+  --font-display: var(--font-bricolage), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+
+html {
+  background: var(--bg);
+}
+
+body {
+  background:
+    radial-gradient(900px 420px at 92% -6%, var(--glow), transparent 60%),
+    var(--bg);
+  background-attachment: fixed;
+  color: var(--text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+/* Visible focus for keyboard users, everywhere */
+:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 2px;
+  border-radius: 10px;
+}
+
+@layer components {
+  /* Glass card: 20px radius, translucent 1px border, soft inner highlight */
+  .glass {
+    position: relative;
+    border-radius: 20px;
+    background: linear-gradient(180deg, var(--card-top), var(--card-bottom));
+    border: 1px solid var(--glass-border);
+    box-shadow: inset 0 1px 0 var(--glass-highlight), var(--shadow);
+    isolation: isolate;
+  }
+  /* The soft red bloom in the top-right corner of the stat cards */
+  .glass-glow::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: radial-gradient(180px 130px at 88% 0%, var(--glow), transparent 70%);
+    pointer-events: none;
+    z-index: -1;
+  }
+  .glass-accent {
+    border-color: var(--accent-line);
+  }
+
+  .glow-text {
+    text-shadow: 0 0 28px var(--glow);
+  }
+
+  .nav-item-active {
+    background: linear-gradient(180deg, var(--accent-soft), transparent 140%);
+    border-color: var(--accent-line);
+    box-shadow: 0 0 22px -8px var(--glow-strong), inset 0 1px 0 var(--glass-highlight);
+  }
+
+  .btn-primary-glow {
+    box-shadow: 0 10px 28px -12px var(--glow-strong), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  }
+
+  .label-mono {
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .num {
+    font-family: var(--font-display);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
