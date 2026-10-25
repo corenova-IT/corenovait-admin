@@ -45,8 +45,11 @@ export const SCOPE_LABELS: Record<DataScope, string> = {
   all: "All",
 };
 
-/** Modules that make a user require two-factor (mirrors recompute_mfa in SQL). */
-export const PRIVILEGED_MODULES: AppModule[] = ["team", "settings", "audit"];
+/**
+ * Any access to these modules makes two-factor required (as does the Admin
+ * preset). Everyone else may turn it on but doesn't have to.
+ */
+export const PRIVILEGED_MODULES: AppModule[] = ["finances", "transactions", "team", "settings", "audit"];
 
 export type PermRow = {
   module: AppModule;

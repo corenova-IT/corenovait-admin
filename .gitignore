@@ -19,3 +19,6 @@ Thumbs.db
 
 # uploaded files in development (production uses UPLOAD_DIR outside the app)
 /.uploads/
+
+# generated first-admin SQL files (contain a password hash; delete after import)
+/.private/

@@ -16,7 +16,29 @@ the data-access layer, Team page, audit log. Later modules show a "coming in Pha
 
 ## 1. Local setup
 
-Requires Node.js 20.9+ and a local MySQL 8 (pick one):
+Requires Node.js 20.9+.
+
+### The one-command way (Windows, macOS or Linux; no Docker or installer)
+
+```bash
+npm install
+npm run db:local
+```
+
+`db:local` downloads the official MySQL 8.4 build once (cached in your temp folder), keeps its data
+in `%LOCALAPPDATA%\CoreNovaIT\mysql-data` (outside the project: MySQL on Windows can't start from a
+path with a space, like `CoreNovaIT 2.0`; override with `DEV_DB_DIR`), listens on `127.0.0.1:3307`
+only, creates `.env.local` if you don't have one,
+applies the migrations, and the first time loads clearly fake **sample data**: the same people as
+the `/dev` pages plus 12 months of sample income and expenses. It prints a local-only password for
+the sample accounts once. Keep that window open, and in a second terminal run `npm run dev`.
+
+- Ctrl+C stops MySQL; running `npm run db:local` again picks up where you left off.
+- `npm run db:local -- --reset` wipes the local data and starts fresh (and shows a new password).
+- While sample rows exist, pages show a **Sample data** badge (development only).
+- The sample-data seed refuses to run in production or against any database not on this PC.
+
+### Or use your own MySQL 8 (pick one)
 
 - **Docker:**
   ```bash
@@ -37,10 +59,11 @@ Then:
 npm install
 cp .env.example .env.local      # fill in DATABASE_URL and APP_ENCRYPTION_KEY (npm run gen:key)
 npm run db:migrate              # creates the tables
+npm run seed:dev                # optional: sample data (local databases only)
 npm run dev                     # http://localhost:3000
 ```
 
-Create your admin with `npm run seed:admin` (section 4). In development, invite and
+Without sample data, create your admin with `npm run seed:admin` (section 4). In development, invite and
 password-reset emails are printed in the `npm run dev` terminal unless `RESEND_API_KEY` is set.
 
 **Design preview without a database** (development only, returns 404 in production, every name is fake):
@@ -94,6 +117,23 @@ exchange rates are `DECIMAL(18,8)`; the base-currency amount is a MySQL generate
 5. Invite the second admin from **Team and permissions → Invite person** with the Admin role.
    Keep at least two admins so one can recover the other's access.
 
+### No SSH? Create the first admin through phpMyAdmin
+
+```bash
+npm run admin:sql
+```
+
+Run it on your own PC. It asks for the admin's email, name and password (typed hidden, twice),
+hashes the password with argon2id, and writes `.private/first-admin-<date>.sql` (git-ignored). The
+file contains **the hash only**: the password is never written to disk, printed or logged, and the
+script never connects to any database. Then:
+
+1. Make sure the site has been deployed once (so `npm start` has created the tables).
+2. hPanel → Databases → **phpMyAdmin** → open the portal's database → **Import** → choose the file → **Go**.
+3. The result row should say "First admin created". If an admin already exists it changes nothing
+   and says "NOT CREATED".
+4. Delete the file, sign in, and set up two-factor.
+
 ## 5. Sign-in security
 
 - **Passwords:** argon2id (19 MiB, 2 passes). 12+ characters, mixed types, not containing your email name.
@@ -102,8 +142,8 @@ exchange rates are `DECIMAL(18,8)`; the base-currency amount is a MySQL generate
   resets them or deactivates the person, or after a password reset.
 - **Lockout:** 5 wrong passwords in a row lock the account for 15 minutes. Separately, each IP gets
   20 attempts per 15 minutes. Unknown emails get exactly the same answer, in the same time.
-- **Two-factor:** required for admins and anyone with Team, Settings or Audit access; optional for
-  everyone else. Secrets are AES-256-GCM encrypted with `APP_ENCRYPTION_KEY`; codes can't be reused.
+- **Two-factor:** required for admins and anyone with any access to Finances, Transactions, Team,
+  Settings or the Audit log (the Manager preset included); optional for everyone else. Secrets are AES-256-GCM encrypted with `APP_ENCRYPTION_KEY`; codes can't be reused.
 - **CSRF:** server actions only accept same-origin requests (Next.js checks Origin vs Host);
   cookies are SameSite=Lax.
 
@@ -173,6 +213,12 @@ a fresh database with the real migrations. Nothing touches your local or product
 3. `DATABASE_URL=mysql://u123_user:PASSWORD@localhost:3306/u123_corenovait` (URL-encode special
    characters in the password).
 
+> **Back up the database before any deploy that changes the schema.** `npm start` applies new
+> migrations automatically as soon as the deploy starts, and they can't be undone with a click.
+> A deploy changes the schema whenever it adds a file to `/drizzle` (check the commit or pull
+> request). Before pushing it: hPanel → Databases → phpMyAdmin → Export (or `mysqldump`, section 10),
+> and download the file. If the migration goes wrong, restore that export and redeploy the previous commit.
+
 **Create the app:**
 
 1. Push this repo to GitHub (`corenova-IT/corenovait-admin`).
@@ -183,9 +229,9 @@ a fresh database with the real migrations. Nothing touches your local or product
    Set `SITE_URL=https://admin.corenovait.com.au` and `UPLOAD_DIR` to a folder in your home
    directory outside the app, e.g. `/home/u123/corenovait-uploads`.
 5. Domain: attach `admin.corenovait.com.au` and turn on SSL.
-6. Seed the first admin once over SSH (hPanel → Advanced → SSH access), from the app folder:
+6. Create the first admin once: over SSH (hPanel → Advanced → SSH access), from the app folder,
    `SEED_ADMIN_EMAIL=... SEED_ADMIN_PASSWORD=... npm run seed:admin`, then clear your shell
-   history (`history -c`).
+   history (`history -c`). No SSH: use `npm run admin:sql` and phpMyAdmin (section 4).
 7. Sign in at the live URL, set up two-factor, and check **Audit log** shows the sign-in.
 
 **Email:** in Resend, verify `corenovait.com.au` (the public site may already have done this), create an
@@ -195,7 +241,9 @@ API key, and set `RESEND_API_KEY` and `MAIL_FROM`.
 
 - **Hostinger:** hPanel → Files → Backups keeps automatic daily backups of files and databases
   (retention depends on your plan). Restore a database from there in a few clicks.
-- **Your own copy (monthly, and before risky migrations):** over SSH on the server:
+- **Before every deploy that adds a file to `/drizzle`** (a schema change): take a copy first, as below.
+  Migrations run automatically on start, so this is your undo button.
+- **Your own copy (monthly, and before schema changes):** over SSH on the server:
   ```bash
   mysqldump --single-transaction --routines --no-tablespaces -u u123_user -p u123_corenovait | gzip > ~/backups/corenovait-$(date +%F).sql.gz
   ```

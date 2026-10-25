@@ -4,7 +4,7 @@ import { z } from "zod";
 import { getDb, schema, type Db, type Tx } from "@/lib/db";
 import { parseMoneyToMinor, parseRate } from "@/lib/money";
 import { actorRef, writeAudit } from "./audit";
-import { AccessDenied, RuleError, requirePerm, rowAllowed, scopeWhere, type Actor } from "./guard";
+import { AccessDenied, RuleError, assertCaller, requirePerm, rowAllowed, scopeWhere, type Actor } from "./guard";
 import { rateToDecimal, toSafeNumber } from "./internal";
 
 /**
@@ -195,4 +195,16 @@ export async function financeRecordVisible(actor: Actor, entityType: string, ent
     return !!row && rowAllowed(actor, "transactions", { ownerId: row.createdBy });
   }
   return false;
+}
+
+/** Development only: true while sample rows from npm run db:local exist (drives the "Sample data" badge). */
+export async function hasSampleData(actor: Actor): Promise<boolean> {
+  if (process.env.NODE_ENV === "production") return false;
+  assertCaller(actor);
+  const db = getDb();
+  const [[inc], [exp]] = await Promise.all([
+    db.select({ n: count() }).from(incomeEntries).where(eq(incomeEntries.isSample, true)),
+    db.select({ n: count() }).from(expenses).where(eq(expenses.isSample, true)),
+  ]);
+  return inc.n + exp.n > 0;
 }

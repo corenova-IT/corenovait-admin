@@ -98,7 +98,7 @@ export const users = mysqlTable(
     /** argon2id; null until the invite is accepted */
     passwordHash: varchar("password_hash", { length: 255 }),
     passwordChangedAt: datetime("password_changed_at", { mode: "date", fsp: 3 }),
-    /** true for admins and anyone with team, settings or audit access */
+    /** true for admins and anyone with finance, transactions, team, settings or audit access */
     mfaRequired: boolean("mfa_required").notNull().default(false),
     /** AES-256-GCM encrypted TOTP secret (see lib/auth/crypto.ts) */
     totpSecretEnc: varchar("totp_secret_enc", { length: 255 }),

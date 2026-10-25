@@ -4,6 +4,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { EmptyState } from "@/components/ui/States";
 import { ButtonLink } from "@/components/ui/Button";
 import { requirePerm } from "@/lib/auth/session";
+import { hasSampleData } from "@/lib/dal/finance";
 import { can } from "@/lib/permissions";
 
 export const metadata = { title: "Overview" };
@@ -12,12 +13,14 @@ export default async function HomePage() {
   const user = await requirePerm("home");
   const first = (user.fullName || "there").split(" ")[0];
   const financeAccess = can(user.perms, "finances");
+  const sample = await hasSampleData(user);
 
   return (
     <>
       <PageHeader
         title={financeAccess ? "Overview" : `Hello, ${first}`}
         subtitle={financeAccess ? "Company finances · reported in AUD" : "Your day at CoreNovaIT"}
+        sample={sample}
       />
       <Card>
         <EmptyState

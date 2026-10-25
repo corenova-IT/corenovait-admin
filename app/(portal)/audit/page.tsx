@@ -6,6 +6,7 @@ import { Field, Input, Select } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { requirePerm } from "@/lib/auth/session";
 import { auditFilters, listAudit } from "@/lib/dal/audit";
+import { hasSampleData } from "@/lib/dal/finance";
 import { getCompanySettings } from "@/lib/dal/settings";
 
 export const metadata = { title: "Audit log" };
@@ -16,7 +17,7 @@ export default async function AuditPage({ searchParams }: { searchParams: Promis
   const actor = await requirePerm("audit");
   const f = auditFilters.parse(await searchParams);
   const page = f.page ?? 1;
-  const [{ rows, total }, { timezone: timeZone }] = await Promise.all([listAudit(actor, f, PAGE_SIZE), getCompanySettings(actor)]);
+  const [{ rows, total }, { timezone: timeZone }, sample] = await Promise.all([listAudit(actor, f, PAGE_SIZE), getCompanySettings(actor), hasSampleData(actor)]);
 
   const params = new URLSearchParams();
   for (const [k, v] of Object.entries(f)) if (v && k !== "page") params.set(k, String(v));
@@ -25,7 +26,7 @@ export default async function AuditPage({ searchParams }: { searchParams: Promis
 
   return (
     <>
-      <PageHeader title="Audit log" subtitle={`Read-only · every create, change, delete and export · times in ${timeZone}`} />
+      <PageHeader title="Audit log" subtitle={`Read-only · every create, change, delete and export · times in ${timeZone}`} sample={sample} />
       <Card className="mb-6">
         <form method="get" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.4fr)_repeat(4,minmax(0,1fr))_auto] lg:items-end">
           <Field label="Search" htmlFor="q">

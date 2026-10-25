@@ -13,7 +13,10 @@
     "db:migrate": "node scripts/migrate.mjs",
     "seed:admin": "tsx --conditions=react-server scripts/seed-admin.ts",
     "reset-2fa": "tsx --conditions=react-server scripts/reset-2fa.ts",
-    "gen:key": "node scripts/gen-key.mjs"
+    "gen:key": "node scripts/gen-key.mjs",
+    "db:local": "node scripts/dev-db.mjs",
+    "seed:dev": "tsx --conditions=react-server scripts/seed-dev.ts",
+    "admin:sql": "tsx scripts/admin-sql.ts"
   },
   "dependencies": {
     "@node-rs/argon2": "^2.2.2",

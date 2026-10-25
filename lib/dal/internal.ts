@@ -61,7 +61,7 @@ export async function writePresetPerms(tx: Tx, presetId: string, map: PermMap) {
   if (rows.length) await tx.insert(presetPermissions).values(rows);
 }
 
-/** Admins, and anyone who can touch team, settings or the audit log, must use two-factor. */
+/** Admins, and anyone who can touch finances, transactions, team, settings or the audit log, must use two-factor. */
 export function needsMfa(presetId: string, map: PermMap): boolean {
   return presetId === "admin" || PRIVILEGED_MODULES.some((m) => ACTIONS.some((a) => map[m][a]));
 }

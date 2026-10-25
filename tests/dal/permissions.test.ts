@@ -119,6 +119,18 @@ describe("two-factor gates privileged access", () => {
     expect(s.status).toBe("mfa_verify");
   });
 
+  it("finance or transactions access makes two-factor required; plain staff stay optional", async () => {
+    const admin = await actorFor(t, ids.admin);
+    expect((await userRow(t, ids.manager)).mfaRequired).toBe(true); // Manager preset includes finance
+    expect((await userRow(t, ids.staff)).mfaRequired).toBe(false);
+    for (const module of ["finances", "transactions"] as const) {
+      const p = await createPerson(t, { email: `${module}-viewer@example.test` });
+      const perms = (await actorFor(t, p.id)).perms;
+      await dal.team.setPermissions(admin, { userId: p.id, perms: { ...perms, [module]: { view: true, create: false, edit: false, delete: false, export: false, scope: "own" } } });
+      expect((await userRow(t, p.id)).mfaRequired).toBe(true);
+    }
+  });
+
   it("custom permissions on team, settings or audit make two-factor required", async () => {
     const admin = await actorFor(t, ids.admin);
     const p = await createPerson(t, { email: "auditor@example.test" });
