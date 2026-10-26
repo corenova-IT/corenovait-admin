@@ -46,7 +46,7 @@ export default async function RepresentativePage({ params }: { params: Promise<{
         }
       />
       <div className="mb-6 grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Deals" value={String(d.dealsCount)} detail={`${formatMoney(d.revenueBaseMinor, base, { cents: false })} brought in`} />
+        <StatCard label="Deals credited" value={String(d.dealsCount)} detail={`${formatMoney(d.revenueBaseMinor, base, { cents: false })} paid · ${formatMoney(d.outstandingBaseMinor, base, { cents: false })} outstanding`} />
         <StatCard label="Commission earned" value={formatMoney(d.commissionEarnedBaseMinor, base)} detail="On paid deals" />
         <StatCard label="Paid out" value={formatMoney(d.commissionPaidBaseMinor, base)} detail={`${d.payouts.length} payouts`} />
         <StatCard label="Owed" value={owed} note={d.commissionOwedBaseMinor > 0 ? "Due" : "Settled"} noteTone={d.commissionOwedBaseMinor > 0 ? "amber" : "green"} />

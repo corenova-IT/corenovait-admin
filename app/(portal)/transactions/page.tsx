@@ -63,6 +63,7 @@ const expenseView = (r: ExpenseRow): ExpenseView => ({
   currency: r.currency,
   fxRateToBase: r.fxRateToBase,
   isRecurring: r.isRecurring,
+  countryCode: r.countryCode,
   receiptFileId: r.receiptFileId,
   notes: r.notes,
 });
@@ -187,6 +188,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
       align: "right",
       cell: (r) => <span className="num font-mono font-semibold">{formatMoney(r.amountBaseMinor, base)}</span>,
     },
+    { key: "country", header: "Country", hideBelow: "lg", cell: (r) => <Badge>{r.countryCode ?? "Shared"}</Badge> },
     { key: "recurring", header: "Type", hideBelow: "md", cell: (r) => (r.isRecurring ? <Badge tone="amber">Recurring</Badge> : <Badge>One-off</Badge>) },
     {
       key: "actions",
@@ -233,7 +235,17 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
         />
         <p className="font-mono text-sm text-ink-2" aria-live="polite">
           {data.total} {tab === "income" ? (data.total === 1 ? "entry" : "entries") : data.total === 1 ? "expense" : "expenses"}
-          {filtered ? " matching" : ""} · total <span className="font-semibold text-ink">{formatMoney(data.totalBaseMinor, base)}</span>
+          {filtered ? " matching" : ""}
+          {"paidBaseMinor" in data ? (
+            <>
+              {" "}· paid <span className="font-semibold text-ink">{formatMoney(data.paidBaseMinor, base)}</span> · outstanding{" "}
+              <span className="font-semibold text-warning">{formatMoney(data.outstandingBaseMinor, base)}</span>
+            </>
+          ) : (
+            <>
+              {" "}· total <span className="font-semibold text-ink">{formatMoney(data.totalBaseMinor, base)}</span>
+            </>
+          )}
         </p>
       </div>
 
@@ -296,7 +308,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
               <Field label="Category" htmlFor="f-cat">
                 <Select id="f-cat" name="category" defaultValue={sp.category ?? ""}>
                   <option value="">All categories</option>
-                  {lookups.categories.map((c) => (
+                  {lookups.allCategories.map((c) => (
                     <option key={c} value={c}>
                       {c}
                     </option>
@@ -308,6 +320,17 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
                   <option value="">All</option>
                   <option value="yes">Recurring</option>
                   <option value="no">One-off</option>
+                </Select>
+              </Field>
+              <Field label="Country" htmlFor="f-ecountry">
+                <Select id="f-ecountry" name="country" defaultValue={sp.country ?? ""}>
+                  <option value="">All</option>
+                  <option value="shared">Shared costs</option>
+                  {lookups.countries.map((c) => (
+                    <option key={c.code} value={c.code}>
+                      {c.name}
+                    </option>
+                  ))}
                 </Select>
               </Field>
             </>

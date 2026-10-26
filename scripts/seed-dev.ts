@@ -105,11 +105,12 @@ async function main() {
 
     const expenses: Array<typeof schema.expenses.$inferInsert> = [];
     MONTHS.forEach((m) => {
-      for (const [category, vendor, amount, recurring] of [
-        ["Hosting", "Sample Cloud Hosting", 119_000, true],
-        ["Software", "Sample Design Suite", 102_000, true],
-        ["Payroll", "Contractor payments (sample)", 1_120_000, false],
-        ["Software", "Sample Prototyping Tool", 64_000, true],
+      // country null = a shared cost; tagged ones follow the UK / AUS switch on Home
+      for (const [category, vendor, amount, recurring, countryCode] of [
+        ["Hosting", "Sample Cloud Hosting", 119_000, true, null],
+        ["Software", "Sample Design Suite", 102_000, true, null],
+        ["Payroll", "Contractor payments (sample)", 1_120_000, false, "AU"],
+        ["Software", "Sample Prototyping Tool", 64_000, true, "GB"],
       ] as const) {
         expenses.push({
           id: randomUUID(),
@@ -121,6 +122,7 @@ async function main() {
           currency: "AUD",
           fxRateToBase: "1.00000000",
           isRecurring: recurring,
+          countryCode,
           isSample: true,
           createdBy: admin,
         });
@@ -140,7 +142,40 @@ async function main() {
         createdBy: admin,
       }))
     );
-    await writeAudit(db, null, { action: "create", entity: "income_entries", summary: `Sample data: ${income.length} income entries and ${expenses.length} expenses (is_sample)` });
+    // the design's "upcoming expenses and subscriptions", due a few days from whenever this runs
+    const { addDays, todayIn } = await import("../lib/dates");
+    const today = todayIn("Australia/Sydney");
+    const subs: Array<typeof schema.subscriptions.$inferInsert> = (
+      [
+        ["Sample Cloud Hosting", "Hosting", 119_000, "AUD", "1.00000000", "monthly", 3, null],
+        ["Sample Design Suite", "Software", 102_000, "AUD", "1.00000000", "monthly", 4, null],
+        ["Contractor payments (sample)", "Payroll", 1_120_000, "AUD", "1.00000000", "monthly", 6, "AU"],
+        ["Sample Prototyping Tool", "Software", 33_000, "GBP", "1.95000000", "monthly", 7, "GB"],
+        ["Domain renewals (sample)", "Domains", 52_000, "AUD", "1.00000000", "yearly", 15, null],
+        ["Sample Database Hosting", "Database", 29_000, "AUD", "1.00000000", "monthly", 20, null],
+      ] as const
+    ).map(([vendor, category, amountMinor, currency, fxRateToBase, billingCycle, inDays, countryCode]) => ({
+      id: randomUUID(),
+      vendor,
+      category,
+      amountMinor,
+      currency,
+      fxRateToBase,
+      billingCycle,
+      nextDueDate: addDays(today, inDays),
+      reminderDays: 7,
+      paidFrom: "Company card (sample)",
+      responsibleUserId: admin,
+      countryCode,
+      isSample: true,
+      createdBy: admin,
+    }));
+    await db.insert(schema.subscriptions).values(subs);
+    await writeAudit(db, null, {
+      action: "create",
+      entity: "income_entries",
+      summary: `Sample data: ${income.length} income entries, ${expenses.length} expenses and ${subs.length} subscriptions (is_sample)`,
+    });
 
     console.log("\nSample data loaded (development only):");
     console.log("  Sign in at http://localhost:3000/login with any of:");

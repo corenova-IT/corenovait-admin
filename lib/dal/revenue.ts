@@ -1,7 +1,8 @@
 import "server-only";
-import { and, asc, count, desc, eq, gte, inArray, sql, sum, type SQL } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, inArray, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 import { getDb, schema, type Db, type Tx } from "@/lib/db";
+import { convertToBaseMinor, parseMoneyToMinor } from "@/lib/money";
 import type { AppModule } from "@/lib/permissions";
 import { actorRef, writeAudit } from "./audit";
 import { baseCurrency, moneyFields, moneyValues } from "./finance";
@@ -9,8 +10,10 @@ import { AccessDenied, RuleError, hasPerm, requirePerm, rowAllowed, scopeWhere, 
 
 /**
  * Revenue by stream, by country and by representative, plus representative
- * records and their payout log. All totals are in the base currency (whole
- * cents); per-currency totals are kept for the country pages.
+ * records and their payout log.
+ *
+ * Revenue counts PAID invoices only. Pending and overdue invoices are shown
+ * separately as "outstanding". All totals are whole cents in the base currency.
  */
 const { incomeEntries, streams, countries, representatives, repPayouts, users } = schema;
 
@@ -50,7 +53,7 @@ const repIdsFor = (db: Db | Tx, userId: string) =>
   db.select({ id: representatives.id }).from(representatives).where(eq(representatives.userId, userId));
 
 /** Which income rows a module's reports may include, by that module's scope. */
-function incomeScopeFor(db: Db | Tx, actor: Actor, module: AppModule): SQL | undefined {
+export function incomeScopeFor(db: Db | Tx, actor: Actor, module: AppModule): SQL | undefined {
   return scopeWhere(actor, module, {
     owner: incomeEntries.createdBy,
     assignedTo: (uid) => inArray(incomeEntries.representativeId, repIdsFor(db, uid)),
@@ -59,10 +62,16 @@ function incomeScopeFor(db: Db | Tx, actor: Actor, module: AppModule): SQL | und
 
 const n = (v: unknown) => Number(v ?? 0);
 const monthKey = sql<string>`date_format(${incomeEntries.entryDate}, '%Y-%m')`;
+const isPaid = sql`${incomeEntries.status} = 'paid'`;
+/** paid revenue, outstanding (pending + overdue) and their counts, in one pass */
+export const paidSum = sql<string>`coalesce(sum(case when ${isPaid} then ${incomeEntries.amountBaseMinor} else 0 end), 0)`;
+export const outstandingSum = sql<string>`coalesce(sum(case when ${isPaid} then 0 else ${incomeEntries.amountBaseMinor} end), 0)`;
+export const paidCount = sql<string>`coalesce(sum(case when ${isPaid} then 1 else 0 end), 0)`;
+export const outstandingCount = sql<string>`coalesce(sum(case when ${isPaid} then 0 else 1 end), 0)`;
 
 async function monthly(db: Db | Tx, where: SQL | undefined, months: string[]) {
   const rows = await db
-    .select({ month: monthKey, total: sum(incomeEntries.amountBaseMinor), deals: count() })
+    .select({ month: monthKey, total: paidSum, deals: paidCount })
     .from(incomeEntries)
     .where(and(where, gte(incomeEntries.entryDate, `${months[0]}-01`)))
     .groupBy(monthKey);
@@ -70,16 +79,29 @@ async function monthly(db: Db | Tx, where: SQL | undefined, months: string[]) {
   return months.map((m) => ({ month: m, totalBaseMinor: n(map.get(m)?.total), deals: n(map.get(m)?.deals) }));
 }
 
-async function topClients(db: Db | Tx, where: SQL | undefined, limit = 5) {
+export async function topClients(db: Db | Tx, where: SQL | undefined, limit = 5) {
   const rows = await db
-    .select({ client: incomeEntries.client, total: sum(incomeEntries.amountBaseMinor), deals: count() })
+    .select({ client: incomeEntries.client, total: paidSum, deals: paidCount })
     .from(incomeEntries)
-    .where(where)
+    .where(and(where, isPaid))
     .groupBy(incomeEntries.client)
-    .orderBy(desc(sum(incomeEntries.amountBaseMinor)))
+    .orderBy(desc(paidSum))
     .limit(limit);
   return rows.map((r) => ({ client: r.client || "(no client name)", totalBaseMinor: n(r.total), deals: n(r.deals) }));
 }
+
+const totals = (t: { paid: unknown; outstanding: unknown; deals: unknown; open: unknown } | undefined) => {
+  const revenue = n(t?.paid);
+  const deals = n(t?.deals);
+  return {
+    revenueBaseMinor: revenue,
+    deals,
+    averageBaseMinor: divRound(revenue, deals),
+    outstandingBaseMinor: n(t?.outstanding),
+    outstandingCount: n(t?.open),
+  };
+};
+const totalCols = { paid: paidSum, outstanding: outstandingSum, deals: paidCount, open: outstandingCount };
 
 // ---------------------------------------------------------------- streams
 export async function streamSummaries(actor: Actor, period: Period = "12m") {
@@ -89,37 +111,34 @@ export async function streamSummaries(actor: Actor, period: Period = "12m") {
   const from = periodStart(period);
   const scope = incomeScopeFor(db, actor, "streams");
   const where = and(scope, from ? gte(incomeEntries.entryDate, from) : undefined);
-  const [list, totals, series, base] = await Promise.all([
+  const [list, byStream, series, base] = await Promise.all([
     db.select().from(streams).orderBy(asc(streams.sort), asc(streams.name)),
     db
-      .select({ streamId: incomeEntries.streamId, total: sum(incomeEntries.amountBaseMinor), deals: count() })
+      .select({ streamId: incomeEntries.streamId, ...totalCols })
       .from(incomeEntries)
       .where(where)
       .groupBy(incomeEntries.streamId),
     db
-      .select({ streamId: incomeEntries.streamId, month: monthKey, total: sum(incomeEntries.amountBaseMinor) })
+      .select({ streamId: incomeEntries.streamId, month: monthKey, total: paidSum })
       .from(incomeEntries)
       .where(and(scope, gte(incomeEntries.entryDate, `${months[0]}-01`)))
       .groupBy(incomeEntries.streamId, monthKey),
     baseCurrency(db),
   ]);
-  const grand = totals.reduce((a, t) => a + n(t.total), 0);
+  const grand = byStream.reduce((a, t) => a + n(t.paid), 0);
+  const outstanding = byStream.reduce((a, t) => a + n(t.outstanding), 0);
   const rows = list.map((s) => {
-    const t = totals.find((x) => x.streamId === s.id);
-    const revenue = n(t?.total);
-    const deals = n(t?.deals);
+    const t = totals(byStream.find((x) => x.streamId === s.id));
     return {
       id: s.id,
       name: s.name,
       active: s.active,
-      revenueBaseMinor: revenue,
-      deals,
-      averageBaseMinor: divRound(revenue, deals),
-      sharePct: grand ? Math.round((revenue / grand) * 1000) / 10 : 0,
+      ...t,
+      sharePct: grand ? Math.round((t.revenueBaseMinor / grand) * 1000) / 10 : 0,
       trend: months.map((m) => n(series.find((x) => x.streamId === s.id && x.month === m)?.total)),
     };
   });
-  return { rows, totalBaseMinor: grand, baseCurrency: base, months };
+  return { rows, totalBaseMinor: grand, outstandingBaseMinor: outstanding, baseCurrency: base, months };
 }
 
 export async function streamDetail(actor: Actor, id: number, period: Period = "12m") {
@@ -132,25 +151,21 @@ export async function streamDetail(actor: Actor, id: number, period: Period = "1
   const where = and(scope, from ? gte(incomeEntries.entryDate, from) : undefined);
   const months = lastTwelveMonths();
   const [[agg], byCountry, clients, series, base] = await Promise.all([
-    db.select({ total: sum(incomeEntries.amountBaseMinor), deals: count() }).from(incomeEntries).where(where),
+    db.select(totalCols).from(incomeEntries).where(where),
     db
-      .select({ code: countries.code, name: countries.name, total: sum(incomeEntries.amountBaseMinor), deals: count() })
+      .select({ code: countries.code, name: countries.name, total: paidSum, deals: paidCount })
       .from(incomeEntries)
       .innerJoin(countries, eq(countries.code, incomeEntries.countryCode))
       .where(where)
       .groupBy(countries.code, countries.name)
-      .orderBy(desc(sum(incomeEntries.amountBaseMinor))),
+      .orderBy(desc(paidSum)),
     topClients(db, where),
     monthly(db, scope, months),
     baseCurrency(db),
   ]);
-  const revenue = n(agg.total);
-  const deals = n(agg.deals);
   return {
     stream: { id: stream.id, name: stream.name, active: stream.active },
-    revenueBaseMinor: revenue,
-    deals,
-    averageBaseMinor: divRound(revenue, deals),
+    ...totals(agg),
     byCountry: byCountry.map((c) => ({ code: c.code, name: c.name, totalBaseMinor: n(c.total), deals: n(c.deals) })),
     topClients: clients,
     monthly: series,
@@ -164,35 +179,33 @@ export async function countrySummaries(actor: Actor, period: Period = "12m") {
   const db = getDb();
   const from = periodStart(period);
   const where = and(incomeScopeFor(db, actor, "countries"), from ? gte(incomeEntries.entryDate, from) : undefined);
-  const [list, totals, byCurrency, base] = await Promise.all([
+  const [list, byCountry, byCurrency, base] = await Promise.all([
     db.select().from(countries).orderBy(asc(countries.sort)),
     db
-      .select({ code: incomeEntries.countryCode, total: sum(incomeEntries.amountBaseMinor), deals: count() })
+      .select({ code: incomeEntries.countryCode, ...totalCols })
       .from(incomeEntries)
       .where(where)
       .groupBy(incomeEntries.countryCode),
+    // "as received": paid invoices in their original currency
     db
-      .select({ code: incomeEntries.countryCode, currency: incomeEntries.currency, total: sum(incomeEntries.amountMinor) })
+      .select({ code: incomeEntries.countryCode, currency: incomeEntries.currency, total: sql<string>`sum(${incomeEntries.amountMinor})` })
       .from(incomeEntries)
-      .where(where)
+      .where(and(where, isPaid))
       .groupBy(incomeEntries.countryCode, incomeEntries.currency),
     baseCurrency(db),
   ]);
-  const grand = totals.reduce((a, t) => a + n(t.total), 0);
+  const grand = byCountry.reduce((a, t) => a + n(t.paid), 0);
   return {
     baseCurrency: base,
     totalBaseMinor: grand,
+    outstandingBaseMinor: byCountry.reduce((a, t) => a + n(t.outstanding), 0),
     rows: list.map((c) => {
-      const t = totals.find((x) => x.code === c.code);
-      const revenue = n(t?.total);
-      const deals = n(t?.deals);
+      const t = totals(byCountry.find((x) => x.code === c.code));
       return {
         code: c.code,
         name: c.name,
-        revenueBaseMinor: revenue,
-        deals,
-        averageBaseMinor: divRound(revenue, deals),
-        sharePct: grand ? Math.round((revenue / grand) * 1000) / 10 : 0,
+        ...t,
+        sharePct: grand ? Math.round((t.revenueBaseMinor / grand) * 1000) / 10 : 0,
         byCurrency: byCurrency
           .filter((x) => x.code === c.code)
           .map((x) => ({ currency: x.currency, totalMinor: n(x.total) }))
@@ -212,30 +225,26 @@ export async function countryDetail(actor: Actor, code: string, period: Period =
   const where = and(scope, from ? gte(incomeEntries.entryDate, from) : undefined);
   const months = lastTwelveMonths();
   const [[agg], byStream, byCurrency, clients, series, base] = await Promise.all([
-    db.select({ total: sum(incomeEntries.amountBaseMinor), deals: count() }).from(incomeEntries).where(where),
+    db.select(totalCols).from(incomeEntries).where(where),
     db
-      .select({ id: streams.id, name: streams.name, total: sum(incomeEntries.amountBaseMinor), deals: count() })
+      .select({ id: streams.id, name: streams.name, total: paidSum, deals: paidCount })
       .from(incomeEntries)
       .innerJoin(streams, eq(streams.id, incomeEntries.streamId))
       .where(where)
       .groupBy(streams.id, streams.name)
-      .orderBy(desc(sum(incomeEntries.amountBaseMinor))),
+      .orderBy(desc(paidSum)),
     db
-      .select({ currency: incomeEntries.currency, total: sum(incomeEntries.amountMinor), base: sum(incomeEntries.amountBaseMinor) })
+      .select({ currency: incomeEntries.currency, total: sql<string>`sum(${incomeEntries.amountMinor})`, base: sql<string>`sum(${incomeEntries.amountBaseMinor})` })
       .from(incomeEntries)
-      .where(where)
+      .where(and(where, isPaid))
       .groupBy(incomeEntries.currency),
     topClients(db, where),
     monthly(db, scope, months),
     baseCurrency(db),
   ]);
-  const revenue = n(agg.total);
-  const deals = n(agg.deals);
   return {
     country: { code: country.code, name: country.name },
-    revenueBaseMinor: revenue,
-    deals,
-    averageBaseMinor: divRound(revenue, deals),
+    ...totals(agg),
     byStream: byStream.map((s) => ({ id: s.id, name: s.name, totalBaseMinor: n(s.total), deals: n(s.deals) })),
     byCurrency: byCurrency.map((c) => ({ currency: c.currency, totalMinor: n(c.total), totalBaseMinor: n(c.base) })).sort((a, b) => b.totalMinor - a.totalMinor),
     topClients: clients,
@@ -257,16 +266,16 @@ function repScope(actor: Actor): SQL | undefined {
 const earnedExpr = sql<string>`coalesce(sum(case when ${incomeEntries.status} = 'paid' then round(${incomeEntries.amountBaseMinor} * coalesce(${incomeEntries.commissionRate}, ${representatives.commissionRate})) else 0 end), 0)`;
 
 async function repStats(db: Db | Tx, repIds: string[]) {
-  if (!repIds.length) return new Map<string, { deals: number; revenue: number; earned: number; paid: number }>();
+  if (!repIds.length) return new Map<string, { deals: number; revenue: number; outstanding: number; earned: number; paid: number }>();
   const [deals, payouts] = await Promise.all([
     db
-      .select({ id: representatives.id, deals: count(incomeEntries.id), revenue: sum(incomeEntries.amountBaseMinor), earned: earnedExpr })
+      .select({ id: representatives.id, deals: count(incomeEntries.id), revenue: paidSum, outstanding: outstandingSum, earned: earnedExpr })
       .from(representatives)
       .leftJoin(incomeEntries, eq(incomeEntries.representativeId, representatives.id))
       .where(inArray(representatives.id, repIds))
       .groupBy(representatives.id),
     db
-      .select({ id: repPayouts.representativeId, paid: sum(repPayouts.amountBaseMinor) })
+      .select({ id: repPayouts.representativeId, paid: sql<string>`sum(${repPayouts.amountBaseMinor})` })
       .from(repPayouts)
       .where(inArray(repPayouts.representativeId, repIds))
       .groupBy(repPayouts.representativeId),
@@ -274,7 +283,10 @@ async function repStats(db: Db | Tx, repIds: string[]) {
   return new Map(
     repIds.map((id) => {
       const d = deals.find((x) => x.id === id);
-      return [id, { deals: n(d?.deals), revenue: n(d?.revenue), earned: n(d?.earned), paid: n(payouts.find((p) => p.id === id)?.paid) }];
+      return [
+        id,
+        { deals: n(d?.deals), revenue: n(d?.revenue), outstanding: n(d?.outstanding), earned: n(d?.earned), paid: n(payouts.find((p) => p.id === id)?.paid) },
+      ];
     })
   );
 }
@@ -288,8 +300,11 @@ export type RepSummary = {
   userId: string | null;
   userName: string | null;
   active: boolean;
+  /** every deal credited to them, paid or not */
   deals: number;
+  /** paid revenue from their deals */
   revenueBaseMinor: number;
+  outstandingBaseMinor: number;
   commissionEarnedBaseMinor: number;
   commissionPaidBaseMinor: number;
   commissionOwedBaseMinor: number;
@@ -323,6 +338,7 @@ export async function repSummaries(actor: Actor): Promise<{ rows: RepSummary[]; 
         active: r.active,
         deals: s.deals,
         revenueBaseMinor: s.revenue,
+        outstandingBaseMinor: s.outstanding,
         commissionEarnedBaseMinor: s.earned,
         commissionPaidBaseMinor: s.paid,
         commissionOwedBaseMinor: s.earned - s.paid,
@@ -371,6 +387,7 @@ export async function repDetail(actor: Actor, id: string) {
     payouts: payouts.map((p) => ({ ...p, amountBaseMinor: n(p.amountBaseMinor) })),
     dealsCount: s.deals,
     revenueBaseMinor: s.revenue,
+    outstandingBaseMinor: s.outstanding,
     commissionEarnedBaseMinor: s.earned,
     commissionPaidBaseMinor: s.paid,
     commissionOwedBaseMinor: s.earned - s.paid,
@@ -462,26 +479,52 @@ async function repInScope(db: Db | Tx, actor: Actor, repId: string) {
   return rep;
 }
 
-export async function recordPayout(actor: Actor, input: PayoutInput): Promise<string> {
+/** A payout above what's owed: the caller must confirm it, and the confirmation is audited. */
+export class OverpaymentNeedsConfirmation extends RuleError {
+  constructor(
+    public readonly owedBaseMinor: number,
+    public readonly amountBaseMinor: number
+  ) {
+    super("This payout is more than the commission currently owed. Confirm to record it anyway.");
+    this.name = "OverpaymentNeedsConfirmation";
+  }
+}
+
+export async function recordPayout(actor: Actor, input: PayoutInput, opts: { confirmOverpayment?: boolean } = {}): Promise<string> {
   requirePerm(actor, "representatives", "create");
   const parsed = payoutInput.safeParse(input);
   if (!parsed.success) throw new RuleError(parsed.error.issues[0]?.message ?? "Check the payout and try again.");
   const v = parsed.data;
+  const money = moneyValues(v);
   const db = getDb();
   await repInScope(db, actor, v.representativeId);
+  // the same rounding MySQL uses for the stored base amount
+  const amountBase = Number(convertToBaseMinor(parseMoneyToMinor(v.amount), money.fxRateToBase));
   const id = crypto.randomUUID();
   await db.transaction(async (tx) => {
+    // lock the rep so two payouts can't both slip under the owed amount
+    await tx.select({ id: representatives.id }).from(representatives).where(eq(representatives.id, v.representativeId)).for("update");
+    const owed = (await repStats(tx, [v.representativeId])).get(v.representativeId)!;
+    const owedBase = owed.earned - owed.paid;
+    const over = amountBase > owedBase;
+    if (over && !opts.confirmOverpayment) throw new OverpaymentNeedsConfirmation(owedBase, amountBase);
     await tx.insert(repPayouts).values({
       id,
       representativeId: v.representativeId,
       paidDate: v.paidDate,
-      ...moneyValues(v),
+      ...money,
       reference: v.reference,
       notes: v.notes || null,
       createdBy: actor.userId,
     });
     const [after] = await tx.select().from(repPayouts).where(eq(repPayouts.id, id));
-    await writeAudit(tx, actorRef(actor), { action: "create", entity: "rep_payouts", entityId: id, after });
+    await writeAudit(tx, actorRef(actor), {
+      action: "create",
+      entity: "rep_payouts",
+      entityId: id,
+      summary: over ? `Payout above the owed amount, confirmed by ${actor.email} (owed ${owedBase} cents, paid ${amountBase} cents, base currency)` : null,
+      after: over ? { ...after, overpaymentConfirmed: true, owedBeforeBaseMinor: owedBase } : after,
+    });
   });
   return id;
 }

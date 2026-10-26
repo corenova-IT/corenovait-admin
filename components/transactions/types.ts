@@ -3,7 +3,10 @@ export type Lookups = {
   streams: Array<{ id: number; name: string; active: boolean }>;
   countries: Array<{ code: string; name: string }>;
   representatives: Array<{ id: string; name: string; commissionRate: string; active: boolean }>;
+  /** active categories for new entries */
   categories: string[];
+  /** every category, for filters and older entries */
+  allCategories: string[];
   baseCurrency: string;
 };
 
@@ -34,6 +37,7 @@ export type ExpenseView = {
   currency: string;
   fxRateToBase: string;
   isRecurring: boolean;
+  countryCode: string | null;
   receiptFileId: string | null;
   notes: string | null;
 };

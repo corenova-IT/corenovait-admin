@@ -219,6 +219,18 @@ export const countries = mysqlTable("countries", {
   sort: smallint("sort").notNull().default(100),
 });
 
+/** The expense category list admins edit in Settings. Expenses store the name. */
+export const expenseCategories = mysqlTable(
+  "expense_categories",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    name: varchar("name", { length: 80 }).notNull(),
+    active: boolean("active").notNull().default(true),
+    sort: smallint("sort").notNull().default(100),
+  },
+  (t) => [uniqueIndex("expense_categories_name_uq").on(t.name)]
+);
+
 export const representatives = mysqlTable(
   "representatives",
   {
@@ -328,6 +340,10 @@ export const expenses = mysqlTable(
     vendor: varchar("vendor", { length: 200 }).notNull().default(""),
     description: varchar("description", { length: 500 }).notNull().default(""),
     ...money,
+    /** null = a shared cost, counted only when the dashboard shows all countries */
+    countryCode: varchar("country_code", { length: 8 }).references(() => countries.code),
+    /** set when the expense was created by "mark as paid" on a subscription */
+    subscriptionId: varchar("subscription_id", { length: 36 }).references(() => subscriptions.id, { onDelete: "set null" }),
     receiptFileId: varchar("receipt_file_id", { length: 36 }).references(() => files.id, { onDelete: "set null" }),
     isRecurring: boolean("is_recurring").notNull().default(false),
     notes: text("notes"),
@@ -345,6 +361,47 @@ export const expenses = mysqlTable(
     check("expense_amount_chk", sql`${t.amountMinor} > 0`),
     check("expense_rate_chk", sql`${t.fxRateToBase} > 0`),
     check("expense_currency_chk", sql`${t.currency} regexp '^[A-Z]{3}$'`),
+  ]
+);
+
+/**
+ * Subscriptions and other upcoming payments. "Mark as paid" records an
+ * expense and moves next_due_date on by one billing cycle ("once" ends it).
+ */
+export const subscriptions = mysqlTable(
+  "subscriptions",
+  {
+    id: id(),
+    vendor: varchar("vendor", { length: 200 }).notNull(),
+    category: varchar("category", { length: 80 }).notNull(),
+    description: varchar("description", { length: 500 }).notNull().default(""),
+    ...money,
+    billingCycle: mysqlEnum("billing_cycle", ["weekly", "monthly", "quarterly", "yearly", "once"]).notNull().default("monthly"),
+    nextDueDate: date("next_due_date", { mode: "string" }).notNull(),
+    status: mysqlEnum("status", ["active", "paused", "cancelled", "completed"]).notNull().default("active"),
+    /** show the "due soon" warning this many days before the due date */
+    reminderDays: smallint("reminder_days").notNull().default(3),
+    /** card or account it's paid from, e.g. "Company Visa" */
+    paidFrom: varchar("paid_from", { length: 120 }).notNull().default(""),
+    /** the person looking after it; drives the "assigned" scope */
+    responsibleUserId: userRef("responsible_user_id").references(() => users.id, { onDelete: "set null" }),
+    /** null = shared across countries */
+    countryCode: varchar("country_code", { length: 8 }).references(() => countries.code),
+    notes: text("notes"),
+    isSample: boolean("is_sample").notNull().default(false),
+    createdBy: userRef("created_by")
+      .notNull()
+      .references(() => users.id),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    index("sub_due_idx").on(t.status, t.nextDueDate),
+    index("sub_created_by_idx").on(t.createdBy),
+    check("sub_amount_chk", sql`${t.amountMinor} > 0`),
+    check("sub_rate_chk", sql`${t.fxRateToBase} > 0`),
+    check("sub_currency_chk", sql`${t.currency} regexp '^[A-Z]{3}$'`),
+    check("sub_reminder_chk", sql`${t.reminderDays} between 0 and 90`),
   ]
 );
 

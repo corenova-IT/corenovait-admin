@@ -1,5 +1,5 @@
 import "server-only";
-import { and, asc, count, desc, eq, gte, inArray, isNull, like, lte, or, sum, type SQL } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, inArray, isNull, like, lte, or, sql, sum, type SQL } from "drizzle-orm";
 import { z } from "zod";
 import { getDb, schema, type Db, type Tx } from "@/lib/db";
 import { minorToDecimal, parseCsv, toCsv } from "@/lib/csv";
@@ -17,7 +17,7 @@ import { rateToDecimal, toSafeNumber } from "./internal";
  * row before and after. Money is integer minor units; exchange rates are
  * exact decimals; MySQL computes the base-currency amount.
  */
-const { incomeEntries, expenses, representatives, streams, countries, settings } = schema;
+const { incomeEntries, expenses, representatives, streams, countries, settings, expenseCategories } = schema;
 
 const repIdsFor = (db: Db | Tx, userId: string) =>
   db.select({ id: representatives.id }).from(representatives).where(eq(representatives.userId, userId));
@@ -66,8 +66,6 @@ export async function baseCurrency(db: Db | Tx = getDb()): Promise<string> {
 // ---------------------------------------------------------------- lookups for forms and filters
 const FINANCE_MODULES = ["transactions", "streams", "countries", "representatives", "finances", "payments"] as const;
 
-export const DEFAULT_EXPENSE_CATEGORIES = ["Hosting", "Software", "Payroll", "Contractors", "Marketing", "Office", "Travel", "Fees", "Other"];
-
 export async function financeLookups(actor: Actor) {
   assertCaller(actor);
   if (!FINANCE_MODULES.some((m) => hasPerm(actor, m, "view"))) throw new AccessDenied();
@@ -79,19 +77,26 @@ export async function financeLookups(actor: Actor) {
       .select({ id: representatives.id, name: representatives.name, commissionRate: representatives.commissionRate, active: representatives.active })
       .from(representatives)
       .orderBy(asc(representatives.name)),
-    hasPerm(actor, "transactions", "view")
-      ? db.selectDistinct({ category: expenses.category }).from(expenses).where(expenseScope(actor)).orderBy(asc(expenses.category))
-      : Promise.resolve([] as Array<{ category: string }>),
+    db.select().from(expenseCategories).orderBy(asc(expenseCategories.sort), asc(expenseCategories.name)),
     baseCurrency(db),
   ]);
-  const categories = [...new Set([...DEFAULT_EXPENSE_CATEGORIES, ...cats.map((x) => x.category)])].sort((a, b) => a.localeCompare(b));
   return {
     streams: s.map((x) => ({ id: x.id, name: x.name, active: x.active })),
     countries: c.map((x) => ({ code: x.code, name: x.name })),
     representatives: r,
-    categories,
+    /** active categories, for new entries */
+    categories: cats.filter((x) => x.active).map((x) => x.name),
+    /** every category, for filters and for editing older entries */
+    allCategories: cats.map((x) => x.name),
     baseCurrency: base,
   };
+}
+
+/** Matches a typed category to the list (case-insensitive) and returns its exact name. */
+async function canonicalCategory(db: Db | Tx, name: string, allowInactive: string | null = null): Promise<string> {
+  const [cat] = await db.select().from(expenseCategories).where(eq(expenseCategories.name, name.trim()));
+  if (cat && (cat.active || cat.name === allowInactive)) return cat.name;
+  throw new RuleError(`"${name.trim()}" isn't an expense category. Choose one from the list, or ask an admin to add it in Settings.`);
 }
 export type FinanceLookups = Awaited<ReturnType<typeof financeLookups>>;
 
@@ -120,6 +125,8 @@ export const expenseFilters = z.object({
   to: isoDate.optional().catch(undefined),
   category: optText(80),
   recurring: z.enum(["yes", "no"]).optional().catch(undefined),
+  /** a country code, or "shared" for costs not tied to a country */
+  country: z.union([z.literal("shared"), z.string().regex(/^[A-Z]{2,8}$/)]).optional().catch(undefined),
   sort: z.enum(["date", "amount", "vendor", "category"]).optional().catch(undefined),
   dir,
   page,
@@ -148,6 +155,8 @@ function expenseWhere(actor: Actor, f: ExpenseFilters): SQL | undefined {
   if (f.to) conds.push(lte(expenses.expenseDate, f.to));
   if (f.category) conds.push(eq(expenses.category, f.category));
   if (f.recurring) conds.push(eq(expenses.isRecurring, f.recurring === "yes"));
+  if (f.country === "shared") conds.push(isNull(expenses.countryCode));
+  else if (f.country) conds.push(eq(expenses.countryCode, f.country));
   if (f.q) {
     const t = likeTerm(f.q);
     conds.push(or(like(expenses.vendor, t), like(expenses.description, t), like(expenses.category, t), like(expenses.notes, t)));
@@ -227,9 +236,18 @@ export async function listIncome(actor: Actor, f: IncomeFilters = {}, pageSize =
   const p = f.page ?? 1;
   const [rows, [agg]] = await Promise.all([
     incomeQuery(db).where(where).orderBy(order, desc(incomeEntries.createdAt), asc(incomeEntries.id)).limit(pageSize).offset((p - 1) * pageSize),
-    db.select({ n: count(), total: sum(incomeEntries.amountBaseMinor) }).from(incomeEntries).where(where),
+    db
+      .select({
+        n: count(),
+        total: sum(incomeEntries.amountBaseMinor),
+        paid: sql<string>`coalesce(sum(case when ${incomeEntries.status} = 'paid' then ${incomeEntries.amountBaseMinor} else 0 end), 0)`,
+      })
+      .from(incomeEntries)
+      .where(where),
   ]);
-  return { rows: rows as IncomeRow[], total: agg.n, totalBaseMinor: Number(agg.total ?? 0) };
+  const totalBaseMinor = Number(agg.total ?? 0);
+  const paidBaseMinor = Number(agg.paid ?? 0);
+  return { rows: rows as IncomeRow[], total: agg.n, totalBaseMinor, paidBaseMinor, outstandingBaseMinor: totalBaseMinor - paidBaseMinor };
 }
 
 export async function listExpenses(actor: Actor, f: ExpenseFilters = {}, pageSize = PAGE_SIZE) {
@@ -364,6 +382,8 @@ export const expenseInput = z.object({
   description: z.string().trim().max(500).default(""),
   ...moneyFields,
   isRecurring: z.boolean().default(false),
+  /** blank = a shared cost, not tied to one country */
+  countryCode: z.string().trim().toUpperCase().max(8).nullable().optional(),
   notes: z.string().trim().max(5000).optional(),
 });
 export type ExpenseInput = z.input<typeof expenseInput>;
@@ -379,13 +399,25 @@ function expenseValues(input: ExpenseInput) {
     description: v.description,
     ...moneyValues(v),
     isRecurring: v.isRecurring,
+    countryCode: v.countryCode || null,
     notes: v.notes || null,
   };
+}
+
+/** Category must be on the list; country must exist (or be blank for shared). */
+export async function checkExpenseRefs(db: Db | Tx, v: { category: string; countryCode: string | null }, keepCategory: string | null = null) {
+  const category = await canonicalCategory(db, v.category, keepCategory);
+  if (v.countryCode) {
+    const [c] = await db.select({ code: countries.code }).from(countries).where(eq(countries.code, v.countryCode));
+    if (!c) throw new RuleError("Choose a country from the list, or leave it blank for a shared cost.");
+  }
+  return category;
 }
 
 export async function createExpense(actor: Actor, input: ExpenseInput, attachment?: Attachment): Promise<string> {
   requirePerm(actor, "transactions", "create");
   const values = expenseValues(input);
+  values.category = await checkExpenseRefs(getDb(), values);
   const id = crypto.randomUUID();
   const file = attachment ? await saveUpload(actor, { module: "transactions", entityType: "expenses", entityId: id, ...attachment }) : null;
   await getDb().transaction(async (tx) => {
@@ -400,8 +432,10 @@ export async function updateExpense(actor: Actor, id: string, input: ExpenseInpu
   requirePerm(actor, "transactions", "edit");
   const values = expenseValues(input);
   const db = getDb();
-  const [current] = await db.select({ createdBy: expenses.createdBy }).from(expenses).where(eq(expenses.id, id));
+  const [current] = await db.select({ createdBy: expenses.createdBy, category: expenses.category }).from(expenses).where(eq(expenses.id, id));
   if (!current || !rowAllowed(actor, "transactions", { ownerId: current.createdBy })) throw new AccessDenied("That expense doesn't exist or isn't yours to change.");
+  // an archived category may stay on an older expense, but can't be newly chosen
+  values.category = await checkExpenseRefs(db, values, current.category);
   const file = attachment ? await saveUpload(actor, { module: "transactions", entityType: "expenses", entityId: id, ...attachment }) : null;
   await db.transaction(async (tx) => {
     const [before] = await tx.select().from(expenses).where(eq(expenses.id, id)).for("update");
@@ -436,7 +470,7 @@ function describeFilters(f: Record<string, unknown>) {
 }
 
 export const INCOME_CSV_HEADER = ["date", "stream", "country", "client", "description", "amount", "currency", "fx_rate", "invoice_ref", "status", "representative", "notes"];
-export const EXPENSE_CSV_HEADER = ["date", "category", "vendor", "description", "amount", "currency", "fx_rate", "recurring", "notes"];
+export const EXPENSE_CSV_HEADER = ["date", "category", "vendor", "description", "amount", "currency", "fx_rate", "recurring", "country", "notes"];
 
 /** Exports what the filters show, within the caller's scope. Logged in the audit log. */
 export async function exportIncomeCsv(actor: Actor, f: IncomeFilters): Promise<{ filename: string; csv: string; rows: number }> {
@@ -486,6 +520,7 @@ export async function exportExpensesCsv(actor: Actor, f: ExpenseFilters): Promis
       r.currency,
       r.fxRateToBase,
       r.isRecurring ? "yes" : "no",
+      r.countryCode ?? "",
       r.notes ?? "",
       minorToDecimal(r.amountBaseMinor ?? 0),
     ])
@@ -578,24 +613,33 @@ export async function importIncomeCsv(actor: Actor, text: string): Promise<Impor
 export async function importExpensesCsv(actor: Actor, text: string): Promise<ImportResult> {
   requirePerm(actor, "transactions", "create");
   const rows = readRows(text, ["date", "category", "amount", "currency"]);
+  const db = getDb();
+  const [cats, allCountries] = await Promise.all([db.select().from(expenseCategories).where(eq(expenseCategories.active, true)), db.select().from(countries)]);
   const errors: string[] = [];
   const values: Array<typeof expenses.$inferInsert> = [];
   rows.forEach((r, i) => {
+    const line = i + 2;
+    const cat = cats.find((c) => c.name.toLowerCase() === r.category.toLowerCase());
+    const country = r.country ? allCountries.find((c) => c.code.toLowerCase() === r.country.toLowerCase() || c.name.toLowerCase() === r.country.toLowerCase()) : null;
+    if (!cat) errors.push(`Row ${line}: "${r.category}" isn't an expense category. Add it in Settings first.`);
+    if (r.country && !country) errors.push(`Row ${line}: no country "${r.country}". Use GB, AU, OTHER, or leave blank for shared.`);
+    if (!cat || (r.country && !country)) return;
     try {
       const v = expenseValues({
         expenseDate: r.date,
-        category: r.category,
+        category: cat.name,
         vendor: r.vendor ?? "",
         description: r.description ?? "",
         amount: r.amount,
         currency: r.currency,
         fxRate: r.fx_rate || "1",
         isRecurring: /^(yes|y|true|1)$/i.test(r.recurring ?? ""),
+        countryCode: country?.code ?? null,
         notes: r.notes || undefined,
       });
       values.push({ id: crypto.randomUUID(), ...v, createdBy: actor.userId });
     } catch (e) {
-      errors.push(`Row ${i + 2}: ${e instanceof Error ? e.message : "invalid row"}`);
+      errors.push(`Row ${line}: ${e instanceof Error ? e.message : "invalid row"}`);
     }
   });
   if (errors.length) return { ok: false, errors: errors.slice(0, 25) };

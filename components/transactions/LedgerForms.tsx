@@ -3,6 +3,7 @@
 import { useActionState, useEffect, useId, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Field, FormMessage, Input, Select, Textarea } from "@/components/ui/Field";
+import { useKeepValues } from "@/components/ui/useKeepValues";
 import { formatMinor, formatRatePercent, minorToInput, rateToInput } from "@/lib/money";
 import { CURRENCIES, type ExpenseView, type IncomeView, type LedgerAction, type LedgerState, type Lookups } from "./types";
 
@@ -101,6 +102,7 @@ function Attachment({ id, existing, label }: { id: string; existing: string | nu
 
 export function IncomeForm({ row, lookups, action, onSaved }: { row?: IncomeView; lookups: Lookups; action: LedgerAction; onSaved: () => void }) {
   const [state, formAction, pending] = useActionState(action, empty);
+  const submit = useKeepValues(formAction);
   const p = useId();
   useEffect(() => {
     if (state.ok) onSaved();
@@ -108,7 +110,7 @@ export function IncomeForm({ row, lookups, action, onSaved }: { row?: IncomeView
   const streams = lookups.streams.filter((s) => s.active || s.id === row?.streamId);
   const reps = lookups.representatives.filter((r) => r.active || r.id === row?.representativeId);
   return (
-    <form action={formAction} className="flex flex-col gap-5" encType="multipart/form-data">
+    <form action={formAction} onSubmit={submit} className="flex flex-col gap-5">
       <Msg state={state} />
       {row && <input type="hidden" name="id" value={row.id} />}
       <div className="grid gap-4 sm:grid-cols-2">
@@ -180,31 +182,44 @@ export function IncomeForm({ row, lookups, action, onSaved }: { row?: IncomeView
 
 export function ExpenseForm({ row, lookups, action, onSaved }: { row?: ExpenseView; lookups: Lookups; action: LedgerAction; onSaved: () => void }) {
   const [state, formAction, pending] = useActionState(action, empty);
+  const submit = useKeepValues(formAction);
   const p = useId();
   useEffect(() => {
     if (state.ok) onSaved();
   }, [state, onSaved]);
   return (
-    <form action={formAction} className="flex flex-col gap-5" encType="multipart/form-data">
+    <form action={formAction} onSubmit={submit} className="flex flex-col gap-5">
       <Msg state={state} />
       {row && <input type="hidden" name="id" value={row.id} />}
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Date" htmlFor={`${p}-date`}>
           <Input id={`${p}-date`} name="expenseDate" type="date" required defaultValue={row?.expenseDate ?? today()} />
         </Field>
-        <Field label="Category" htmlFor={`${p}-cat`} hint="Pick one or type a new category">
-          <Input id={`${p}-cat`} name="category" required list={`${p}-cats`} maxLength={80} defaultValue={row?.category} />
-          <datalist id={`${p}-cats`}>
-            {lookups.categories.map((c) => (
-              <option key={c} value={c} />
+        <Field label="Category" htmlFor={`${p}-cat`} hint="Admins edit this list in Settings">
+          <Select id={`${p}-cat`} name="category" required defaultValue={row?.category ?? lookups.categories[0]}>
+            {/* an archived category stays selectable on the expense that already uses it */}
+            {[...new Set([...lookups.categories, ...(row?.category ? [row.category] : [])])].map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
             ))}
-          </datalist>
+          </Select>
         </Field>
         <Field label="Vendor" htmlFor={`${p}-vendor`}>
           <Input id={`${p}-vendor`} name="vendor" maxLength={200} defaultValue={row?.vendor} />
         </Field>
         <Field label="Description" htmlFor={`${p}-desc`}>
           <Input id={`${p}-desc`} name="description" maxLength={500} defaultValue={row?.description} />
+        </Field>
+        <Field label="Country" htmlFor={`${p}-country`} className="sm:col-span-2" hint="Leave as Shared for costs the whole company carries. A country view on Home only counts that country's costs.">
+          <Select id={`${p}-country`} name="countryCode" defaultValue={row?.countryCode ?? ""}>
+            <option value="">Shared (all countries)</option>
+            {lookups.countries.map((c) => (
+              <option key={c.code} value={c.code}>
+                {c.name}
+              </option>
+            ))}
+          </Select>
         </Field>
       </div>
       <MoneyFields

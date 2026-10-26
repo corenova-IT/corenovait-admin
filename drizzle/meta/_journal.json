@@ -22,6 +22,20 @@
       "when": 1792997092932,
       "tag": "0002_finance_ledger",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1793001422508,
+      "tag": "0003_payments_and_lists",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1793001425854,
+      "tag": "0004_seed_expense_categories",
+      "breakpoints": true
     }
   ]
 }

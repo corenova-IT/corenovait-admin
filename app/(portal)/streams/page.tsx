@@ -36,9 +36,10 @@ export default async function StreamsPage({ searchParams }: { searchParams: Prom
         sample={sample}
         actions={<PeriodSwitch path="/streams" value={period} />}
       />
-      <div className="mb-6 grid gap-5 sm:grid-cols-3">
-        <StatCard label="Total revenue" value={formatMoney(data.totalBaseMinor, base, { cents: false })} detail="All streams, including pending and overdue invoices" />
-        <StatCard label="Deals" value={String(deals)} detail="Income entries in the period" />
+      <div className="mb-6 grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard label="Revenue" value={formatMoney(data.totalBaseMinor, base, { cents: false })} detail="Paid invoices, all streams" />
+        <StatCard label="Outstanding" value={formatMoney(data.outstandingBaseMinor, base, { cents: false })} note="Pending + overdue" noteTone={data.outstandingBaseMinor > 0 ? "amber" : "neutral"} detail="Invoiced, not yet paid" />
+        <StatCard label="Paid deals" value={String(deals)} detail="In the period" />
         <StatCard label="Average deal" value={formatMoney(divRound(data.totalBaseMinor, deals), base, { cents: false })} detail="Revenue ÷ deals" />
       </div>
       <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
@@ -52,10 +53,16 @@ export default async function StreamsPage({ searchParams }: { searchParams: Prom
               <p className="num glow-text text-3xl font-bold text-ink">{formatMoney(s.revenueBaseMinor, base, { cents: false })}</p>
               <div className="flex items-end justify-between gap-3">
                 <dl className="grid grid-cols-2 gap-x-5 gap-y-1 text-sm">
-                  <dt className="text-muted">Deals</dt>
+                  <dt className="text-muted">Paid deals</dt>
                   <dd className="font-mono text-ink">{s.deals}</dd>
                   <dt className="text-muted">Average</dt>
                   <dd className="font-mono text-ink">{formatMoney(s.averageBaseMinor, base, { cents: false })}</dd>
+                  {s.outstandingBaseMinor > 0 && (
+                    <>
+                      <dt className="text-muted">Outstanding</dt>
+                      <dd className="font-mono text-warning">{formatMoney(s.outstandingBaseMinor, base, { cents: false })}</dd>
+                    </>
+                  )}
                 </dl>
                 <Sparkline values={s.trend} label={`${s.name}: revenue by month for the last 12 months`} />
               </div>

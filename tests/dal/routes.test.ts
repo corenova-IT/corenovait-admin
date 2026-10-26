@@ -147,10 +147,11 @@ describe("guarded pages, opened by a staff user", () => {
   const pages: Array<[string, () => Promise<{ default: (p: never) => Promise<unknown> }>, unknown]> = [
     ["/team", () => import("@/app/(portal)/team/page"), {}],
     ["/audit", () => import("@/app/(portal)/audit/page"), { searchParams: Promise.resolve({}) }],
-    ["/analytics", () => import("@/app/(portal)/[module]/page"), { params: Promise.resolve({ module: "analytics" }) }],
+    ["/analytics", () => import("@/app/(portal)/analytics/page"), { searchParams: Promise.resolve({}) }],
+    ["/analytics?country=GB", () => import("@/app/(portal)/analytics/page"), { searchParams: Promise.resolve({ country: "GB" }) }],
     ["/transactions", () => import("@/app/(portal)/transactions/page"), { searchParams: Promise.resolve({}) }],
     ["/transactions?tab=expenses", () => import("@/app/(portal)/transactions/page"), { searchParams: Promise.resolve({ tab: "expenses" }) }],
-    ["/payments", () => import("@/app/(portal)/[module]/page"), { params: Promise.resolve({ module: "payments" }) }],
+    ["/payments", () => import("@/app/(portal)/payments/page"), { searchParams: Promise.resolve({}) }],
     ["/streams", () => import("@/app/(portal)/streams/page"), { searchParams: Promise.resolve({}) }],
     ["/streams/1", () => import("@/app/(portal)/streams/[id]/page"), { params: Promise.resolve({ id: "1" }), searchParams: Promise.resolve({}) }],
     ["/streams/countries", () => import("@/app/(portal)/streams/countries/page"), { searchParams: Promise.resolve({}) }],
@@ -161,7 +162,7 @@ describe("guarded pages, opened by a staff user", () => {
       () => import("@/app/(portal)/streams/representatives/[id]/page"),
       { params: Promise.resolve({ id: "00000000-0000-4000-8000-000000000000" }) },
     ],
-    ["/settings", () => import("@/app/(portal)/[module]/page"), { params: Promise.resolve({ module: "settings" }) }],
+    ["/settings", () => import("@/app/(portal)/settings/page"), {}],
   ];
   for (const [route, load, props] of pages) {
     it(`${route} redirects to /no-access`, async () => {
@@ -174,6 +175,15 @@ describe("guarded pages, opened by a staff user", () => {
     jar.clear();
     const page = (await import("@/app/(portal)/team/page")).default as () => Promise<unknown>;
     await expect(page()).rejects.toMatchObject({ url: "/login" });
+  });
+});
+
+describe("finances export route", () => {
+  it("refuses a staff user (403) and nobody signed in (401)", async () => {
+    const get = async () => (await import("@/app/api/export/finances/route")).GET(new Request("http://localhost/api/export/finances?country=AU"));
+    expect((await get()).status).toBe(403);
+    jar.clear();
+    expect((await get()).status).toBe(401);
   });
 });
 

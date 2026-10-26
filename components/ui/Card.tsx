@@ -15,7 +15,8 @@ export function Card({
   as?: "section" | "div" | "article";
 } & React.HTMLAttributes<HTMLElement>) {
   return (
-    <Tag className={cx("glass p-6 sm:p-7", glow && "glass-glow", accent && "glass-accent", className)} {...rest}>
+    // min-w-0: inside a grid, let wide content (tables) scroll within the card instead of widening the page
+    <Tag className={cx("glass min-w-0 p-6 sm:p-7", glow && "glass-glow", accent && "glass-accent", className)} {...rest}>
       {children}
     </Tag>
   );

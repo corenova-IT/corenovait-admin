@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { decryptSecret, encryptSecret } from "@/lib/auth/crypto";
 import { base32Decode, base32Encode, hotp, normaliseRecoveryCode, generateRecoveryCodes, otpauthUri, totpAt, verifyTotp } from "@/lib/auth/totp";
-import { sniffType } from "@/lib/dal/files";
+import { sniffType } from "@/lib/file-types";
 
 // RFC 6238 appendix B uses the ASCII secret "12345678901234567890" (SHA-1)
 const RFC_SECRET = base32Encode(Buffer.from("12345678901234567890"));

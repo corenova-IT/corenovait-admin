@@ -88,6 +88,7 @@ export async function saveExpense(_prev: LedgerState, fd: FormData): Promise<Led
     currency: str(fd, "currency"),
     fxRate: str(fd, "fxRate") || "1",
     isRecurring: fd.get("isRecurring") === "on",
+    countryCode: str(fd, "countryCode") || null,
     notes: str(fd, "notes"),
   };
   try {

@@ -6,7 +6,7 @@ import { actorWithPerm, errorMessage } from "@/lib/auth/session";
 import * as rev from "@/lib/dal/revenue";
 
 /** Representatives and their payout log. Permission first, then the form, then the data-access layer. */
-export type RepState = { ok?: string; error?: string };
+export type RepState = { ok?: string; error?: string; overpayment?: { owedBaseMinor: number; amountBaseMinor: number } };
 
 const uuid = z.string().uuid();
 const str = (fd: FormData, k: string) => {
@@ -42,17 +42,24 @@ export async function recordPayout(_prev: RepState, fd: FormData): Promise<RepSt
   const g = await actorWithPerm("representatives", "create");
   if (!g.actor) return { error: g.error };
   try {
-    await rev.recordPayout(g.actor, {
-      representativeId: str(fd, "representativeId"),
-      paidDate: str(fd, "paidDate"),
-      amount: str(fd, "amount"),
-      currency: str(fd, "currency"),
-      fxRate: str(fd, "fxRate") || "1",
-      reference: str(fd, "reference"),
-      notes: str(fd, "notes"),
-    });
+    await rev.recordPayout(
+      g.actor,
+      {
+        representativeId: str(fd, "representativeId"),
+        paidDate: str(fd, "paidDate"),
+        amount: str(fd, "amount"),
+        currency: str(fd, "currency"),
+        fxRate: str(fd, "fxRate") || "1",
+        reference: str(fd, "reference"),
+        notes: str(fd, "notes"),
+      },
+      { confirmOverpayment: fd.get("confirmOverpayment") === "on" }
+    );
     return done("Payout recorded.");
   } catch (e) {
+    if (e instanceof rev.OverpaymentNeedsConfirmation) {
+      return { error: e.message, overpayment: { owedBaseMinor: e.owedBaseMinor, amountBaseMinor: e.amountBaseMinor } };
+    }
     return { error: errorMessage(e) };
   }
 }

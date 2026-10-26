@@ -7,8 +7,10 @@ import { CURRENCIES } from "@/components/transactions/types";
 import { Button } from "@/components/ui/Button";
 import { Drawer, Modal } from "@/components/ui/Dialog";
 import { Field, Input, Select, Textarea } from "@/components/ui/Field";
+import { useKeepValues } from "@/components/ui/useKeepValues";
+import { formatMoney } from "@/lib/money";
 
-type State = { ok?: string; error?: string };
+type State = { ok?: string; error?: string; overpayment?: { owedBaseMinor: number; amountBaseMinor: number } };
 type Action = (prev: State, fd: FormData) => Promise<State>;
 
 export type RepView = { id: string; name: string; email: string | null; phone: string | null; commissionPercent: string; userId: string | null; active: boolean };
@@ -22,10 +24,11 @@ function useCloseOnOk(state: State, close: () => void) {
 
 function RepForm({ rep, users, action, onSaved }: { rep?: RepView; users: LinkableUser[]; action: Action; onSaved: () => void }) {
   const [state, formAction, pending] = useActionState(action, {});
+  const submit = useKeepValues(formAction);
   const p = useId();
   useCloseOnOk(state, onSaved);
   return (
-    <form action={formAction} className="flex flex-col gap-5">
+    <form action={formAction} onSubmit={submit} className="flex flex-col gap-5">
       <Msg state={state} />
       {rep && <input type="hidden" name="id" value={rep.id} />}
       <Field label="Name" htmlFor={`${p}-name`}>
@@ -90,6 +93,7 @@ export function PayoutButton({ repId, repName, base, owed, action }: { repId: st
   const [open, setOpen] = useState(false);
   const close = useCallback(() => setOpen(false), []);
   const [state, formAction, pending] = useActionState(action, {});
+  const submit = useKeepValues(formAction);
   const [cur, setCur] = useState(base);
   const p = useId();
   useCloseOnOk(state, close);
@@ -99,8 +103,21 @@ export function PayoutButton({ repId, repName, base, owed, action }: { repId: st
         <IconPlus /> Record payout
       </Button>
       <Drawer open={open} onClose={close} title="Record a payout" description={`Commission paid to ${repName}. Currently owed: ${owed}.`}>
-        <form action={formAction} className="flex flex-col gap-5">
-          <Msg state={state} />
+        <form action={formAction} onSubmit={submit} className="flex flex-col gap-5">
+          <Msg state={state.overpayment ? {} : state} />
+          {state.overpayment && (
+            <div role="alert" className="flex flex-col gap-3 rounded-[14px] border border-warning/45 bg-warning-soft px-4 py-3 text-sm text-ink">
+              <p className="font-semibold">This payout is more than the commission owed.</p>
+              <p className="font-mono text-xs text-ink-2">
+                Owed now {formatMoney(state.overpayment.owedBaseMinor, base)} · this payout {formatMoney(state.overpayment.amountBaseMinor, base)} · over by{" "}
+                {formatMoney(state.overpayment.amountBaseMinor - state.overpayment.owedBaseMinor, base)}
+              </p>
+              <label className="flex items-start gap-3">
+                <input type="checkbox" name="confirmOverpayment" className="mt-0.5 size-5 accent-[var(--accent)]" />
+                <span>I confirm this payout is correct. Your name and the amounts are recorded in the audit log.</span>
+              </label>
+            </div>
+          )}
           <input type="hidden" name="representativeId" value={repId} />
           <Field label="Date paid" htmlFor={`${p}-date`}>
             <Input id={`${p}-date`} name="paidDate" type="date" required defaultValue={new Date().toISOString().slice(0, 10)} />
@@ -129,7 +146,7 @@ export function PayoutButton({ repId, repName, base, owed, action }: { repId: st
             <Textarea id={`${p}-notes`} name="notes" maxLength={2000} />
           </Field>
           <Button type="submit" disabled={pending} className="self-start">
-            {pending ? "Saving…" : "Record payout"}
+            {pending ? "Saving…" : state.overpayment ? "Record payout anyway" : "Record payout"}
           </Button>
         </form>
       </Drawer>

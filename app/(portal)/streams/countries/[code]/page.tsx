@@ -45,9 +45,10 @@ export default async function CountryPage({ params, searchParams }: { params: Pr
           </div>
         }
       />
-      <div className="mb-6 grid gap-5 sm:grid-cols-3">
-        <StatCard label={`Revenue in ${base}`} value={formatMoney(d.revenueBaseMinor, base, { cents: false })} detail={PERIOD_LABEL[period]} />
-        <StatCard label="Deals" value={String(d.deals)} detail="Income entries" />
+      <div className="mb-6 grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard label={`Revenue in ${base}`} value={formatMoney(d.revenueBaseMinor, base, { cents: false })} detail={`Paid invoices, ${PERIOD_LABEL[period]}`} />
+        <StatCard label="Outstanding" value={formatMoney(d.outstandingBaseMinor, base, { cents: false })} note={`${d.outstandingCount} unpaid`} noteTone={d.outstandingBaseMinor > 0 ? "amber" : "neutral"} detail="Pending + overdue" />
+        <StatCard label="Paid deals" value={String(d.deals)} detail="Income entries marked paid" />
         <StatCard label="Average deal" value={formatMoney(d.averageBaseMinor, base, { cents: false })} detail="Revenue ÷ deals" />
       </div>
       <div className="mb-6 grid gap-6 lg:grid-cols-[1.6fr_1fr]">

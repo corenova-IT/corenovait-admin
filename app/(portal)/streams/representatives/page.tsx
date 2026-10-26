@@ -38,7 +38,7 @@ export default async function RepresentativesPage() {
     },
     { key: "rate", header: "Rate", cell: (r) => <span className="font-mono">{formatRatePercent(r.commissionRate)}</span> },
     { key: "deals", header: "Deals", align: "right", cell: (r) => <span className="font-mono">{r.deals}</span> },
-    { key: "revenue", header: "Brought in", align: "right", hideBelow: "md", cell: (r) => <span className="num font-mono">{formatMoney(r.revenueBaseMinor, base, { cents: false })}</span> },
+    { key: "revenue", header: "Paid revenue", align: "right", hideBelow: "md", cell: (r) => <span className="num font-mono">{formatMoney(r.revenueBaseMinor, base, { cents: false })}</span> },
     { key: "earned", header: "Earned", align: "right", hideBelow: "lg", cell: (r) => <span className="num font-mono">{formatMoney(r.commissionEarnedBaseMinor, base)}</span> },
     { key: "paid", header: "Paid", align: "right", hideBelow: "lg", cell: (r) => <span className="num font-mono">{formatMoney(r.commissionPaidBaseMinor, base)}</span> },
     {

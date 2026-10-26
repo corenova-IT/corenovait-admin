@@ -57,7 +57,8 @@ export default async function CountriesPage({ searchParams }: { searchParams: Pr
               )}
             </div>
             <p className="font-mono text-xs text-muted">
-              {c.deals} deals · average {formatMoney(c.averageBaseMinor, base, { cents: false })}
+              {c.deals} paid deals · average {formatMoney(c.averageBaseMinor, base, { cents: false })}
+              {c.outstandingBaseMinor > 0 && <span className="text-warning"> · {formatMoney(c.outstandingBaseMinor, base, { cents: false })} outstanding</span>}
             </p>
           </Link>
         ))}

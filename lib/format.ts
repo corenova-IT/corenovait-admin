@@ -19,3 +19,11 @@ export function hrefWith(path: string, current: Record<string, string | undefine
   const qs = params.toString();
   return qs ? `${path}?${qs}` : path;
 }
+
+/** "in 3 days", "today", "tomorrow", "2 days overdue". */
+export function dueLabel(days: number): string {
+  if (days < 0) return `${-days} ${days === -1 ? "day" : "days"} overdue`;
+  if (days === 0) return "today";
+  if (days === 1) return "tomorrow";
+  return `in ${days} days`;
+}
