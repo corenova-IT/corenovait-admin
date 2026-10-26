@@ -22,6 +22,11 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   // native argon2 binary and the MySQL driver run as normal Node modules, not bundled
   serverExternalPackages: ["@node-rs/argon2", "mysql2"],
+  experimental: {
+    // receipts and invoices up to UPLOAD_MAX_MB (10 MB) plus the form fields
+    serverActions: { bodySizeLimit: "12mb" },
+    proxyClientMaxBodySize: "12mb",
+  },
   async headers() {
     return [
       {

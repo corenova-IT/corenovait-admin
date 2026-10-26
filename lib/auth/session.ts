@@ -63,6 +63,21 @@ export async function actorForAction(): Promise<{ actor: Actor; error?: undefine
   return { error: "Verify your two-factor code, then try again." };
 }
 
+/**
+ * For server actions that need one permission: checked before the form is
+ * even read, so a refused request learns nothing about validation rules.
+ * The data-access layer checks again (with scope) when the work is done.
+ */
+export async function actorWithPerm(
+  module: AppModule,
+  action: AppAction
+): Promise<{ actor: Actor; error?: undefined } | { actor?: undefined; error: string }> {
+  const a = await actorForAction();
+  if (!a.actor) return a;
+  if (!hasPerm(a.actor, module, action)) return { error: "You don't have permission to do that." };
+  return a;
+}
+
 /** Turns DAL errors into messages that are safe to show; anything unexpected stays generic. */
 export function errorMessage(e: unknown, fallback = "That couldn't be saved. Refresh the page and try again."): string {
   if (e instanceof AccessDenied || e instanceof RuleError) return e.message;

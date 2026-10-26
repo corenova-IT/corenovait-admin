@@ -57,11 +57,12 @@ export function percentChange(current: bigint, previous: bigint): number | null 
 export function formatMinor(minor: bigint, currency: string, opts: { cents?: boolean } = {}): string {
   const negative = minor < 0n;
   const abs = negative ? -minor : minor;
-  const whole = abs / 100n;
+  const showCents = opts.cents ?? true;
+  // without cents, round to the nearest whole unit (half away from zero) rather than cutting off
+  const whole = showCents ? abs / 100n : (abs + 50n) / 100n;
   const cents = abs % 100n;
   const symbol = CURRENCY_SYMBOL[currency] ?? `${currency} `;
   const wholeStr = whole.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-  const showCents = opts.cents ?? true;
   return `${negative ? "-" : ""}${symbol}${wholeStr}${showCents ? "." + cents.toString().padStart(2, "0") : ""}`;
 }
 
@@ -73,3 +74,42 @@ export function splitMinor(minor: bigint, currency: string): { main: string; dec
 }
 
 const CURRENCY_SYMBOL: Record<string, string> = { AUD: "A$", GBP: "£", USD: "US$", EUR: "€", PKR: "Rs " };
+
+/** Display helper for the integer minor units the database returns (null shows a dash). */
+export function formatMoney(minor: number | bigint | null | undefined, currency: string, opts: { cents?: boolean } = {}): string {
+  if (minor === null || minor === undefined) return "—";
+  return formatMinor(BigInt(minor), currency, opts);
+}
+
+/** "0.1250" -> "12.5%" */
+export function formatRatePercent(rate: string | null | undefined): string {
+  if (!rate) return "—";
+  const m = /^(\d+)\.(\d{4})$/.exec(rate);
+  if (!m) return rate;
+  const hundredths = Number(m[1]) * 10_000 + Number(m[2]);
+  return `${(hundredths / 100).toString()}%`;
+}
+
+/** Minor units as an editable decimal string for form inputs ("125050" -> "1250.50"). */
+export function minorToInput(minor: number | null | undefined): string {
+  if (minor === null || minor === undefined) return "";
+  const v = BigInt(minor);
+  return `${v / 100n}.${(v % 100n).toString().padStart(2, "0")}`;
+}
+
+/** Stored rate "1.95000000" -> "1.95" for form inputs. */
+export function rateToInput(rate: string | null | undefined): string {
+  if (!rate) return "1";
+  return rate.includes(".") ? rate.replace(/0+$/, "").replace(/\.$/, "") : rate;
+}
+
+/** Short labels for charts: 8_400_000 cents AUD -> "A$84k", 125_000_000 -> "A$1.25m". */
+export function formatCompact(minor: number, currency: string): string {
+  const symbol = CURRENCY_SYMBOL[currency] ?? `${currency} `;
+  const whole = Math.round(minor / 100);
+  const abs = Math.abs(whole);
+  const sign = whole < 0 ? "-" : "";
+  if (abs >= 1_000_000) return `${sign}${symbol}${(abs / 1_000_000).toFixed(abs >= 10_000_000 ? 1 : 2).replace(/\.?0+$/, "")}m`;
+  if (abs >= 1_000) return `${sign}${symbol}${(abs / 1_000).toFixed(abs >= 100_000 ? 0 : 1).replace(/\.0$/, "")}k`;
+  return `${sign}${symbol}${abs}`;
+}

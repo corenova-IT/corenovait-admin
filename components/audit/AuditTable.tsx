@@ -40,6 +40,7 @@ export const ENTITY_LABELS: Record<string, string> = {
   income_entries: "Income entry",
   expenses: "Expense",
   representatives: "Representative",
+  rep_payouts: "Commission payout",
   streams: "Revenue stream",
   countries: "Country",
   settings: "Settings",

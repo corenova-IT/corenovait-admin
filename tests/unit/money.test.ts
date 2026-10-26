@@ -63,3 +63,18 @@ describe("formatting", () => {
     expect(splitMinor(8_465_824n, "AUD")).toEqual({ main: "A$84,658", decimals: ".24" });
   });
 });
+
+describe("display rounding", () => {
+  it("rounds to whole units when cents are hidden, never truncates", async () => {
+    const { formatMoney, formatRatePercent, minorToInput, rateToInput } = await import("@/lib/money");
+    expect(formatMoney(66956999, "AUD", { cents: false })).toBe("A$669,570");
+    expect(formatMoney(66956949, "AUD", { cents: false })).toBe("A$669,569");
+    expect(formatMoney(-150, "AUD", { cents: false })).toBe("-A$2");
+    expect(formatMoney(125050, "GBP")).toBe("£1,250.50");
+    expect(formatMoney(null, "AUD")).toBe("—");
+    expect(formatRatePercent("0.1250")).toBe("12.5%");
+    expect(minorToInput(125050)).toBe("1250.50");
+    expect(rateToInput("1.95000000")).toBe("1.95");
+    expect(rateToInput("2.00000000")).toBe("2");
+  });
+});

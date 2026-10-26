@@ -95,6 +95,7 @@ async function main() {
           invoiceRef: `SAMPLE-${m.replace("-", "")}-${j + 1}`,
           status: i === MONTHS.length - 1 && j === 0 ? "pending" : i === MONTHS.length - 2 && j === 1 ? "overdue" : "paid",
           representativeId: stream.name === "Individual representatives" ? repId : null,
+          commissionRate: stream.name === "Individual representatives" ? "0.1000" : null,
           isSample: true,
           createdBy: admin,
         });
@@ -126,6 +127,19 @@ async function main() {
       }
     });
     await db.insert(schema.expenses).values(expenses);
+    await db.insert(schema.repPayouts).values(
+      ["2026-03-31", "2026-06-30", "2026-09-30"].map((paidDate, i) => ({
+        id: randomUUID(),
+        representativeId: repId,
+        paidDate,
+        amountMinor: [180_000, 210_000, 240_000][i],
+        currency: "AUD",
+        fxRateToBase: "1.00000000",
+        reference: `SAMPLE-PAYOUT-Q${i + 1}`,
+        isSample: true,
+        createdBy: admin,
+      }))
+    );
     await writeAudit(db, null, { action: "create", entity: "income_entries", summary: `Sample data: ${income.length} income entries and ${expenses.length} expenses (is_sample)` });
 
     console.log("\nSample data loaded (development only):");

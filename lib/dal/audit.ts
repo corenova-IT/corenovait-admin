@@ -63,6 +63,23 @@ export async function writeAudit(
   });
 }
 
+/** Many audit rows in one insert (CSV imports), inside the caller's transaction. */
+export async function writeAuditMany(db: Db | Tx, who: { userId: string | null; email: string | null } | null, entries: AuditEntry[]) {
+  if (!entries.length) return;
+  await db.insert(auditLog).values(
+    entries.map((e) => ({
+      actorId: who?.userId ?? null,
+      actorEmail: who?.email ?? null,
+      action: e.action,
+      entity: e.entity,
+      entityId: e.entityId ?? null,
+      summary: e.summary ? e.summary.slice(0, 500) : null,
+      before: e.before ?? null,
+      after: e.after ?? null,
+    }))
+  );
+}
+
 export const actorRef = (a: Actor) => ({ userId: a.userId, email: a.email });
 
 /** Exports are logged only for people allowed to export that module. */

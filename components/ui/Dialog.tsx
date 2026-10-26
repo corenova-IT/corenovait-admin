@@ -71,7 +71,7 @@ export function Modal({
     <dialog
       ref={ref}
       onClick={(e) => e.target === ref.current && onClose()}
-      className={cx("glass m-auto w-[min(520px,calc(100vw-2rem))] p-7 text-ink", backdrop, className)}
+      className={cx("glass m-auto w-[min(520px,calc(100vw-2rem))] p-7 text-left font-normal text-ink", backdrop, className)}
     >
       {open && (
         <>
@@ -104,7 +104,7 @@ export function Drawer({
       ref={ref}
       onClick={(e) => e.target === ref.current && onClose()}
       className={cx(
-        "glass fixed inset-y-0 right-0 left-auto m-0 h-dvh max-h-dvh w-full overflow-y-auto rounded-none rounded-l-[20px] p-6 text-ink sm:p-8",
+        "glass fixed inset-y-0 right-0 left-auto m-0 h-dvh max-h-dvh w-full overflow-y-auto rounded-none rounded-l-[20px] p-6 text-left font-normal text-ink sm:p-8",
         wide ? "max-w-[900px]" : "max-w-[520px]",
         backdrop
       )}

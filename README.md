@@ -176,6 +176,28 @@ They call `lib/dal/*`, where every function takes the signed-in `Actor` and chec
 `has_perm(module, action)` and the data scope before querying. An `Actor` can only be created
 from a real database session, so a hand-made one is rejected.
 
+### Transactions, revenue and commission (Phase 2A)
+
+- **Transactions** (`/transactions`): income and expenses with search, date range, stream, country,
+  status, representative, category and type filters; sortable columns; server-side paging; add, edit
+  and delete (with confirmation); an optional invoice or receipt on each entry; CSV import and export.
+- **Scope:** *own* shows entries you created; *assigned* also shows income credited to the
+  representative record linked to your login; *all* shows everything. Exports follow the same rule.
+- **Money:** amounts are typed with up to 2 decimals and stored as whole cents. The exchange rate is
+  entered by hand (up to 8 decimals) and MySQL computes the base-currency amount, rounding half away
+  from zero. Totals are sums of those stored cents.
+- **CSV:** columns `date, stream, country, client, description, amount, currency, fx_rate, invoice_ref,
+  status, representative, notes` (income) or `date, category, vendor, description, amount, currency,
+  fx_rate, recurring, notes` (expenses). Streams and representatives are matched by name, countries by
+  code (GB, AU, OTHER) or name. An import is all or nothing: if any row is invalid, nothing is saved and
+  the problem rows are listed. Up to 1,000 rows / 1 MB per file. Exports neutralise spreadsheet
+  formulas and are recorded in the audit log.
+- **Revenue streams** (`/streams`), **countries** (`/streams/countries`, with amounts as received in
+  GBP and their AUD value) and **representatives** (`/streams/representatives`).
+- **Commission:** earned only when a credited deal is marked **paid**, at the rate stored on that deal
+  when it was credited (changing a rep's rate affects new deals only), rounded to the cent per deal.
+  Owed = earned − payouts recorded in the payout log.
+
 ## 7. Uploads
 
 Files are stored in `UPLOAD_DIR` under random names, never in `public/`. Only PDF, PNG, JPG and WebP

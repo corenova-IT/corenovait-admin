@@ -15,6 +15,13 @@
       "when": 1792952801858,
       "tag": "0001_seed_reference_data",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1792997092932,
+      "tag": "0002_finance_ledger",
+      "breakpoints": true
     }
   ]
 }

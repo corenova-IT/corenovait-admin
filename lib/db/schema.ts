@@ -296,6 +296,9 @@ export const incomeEntries = mysqlTable(
     representativeId: varchar("representative_id", { length: 36 }).references(() => representatives.id, {
       onDelete: "set null",
     }),
+    /** the representative's rate when the entry was credited, so later rate changes don't rewrite history */
+    commissionRate: decimal("commission_rate", { precision: 5, scale: 4 }),
+    invoiceFileId: varchar("invoice_file_id", { length: 36 }).references(() => files.id, { onDelete: "set null" }),
     notes: text("notes"),
     isSample: boolean("is_sample").notNull().default(false),
     createdBy: userRef("created_by")
@@ -308,6 +311,8 @@ export const incomeEntries = mysqlTable(
     index("income_date_idx").on(t.entryDate),
     index("income_created_by_idx").on(t.createdBy),
     index("income_rep_idx").on(t.representativeId),
+    index("income_status_idx").on(t.status),
+    check("income_commission_chk", sql`${t.commissionRate} is null or (${t.commissionRate} >= 0 and ${t.commissionRate} <= 1)`),
     check("income_amount_chk", sql`${t.amountMinor} > 0`),
     check("income_rate_chk", sql`${t.fxRateToBase} > 0`),
     check("income_currency_chk", sql`${t.currency} regexp '^[A-Z]{3}$'`),
@@ -336,8 +341,37 @@ export const expenses = mysqlTable(
   (t) => [
     index("expense_date_idx").on(t.expenseDate),
     index("expense_created_by_idx").on(t.createdBy),
+    index("expense_category_idx").on(t.category),
     check("expense_amount_chk", sql`${t.amountMinor} > 0`),
     check("expense_rate_chk", sql`${t.fxRateToBase} > 0`),
     check("expense_currency_chk", sql`${t.currency} regexp '^[A-Z]{3}$'`),
+  ]
+);
+
+/** Commission paid out to a representative (the payout log). */
+export const repPayouts = mysqlTable(
+  "rep_payouts",
+  {
+    id: id(),
+    representativeId: varchar("representative_id", { length: 36 })
+      .notNull()
+      .references(() => representatives.id),
+    paidDate: date("paid_date", { mode: "string" }).notNull(),
+    ...money,
+    reference: varchar("reference", { length: 120 }).notNull().default(""),
+    notes: text("notes"),
+    isSample: boolean("is_sample").notNull().default(false),
+    createdBy: userRef("created_by")
+      .notNull()
+      .references(() => users.id),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    index("payout_rep_idx").on(t.representativeId),
+    index("payout_date_idx").on(t.paidDate),
+    check("payout_amount_chk", sql`${t.amountMinor} > 0`),
+    check("payout_rate_chk", sql`${t.fxRateToBase} > 0`),
+    check("payout_currency_chk", sql`${t.currency} regexp '^[A-Z]{3}$'`),
   ]
 );

@@ -51,7 +51,8 @@ export async function saveUpload(
   actor: Actor,
   input: { module: AppModule; entityType?: string; entityId?: string; name: string; bytes: Buffer }
 ): Promise<{ id: string; mimeType: string; sizeBytes: number }> {
-  requirePerm(actor, input.module, "create");
+  // attaching a receipt is part of adding OR editing a record
+  if (!hasPerm(actor, input.module, "create") && !hasPerm(actor, input.module, "edit")) requirePerm(actor, input.module, "create");
   if (input.bytes.length === 0) throw new RuleError("That file is empty.");
   if (input.bytes.length > MAX_UPLOAD_BYTES) throw new RuleError(`Files can be up to ${Math.round(MAX_UPLOAD_BYTES / 1024 / 1024)} MB.`);
   const type = sniffType(input.bytes);

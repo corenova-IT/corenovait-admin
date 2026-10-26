@@ -148,9 +148,19 @@ describe("guarded pages, opened by a staff user", () => {
     ["/team", () => import("@/app/(portal)/team/page"), {}],
     ["/audit", () => import("@/app/(portal)/audit/page"), { searchParams: Promise.resolve({}) }],
     ["/analytics", () => import("@/app/(portal)/[module]/page"), { params: Promise.resolve({ module: "analytics" }) }],
-    ["/transactions", () => import("@/app/(portal)/[module]/page"), { params: Promise.resolve({ module: "transactions" }) }],
+    ["/transactions", () => import("@/app/(portal)/transactions/page"), { searchParams: Promise.resolve({}) }],
+    ["/transactions?tab=expenses", () => import("@/app/(portal)/transactions/page"), { searchParams: Promise.resolve({ tab: "expenses" }) }],
     ["/payments", () => import("@/app/(portal)/[module]/page"), { params: Promise.resolve({ module: "payments" }) }],
-    ["/streams", () => import("@/app/(portal)/[module]/page"), { params: Promise.resolve({ module: "streams" }) }],
+    ["/streams", () => import("@/app/(portal)/streams/page"), { searchParams: Promise.resolve({}) }],
+    ["/streams/1", () => import("@/app/(portal)/streams/[id]/page"), { params: Promise.resolve({ id: "1" }), searchParams: Promise.resolve({}) }],
+    ["/streams/countries", () => import("@/app/(portal)/streams/countries/page"), { searchParams: Promise.resolve({}) }],
+    ["/streams/countries/GB", () => import("@/app/(portal)/streams/countries/[code]/page"), { params: Promise.resolve({ code: "GB" }), searchParams: Promise.resolve({}) }],
+    ["/streams/representatives", () => import("@/app/(portal)/streams/representatives/page"), {}],
+    [
+      "/streams/representatives/[id]",
+      () => import("@/app/(portal)/streams/representatives/[id]/page"),
+      { params: Promise.resolve({ id: "00000000-0000-4000-8000-000000000000" }) },
+    ],
     ["/settings", () => import("@/app/(portal)/[module]/page"), { params: Promise.resolve({ module: "settings" }) }],
   ];
   for (const [route, load, props] of pages) {
@@ -164,6 +174,27 @@ describe("guarded pages, opened by a staff user", () => {
     jar.clear();
     const page = (await import("@/app/(portal)/team/page")).default as () => Promise<unknown>;
     await expect(page()).rejects.toMatchObject({ url: "/login" });
+  });
+});
+
+describe("CSV export route", () => {
+  const get = async (q: string) => (await import("@/app/api/export/transactions/route")).GET(new Request(`http://localhost/api/export/transactions?${q}`));
+
+  it("refuses a staff user (403) and nobody signed in (401), for both ledgers", async () => {
+    expect((await get("tab=income")).status).toBe(403);
+    expect((await get("tab=expenses")).status).toBe(403);
+    jar.clear();
+    expect((await get("tab=income")).status).toBe(401);
+  });
+
+  it("gives an admin a CSV of their scope and logs the export", async () => {
+    const { SESSION_COOKIE } = await import("@/lib/auth/session");
+    jar.set(SESSION_COOKIE, await sessionFor(t, ids.admin, { mfaVerified: true }));
+    const res = await get("tab=income");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toMatch(/^text\/csv/);
+    expect(res.headers.get("content-disposition")).toMatch(/^attachment; filename="income-/);
+    expect(await res.text()).toContain("900.00");
   });
 });
 

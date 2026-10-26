@@ -11,6 +11,8 @@ export type Column<T> = {
   className?: string;
   /** hide below this breakpoint to keep phone layouts readable */
   hideBelow?: "sm" | "md" | "lg";
+  /** server-side sorting: a link that re-sorts, and whether this column is the current sort */
+  sort?: { href: string; active: boolean; dir: "asc" | "desc" };
 };
 
 const hide = { sm: "hidden sm:table-cell", md: "hidden md:table-cell", lg: "hidden lg:table-cell" };
@@ -51,8 +53,18 @@ export function DataTable<T>({
                   c.align === "right" && "text-right",
                   c.hideBelow && hide[c.hideBelow]
                 )}
+                aria-sort={c.sort?.active ? (c.sort.dir === "asc" ? "ascending" : "descending") : undefined}
               >
-                {c.header}
+                {c.sort ? (
+                  <Link href={c.sort.href} className={cx("inline-flex items-center gap-1 rounded hover:text-ink", c.sort.active && "text-ink")}>
+                    {c.header}
+                    <span aria-hidden="true" className={cx("text-[10px]", !c.sort.active && "opacity-30")}>
+                      {c.sort.active && c.sort.dir === "asc" ? "▲" : "▼"}
+                    </span>
+                  </Link>
+                ) : (
+                  c.header
+                )}
               </th>
             ))}
           </tr>
