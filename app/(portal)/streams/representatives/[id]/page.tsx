@@ -45,14 +45,14 @@ export default async function RepresentativePage({ params }: { params: Promise<{
           </div>
         }
       />
-      <div className="mb-6 grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="mb-[var(--space-gap)] grid grid-cols-1 gap-cards @min-[34rem]:grid-cols-2 @min-[60rem]:grid-cols-4">
         <StatCard label="Deals credited" value={String(d.dealsCount)} detail={`${formatMoney(d.revenueBaseMinor, base, { cents: false })} paid · ${formatMoney(d.outstandingBaseMinor, base, { cents: false })} outstanding`} />
         <StatCard label="Commission earned" value={formatMoney(d.commissionEarnedBaseMinor, base)} detail="On paid deals" />
         <StatCard label="Paid out" value={formatMoney(d.commissionPaidBaseMinor, base)} detail={`${d.payouts.length} payouts`} />
         <StatCard label="Owed" value={owed} note={d.commissionOwedBaseMinor > 0 ? "Due" : "Settled"} noteTone={d.commissionOwedBaseMinor > 0 ? "amber" : "green"} />
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[1.5fr_1fr]">
+      <div className="grid grid-cols-1 gap-cards @min-[72rem]:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
         <Card>
           <CardHeader title="Deals credited" subtitle="Most recent 100" />
           <DataTable

@@ -41,8 +41,8 @@ function ProfileMenu({ name, email }: { name: string; email: string }) {
       {open && (
         <div role="menu" className="glass absolute right-0 top-14 z-40 w-64 p-2">
           <div className="border-b border-line px-3 pb-3 pt-2">
-            <p className="truncate text-sm font-semibold text-ink">{name}</p>
-            <p className="truncate text-xs text-muted">{email}</p>
+            <p className="clamp-2 text-sm font-semibold text-ink">{name}</p>
+            <p className="clamp-2 text-xs text-muted">{email}</p>
           </div>
           <div className="pt-2">
             <Link role="menuitem" href="/account" className={item} onClick={() => setOpen(false)}>

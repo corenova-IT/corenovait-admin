@@ -16,7 +16,8 @@
     "gen:key": "node scripts/gen-key.mjs",
     "db:local": "node scripts/dev-db.mjs",
     "seed:dev": "tsx --conditions=react-server scripts/seed-dev.ts",
-    "admin:sql": "tsx scripts/admin-sql.ts"
+    "admin:sql": "tsx scripts/admin-sql.ts",
+    "test:layout": "next build --webpack && playwright test"
   },
   "dependencies": {
     "@node-rs/argon2": "^2.2.2",
@@ -31,6 +32,7 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.1",
     "@tailwindcss/postcss": "^4.3.3",
     "@types/node": "^26.6.5",
     "@types/qrcode": "^1.5.6",

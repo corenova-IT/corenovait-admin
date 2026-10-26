@@ -45,13 +45,13 @@ export default async function CountryPage({ params, searchParams }: { params: Pr
           </div>
         }
       />
-      <div className="mb-6 grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label={`Revenue in ${base}`} value={formatMoney(d.revenueBaseMinor, base, { cents: false })} detail={`Paid invoices, ${PERIOD_LABEL[period]}`} />
-        <StatCard label="Outstanding" value={formatMoney(d.outstandingBaseMinor, base, { cents: false })} note={`${d.outstandingCount} unpaid`} noteTone={d.outstandingBaseMinor > 0 ? "amber" : "neutral"} detail="Pending + overdue" />
-        <StatCard label="Paid deals" value={String(d.deals)} detail="Income entries marked paid" />
-        <StatCard label="Average deal" value={formatMoney(d.averageBaseMinor, base, { cents: false })} detail="Revenue ÷ deals" />
+      <div className="mb-[var(--space-gap)] grid grid-cols-1 gap-cards @min-[34rem]:grid-cols-2 @min-[60rem]:grid-cols-4">
+        <StatCard label={`Revenue in ${base}`} value={formatMoney(d.revenueBaseMinor, base, { cents: false })} note="Paid" detail={PERIOD_LABEL[period]} />
+        <StatCard label="Outstanding" value={formatMoney(d.outstandingBaseMinor, base, { cents: false })} note={d.outstandingCount ? `${d.outstandingCount} unpaid` : "All paid"} noteTone={d.outstandingBaseMinor > 0 ? "amber" : "neutral"} detail="Pending + overdue" />
+        <StatCard label="Paid deals" value={String(d.deals)} note={PERIOD_LABEL[period]} detail="Income entries marked paid" />
+        <StatCard label="Average deal" value={d.deals ? formatMoney(d.averageBaseMinor, base, { cents: false }) : "None yet"} note="Per paid deal" detail="Revenue ÷ deals" />
       </div>
-      <div className="mb-6 grid gap-6 lg:grid-cols-[1.6fr_1fr]">
+      <div className="mb-[var(--space-gap)] grid grid-cols-1 gap-cards @min-[64rem]:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
         <Card>
           <CardHeader title="Revenue by month" subtitle={`Last 12 months, in ${base}`} />
           <MonthBars data={d.monthly.map((m) => ({ month: m.month, value: m.totalBaseMinor }))} currency={base} label={`${d.country.name}: revenue by month`} />
@@ -61,29 +61,31 @@ export default async function CountryPage({ params, searchParams }: { params: Pr
           {d.byCurrency.length === 0 ? (
             <p className="text-sm text-muted">Nothing received for this period.</p>
           ) : (
-            <table className="w-full text-left font-mono text-sm">
-              <caption className="sr-only">Revenue by original currency</caption>
-              <thead>
-                <tr className="label-mono">
-                  <th scope="col" className="pb-3 font-normal">Currency</th>
-                  <th scope="col" className="pb-3 text-right font-normal">Received</th>
-                  <th scope="col" className="pb-3 text-right font-normal">{base}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {d.byCurrency.map((c) => (
-                  <tr key={c.currency} className="border-t border-line">
-                    <th scope="row" className="py-3 font-normal text-ink-2">{c.currency}</th>
-                    <td className="py-3 text-right text-ink">{formatMoney(c.totalMinor, c.currency)}</td>
-                    <td className="py-3 text-right font-semibold text-ink">{formatMoney(c.totalBaseMinor, base)}</td>
+            <div className="scroll-x -mx-2 px-2">
+              <table className="w-full text-left font-mono text-sm">
+                <caption className="sr-only">Revenue by original currency</caption>
+                <thead>
+                  <tr className="label-mono">
+                    <th scope="col" className="pb-3 font-normal">Currency</th>
+                    <th scope="col" className="pb-3 text-right font-normal">Received</th>
+                    <th scope="col" className="pb-3 text-right font-normal">{base}</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {d.byCurrency.map((c) => (
+                    <tr key={c.currency} className="border-t border-line">
+                      <th scope="row" className="py-3 font-normal text-ink-2">{c.currency}</th>
+                      <td className="whitespace-nowrap py-3 pl-3 text-right text-ink">{formatMoney(c.totalMinor, c.currency)}</td>
+                      <td className="whitespace-nowrap py-3 pl-3 text-right font-semibold text-ink">{formatMoney(c.totalBaseMinor, base)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </Card>
       </div>
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-cards @min-[64rem]:grid-cols-2">
         <Card>
           <CardHeader title="By stream" subtitle={PERIOD_LABEL[period]} />
           <BarList currency={base} items={d.byStream.map((s) => ({ key: String(s.id), label: s.name, value: s.totalBaseMinor, href: `/streams/${s.id}?period=${period}`, note: `${s.deals} deals` }))} />

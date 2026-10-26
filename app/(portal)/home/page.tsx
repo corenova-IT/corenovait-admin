@@ -9,14 +9,15 @@ import { Card, CardHeader } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Pill, PillSwitch } from "@/components/ui/Pill";
 import { EmptyState } from "@/components/ui/States";
+import { FitText } from "@/components/ui/FitText";
 import { StatCard } from "@/components/ui/StatCard";
 import { requirePerm } from "@/lib/auth/session";
 import { countryFilter, financeSummary } from "@/lib/dal/analytics";
 import { hasSampleData } from "@/lib/dal/finance";
 import { hasPerm } from "@/lib/dal/guard";
 import { paymentsOverview } from "@/lib/dal/payments";
-import { dueLabel, fmtDate, fmtMonth } from "@/lib/format";
-import { formatMoney, splitMinor } from "@/lib/money";
+import { dueLabel, fmtMonth, fmtShortDate } from "@/lib/format";
+import { formatMoney } from "@/lib/money";
 
 export const metadata = { title: "Overview" };
 
@@ -24,26 +25,21 @@ const COUNTRY_NAME = { GB: "UK", AU: "Australia" } as const;
 
 /** "+18.2%" with a tone: up is good for revenue and profit, bad for expenses. */
 function change(pct: number | null, upIsGood: boolean): { note: string; tone: "green" | "amber" | "red" | "neutral" } {
-  if (pct === null) return { note: "No earlier data", tone: "neutral" };
+  if (pct === null) return { note: "No prior period", tone: "neutral" };
   const good = upIsGood ? pct >= 0 : pct <= 0;
   return { note: `${pct >= 0 ? "+" : ""}${pct.toFixed(1)}%`, tone: good ? "green" : upIsGood ? "red" : "amber" };
 }
 
-/** "A$694,000" and ".00" separately, for the lighter-grey decimals. */
-const parts = (minor: number, currency: string) => splitMinor(BigInt(minor), currency);
-
-/** A later phase's card: no numbers until the data exists. */
+/** A later phase's card: no numbers until the data exists. The phase tag sits above the title so it never squeezes it. */
 function ComingTile({ icon, title, phase, children, className }: { icon: React.ReactNode; title: string; phase: number; children: React.ReactNode; className?: string }) {
   return (
     <Card className={`flex flex-col gap-3 ${className ?? ""}`}>
-      <div className="flex items-center justify-between gap-3">
-        <h2 className="font-display text-[20px] font-bold tracking-[-0.02em] text-ink">{title}</h2>
+      <div className="flex items-center gap-2 text-ink-2">
+        {icon}
         <Pill>Phase {phase}</Pill>
       </div>
-      <div className="flex items-start gap-3 text-sm text-muted">
-        <span className="mt-0.5 text-ink-2">{icon}</span>
-        <p>{children}</p>
-      </div>
+      <h2 className="title-card font-bold tracking-[-0.02em] text-ink">{title}</h2>
+      <p className="text-sm text-muted">{children}</p>
     </Card>
   );
 }
@@ -77,9 +73,9 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   const rev = change(s.totals.change.revenue, true);
   const pro = change(s.totals.change.profit, true);
   const exp = change(s.totals.change.expenses, false);
-  const revM = parts(cur.revenueBaseMinor, base);
-  const proM = parts(cur.profitBaseMinor, base);
-  const expM = parts(cur.expensesBaseMinor, base);
+  const whole = (minor: number) => formatMoney(minor, base, { cents: false });
+  // sparklines show complete months only, so a month in progress doesn't look like a drop
+  const done = s.lastMonthPartial ? series.slice(0, -1) : series;
   const upcoming = payments?.timeline.filter((x) => x.daysUntil <= 30) ?? [];
   const ukAu = s.byCountry.filter((c) => c.code === "GB" || c.code === "AU").reduce((a, c) => a + c.sharePct, 0);
 
@@ -105,49 +101,49 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
         }
       />
 
-      {/* bento grid: 12 columns on wide screens, cards of different sizes */}
-      <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-12">
-        <div className="xl:col-span-3">
-          <StatCard label="Total revenue" value={revM.main} decimals={revM.decimals} note={rev.note} noteTone={rev.tone} detail={`${scope} · paid · vs prior year`} trend={series.map((m) => m.revenueBaseMinor)} />
+      {/* bento grid: sized to the content area (container query), 12 columns when there is room */}
+      <div className="grid grid-cols-1 gap-cards @min-[40rem]:grid-cols-2 @min-[60rem]:grid-cols-12">
+        <div className="@min-[60rem]:col-span-3">
+          <StatCard label="Total revenue" value={whole(cur.revenueBaseMinor)} note={rev.note} noteTone={rev.tone} detail={`${scope} · paid · vs prior year`} trend={done.map((m) => m.revenueBaseMinor)} />
         </div>
-        <div className="xl:col-span-3">
-          <StatCard label="Net profit" value={proM.main} decimals={proM.decimals} note={pro.note} noteTone={pro.tone} detail={s.marginPct === null ? `${scope} · vs prior year` : `${s.marginPct}% margin · vs prior year`} trend={series.map((m) => m.profitBaseMinor)} />
+        <div className="@min-[60rem]:col-span-3">
+          <StatCard label="Net profit" value={whole(cur.profitBaseMinor)} note={pro.note} noteTone={pro.tone} detail={s.marginPct === null ? `${scope} · vs prior year` : `${s.marginPct}% margin · vs prior year`} trend={done.map((m) => m.profitBaseMinor)} />
         </div>
-        <div className="xl:col-span-3">
+        <div className="@min-[60rem]:col-span-3">
           <StatCard
             label="Total expenses"
-            value={expM.main}
-            decimals={expM.decimals}
+            value={whole(cur.expensesBaseMinor)}
             note={exp.note}
             noteTone={exp.tone}
-            detail={country ? `${COUNTRY_NAME[country]} costs · shared ${formatMoney(s.sharedExpensesExcludedBaseMinor, base, { cents: false })} not included` : `${scope} · vs prior year`}
-            trend={series.map((m) => m.expensesBaseMinor)}
+            detail={country ? `${COUNTRY_NAME[country]} costs · shared ${whole(s.sharedExpensesExcludedBaseMinor)} not included` : `${scope} · vs prior year`}
+            trend={done.map((m) => m.expensesBaseMinor)}
           />
         </div>
-        <div className="xl:col-span-3">
+        <div className="@min-[60rem]:col-span-3">
           {payments ? (
             <StatCard
               label="Upcoming payments"
-              value={formatMoney(payments.due30.totalBaseMinor, base, { cents: false })}
+              value={whole(payments.due30.totalBaseMinor)}
               note={`${payments.due30.count} ${payments.due30.count === 1 ? "payment" : "payments"} due`}
               noteTone={payments.due30.count ? "amber" : "neutral"}
               detail={payments.overdue.count ? `Next 30 days · ${payments.overdue.count} overdue` : "Next 30 days"}
             />
           ) : (
-            <StatCard label="Upcoming payments" value="—" detail="You don't have access to payments" />
+            <StatCard label="Upcoming payments" value="No access" detail="Ask an admin for access to payments" />
           )}
         </div>
 
-        <Card className="md:col-span-2 xl:col-span-8">
+        <Card className="@min-[40rem]:col-span-2 @min-[60rem]:col-span-8">
           <CardHeader title="Revenue, expenses and profit" subtitle={`${scope} · by month`} />
           <TrendChart
             data={series.map((m) => ({ month: m.month, revenue: m.revenueBaseMinor, expenses: m.expensesBaseMinor, profit: m.profitBaseMinor }))}
             currency={base}
             label={`Revenue, expenses and profit by month, ${range}`}
+            partialLast={s.lastMonthPartial}
           />
         </Card>
 
-        <Card className="xl:col-span-4">
+        <Card className="@min-[60rem]:col-span-4">
           <CardHeader title="Revenue by source" subtitle="Paid, last 12 months" />
           {s.byStream.length === 0 ? (
             <p className="text-sm text-muted">No paid revenue in this period.</p>
@@ -156,7 +152,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
           )}
         </Card>
 
-        <Card className="xl:col-span-5">
+        <Card className="@min-[60rem]:col-span-5">
           <CardHeader title="Revenue by country" aside={!country && s.byCountry.length > 0 ? <Pill>UK + AUS = {Math.round(ukAu)}%</Pill> : undefined} />
           <BarList
             currency={base}
@@ -165,10 +161,10 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
           {!country && <p className="mt-5 rounded-[14px] border border-line bg-surface-2 px-4 py-3 text-sm text-ink-2">Use the country switch at the top to see revenue, profit and costs for the UK or Australia alone.</p>}
         </Card>
 
-        <Card className="md:col-span-2 xl:col-span-7">
+        <Card className="@min-[40rem]:col-span-2 @min-[60rem]:col-span-7">
           <CardHeader
             title="Upcoming payments"
-            subtitle={payments ? `${formatMoney(payments.due30.totalBaseMinor, base, { cents: false })} · next 30 days` : undefined}
+            subtitle={payments ? `${whole(payments.due30.totalBaseMinor)} · next 30 days` : undefined}
             aside={canPayments ? <Link href="/payments" className="text-sm text-accent-text hover:underline">Open payments</Link> : undefined}
           />
           {!payments ? (
@@ -178,19 +174,17 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
           ) : (
             <ol className="flex flex-col divide-y divide-line">
               {upcoming.slice(0, 6).map((x) => (
-                <li key={`${x.subscriptionId}-${x.dueDate}`} className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
-                  <span className="flex min-w-0 items-center gap-3">
-                    <span className="grid size-9 shrink-0 place-items-center rounded-xl border border-line font-display font-bold text-ink">{x.vendor.slice(0, 1).toUpperCase()}</span>
-                    <span className="min-w-0">
-                      <span className="block truncate font-medium text-ink">{x.vendor}</span>
-                      <span className="block text-xs text-muted">
-                        {x.category} · due {fmtDate(x.dueDate)}
-                      </span>
+                <li key={`${x.subscriptionId}-${x.dueDate}`} className="flex min-h-14 items-center gap-3 py-2.5 first:pt-0 last:pb-0">
+                  <span className="grid size-9 shrink-0 place-items-center rounded-xl border border-line font-display font-bold text-ink">{x.vendor.slice(0, 1).toUpperCase()}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="clamp-2 font-medium leading-snug text-ink">{x.vendor}</span>
+                    <span className="block whitespace-nowrap text-xs text-muted">
+                      {x.category} · {fmtShortDate(x.dueDate)}
                     </span>
                   </span>
-                  <span className="flex shrink-0 items-center gap-3">
+                  <span className="flex shrink-0 flex-col items-end gap-1">
+                    <span className="num font-mono text-sm font-semibold text-ink">{whole(x.amountBaseMinor)}</span>
                     <Badge tone={x.overdue ? "red" : x.dueSoon ? "amber" : "neutral"}>{dueLabel(x.daysUntil)}</Badge>
-                    <span className="num font-mono text-sm font-semibold text-ink">{formatMoney(x.amountBaseMinor, base, { cents: false })}</span>
                   </span>
                 </li>
               ))}
@@ -198,12 +192,15 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
           )}
         </Card>
 
-        <Card className="xl:col-span-3" accent={cur.outstandingBaseMinor > 0}>
-          <CardHeader title="Outstanding" subtitle="Invoiced, not yet paid" aside={cur.outstandingBaseMinor > 0 ? <Badge tone="amber">Follow up</Badge> : <Badge tone="green">All paid</Badge>} />
-          <p className="num text-[34px] font-bold leading-none text-warning">{formatMoney(cur.outstandingBaseMinor, base, { cents: false })}</p>
-          <p className="mt-3 text-sm text-muted">Pending and overdue invoices from the last 12 months{country ? ` (${COUNTRY_NAME[country]})` : ""}. Not counted in revenue until marked paid.</p>
+        <Card className="@container flex flex-col @min-[60rem]:col-span-3" accent={cur.outstandingBaseMinor > 0}>
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <h2 className="title-card mr-auto font-bold tracking-[-0.02em] text-ink">Outstanding</h2>
+            {cur.outstandingBaseMinor > 0 ? <Badge tone="amber">Follow up</Badge> : <Badge tone="green">All paid</Badge>}
+          </div>
+          <FitText className="kpi-number font-bold text-warning">{whole(cur.outstandingBaseMinor)}</FitText>
+          <p className="mt-3 text-sm text-muted">Invoiced, not yet paid: pending and overdue invoices from the last 12 months{country ? ` (${COUNTRY_NAME[country]})` : ""}. Not counted in revenue until marked paid.</p>
           {hasPerm(user, "transactions", "view") && (
-            <div className="mt-4 flex flex-wrap gap-2">
+            <div className="mt-auto flex flex-wrap gap-2 pt-4">
               <ButtonLink size="sm" variant="secondary" href={`/transactions?tab=income&status=overdue${country ? `&country=${country}` : ""}`}>
                 Overdue
               </ButtonLink>
@@ -213,13 +210,13 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
             </div>
           )}
         </Card>
-        <ComingTile className="xl:col-span-3" icon={<IconMegaphone />} title="Marketing snapshot" phase={3}>
+        <ComingTile className="@min-[60rem]:col-span-3" icon={<IconMegaphone />} title="Marketing snapshot" phase={3}>
           Contacts reached, response rate and deals won will appear here once marketing activity is logged.
         </ComingTile>
-        <ComingTile className="xl:col-span-3" icon={<IconCalendar />} title="Next meetings" phase={4}>
+        <ComingTile className="@min-[60rem]:col-span-3" icon={<IconCalendar />} title="Next meetings" phase={4}>
           Your next meetings from the calendar.
         </ComingTile>
-        <ComingTile className="xl:col-span-3" icon={<IconTasks />} title="Team tasks this week" phase={4}>
+        <ComingTile className="@min-[60rem]:col-span-3" icon={<IconTasks />} title="Team tasks this week" phase={4}>
           Progress per team member from the task board.
         </ComingTile>
       </div>

@@ -45,7 +45,7 @@ export default async function StreamPage({ params, searchParams }: { params: Pro
           </div>
         }
       />
-      <div className="mb-6 grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="mb-[var(--space-gap)] grid grid-cols-1 gap-cards @min-[34rem]:grid-cols-2 @min-[60rem]:grid-cols-4">
         <StatCard label="Revenue" value={formatMoney(d.revenueBaseMinor, base, { cents: false })} detail={`Paid invoices, ${PERIOD_LABEL[period]}`} />
         <StatCard label="Outstanding" value={formatMoney(d.outstandingBaseMinor, base, { cents: false })} note={`${d.outstandingCount} unpaid`} noteTone={d.outstandingBaseMinor > 0 ? "amber" : "neutral"} detail="Pending + overdue" />
         <StatCard label="Paid deals" value={String(d.deals)} detail="Income entries marked paid" />
@@ -55,7 +55,7 @@ export default async function StreamPage({ params, searchParams }: { params: Pro
         <CardHeader title="Revenue by month" subtitle="Last 12 months" />
         <MonthBars data={d.monthly.map((m) => ({ month: m.month, value: m.totalBaseMinor }))} currency={base} label={`${d.stream.name}: revenue by month`} />
       </Card>
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-cards @min-[64rem]:grid-cols-2">
         <Card>
           <CardHeader title="By country" subtitle={PERIOD_LABEL[period]} />
           <BarList

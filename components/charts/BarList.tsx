@@ -24,7 +24,7 @@ export function BarList({
         const name = (
           <span className="flex min-w-0 items-center gap-3">
             {i.tag && <span className="rounded-lg border border-line px-2 py-0.5 font-mono text-[11px] text-ink-2">{i.tag}</span>}
-            <span className="truncate font-medium text-ink">{i.label}</span>
+            <span className="clamp-2 font-medium text-ink">{i.label}</span>
           </span>
         );
         return (

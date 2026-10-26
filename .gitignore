@@ -31,3 +31,8 @@ Thumbs.db
 /backups/
 *.sql.gz
 *.dump
+
+# browser layout test state (sessions for throwaway test users) and reports
+/.e2e/
+/test-results/
+/playwright-report/

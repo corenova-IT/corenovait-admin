@@ -178,39 +178,42 @@ export function SubscriptionActions({
   const ended = sub.status === "cancelled" || sub.status === "completed";
 
   return (
-    <div className="flex flex-wrap justify-end gap-2">
+    <div className="flex flex-nowrap justify-end gap-2">
       {can.edit && live && (
         <Button size="sm" onClick={() => setPanel("paid")} aria-label={`Mark ${sub.vendor} as paid`}>
           Mark paid
         </Button>
       )}
       {can.edit && !ended && (
-        <Button size="sm" variant="secondary" onClick={() => setPanel("edit")} aria-label={`Edit ${sub.vendor}`}>
-          Edit
+        <Button size="sm" variant="secondary" onClick={() => setPanel("edit")} aria-label={`Manage ${sub.vendor}`}>
+          Manage
         </Button>
       )}
-      {can.edit && !ended && (
-        <form action={statusAction}>
-          <input type="hidden" name="id" value={sub.id} />
-          <input type="hidden" name="status" value={live ? "paused" : "active"} />
-          <Button type="submit" size="sm" variant="ghost" disabled={statusPending} aria-label={`${live ? "Pause" : "Resume"} ${sub.vendor}`}>
-            {live ? "Pause" : "Resume"}
-          </Button>
-        </form>
-      )}
-      {can.edit && !ended && (
-        <Button size="sm" variant="ghost" onClick={() => setPanel("cancel")} aria-label={`Cancel ${sub.vendor}`}>
-          Cancel
-        </Button>
-      )}
-      {can.delete && (
+      {ended && can.delete && (
         <Button size="sm" variant="ghost" className="text-accent-text" onClick={() => setPanel("delete")} aria-label={`Delete ${sub.vendor}`}>
           Delete
         </Button>
       )}
-      {statusState.error && <p className="w-full text-right text-xs text-accent-text">{statusState.error}</p>}
 
-      <Drawer open={panel === "edit"} onClose={close} wide title={`Edit ${sub.vendor}`}>
+      <Drawer open={panel === "edit"} onClose={close} wide title={`Manage ${sub.vendor}`}>
+        <div className="mb-6 flex flex-wrap items-center gap-2 border-b border-line pb-5">
+          <form action={statusAction}>
+            <input type="hidden" name="id" value={sub.id} />
+            <input type="hidden" name="status" value={live ? "paused" : "active"} />
+            <Button type="submit" size="sm" variant="secondary" disabled={statusPending}>
+              {live ? "Pause payments" : "Resume payments"}
+            </Button>
+          </form>
+          <Button size="sm" variant="ghost" onClick={() => setPanel("cancel")}>
+            Cancel subscription
+          </Button>
+          {can.delete && (
+            <Button size="sm" variant="ghost" className="text-accent-text" onClick={() => setPanel("delete")}>
+              Delete
+            </Button>
+          )}
+          {statusState.error && <p className="w-full text-xs text-accent-text">{statusState.error}</p>}
+        </div>
         <SubscriptionForm sub={sub} lookups={lookups} action={actions.save} onSaved={close} />
       </Drawer>
 

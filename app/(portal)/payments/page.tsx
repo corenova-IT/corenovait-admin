@@ -11,7 +11,7 @@ import { countryFilter } from "@/lib/dal/analytics";
 import { financeLookups, hasSampleData } from "@/lib/dal/finance";
 import { hasPerm } from "@/lib/dal/guard";
 import { CYCLE_LABEL, paymentsOverview, responsibleCandidates, type Occurrence, type SubscriptionRow } from "@/lib/dal/payments";
-import { dueLabel, fmtDate, hrefWith } from "@/lib/format";
+import { dueLabel, fmtShortDate, hrefWith } from "@/lib/format";
 import { formatMoney } from "@/lib/money";
 import { deleteSubscription, markPaid, saveSubscription, setStatus } from "./actions";
 
@@ -54,6 +54,7 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
   const shown = o.timeline.filter((x) => x.daysUntil <= windowDays);
   const shownTotal = shown.reduce((a, x) => a + x.amountBaseMinor, 0);
   const keep = { window: sp.window, country };
+  const whole = (minor: number) => formatMoney(minor, base, { cents: false });
   const actions = { save: saveSubscription, setStatus, markPaid, remove: deleteSubscription };
 
   const columns: Column<SubscriptionRow>[] = [
@@ -61,19 +62,18 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
       key: "vendor",
       header: "Paid to",
       cell: (s) => (
-        <div className="min-w-[160px]">
-          <p className="font-medium text-ink">{s.vendor}</p>
-          <p className="text-sm text-muted">{[s.category, s.description].filter(Boolean).join(" · ")}</p>
+        <div className="min-w-0">
+          <p className="clamp-2 font-medium leading-snug text-ink">{s.vendor}</p>
+          <p className="clamp-2 text-sm text-muted">{[s.category, CYCLE_LABEL[s.billingCycle], s.countryCode ?? "Shared"].filter(Boolean).join(" · ")}</p>
         </div>
       ),
     },
-    { key: "cycle", header: "Billing", hideBelow: "md", cell: (s) => <span className="text-ink-2">{CYCLE_LABEL[s.billingCycle]}</span> },
     {
       key: "amount",
       header: "Amount",
       align: "right",
       cell: (s) => (
-        <span className="num font-mono">
+        <span className="num whitespace-nowrap font-mono">
           {formatMoney(s.amountMinor, s.currency)}
           {s.monthlyBaseMinor > 0 && s.billingCycle !== "monthly" && <span className="block text-xs text-muted">{formatMoney(s.monthlyBaseMinor, base)}/mo</span>}
         </span>
@@ -84,8 +84,8 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
       header: "Next due",
       cell: (s) =>
         s.status === "active" ? (
-          <span className="flex flex-col gap-1">
-            <span className="font-mono text-sm text-ink-2">{fmtDate(s.nextDueDate)}</span>
+          <span className="flex flex-col items-start gap-1">
+            <span className="whitespace-nowrap font-mono text-sm text-ink-2">{fmtShortDate(s.nextDueDate)}</span>
             <Badge tone={s.overdue ? "red" : s.dueSoon ? "amber" : "neutral"}>{dueLabel(s.daysUntilDue)}</Badge>
           </span>
         ) : (
@@ -93,16 +93,6 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
         ),
     },
     { key: "status", header: "Status", cell: (s) => <Badge tone={STATUS[s.status][1]}>{STATUS[s.status][0]}</Badge> },
-    {
-      key: "who",
-      header: "Details",
-      hideBelow: "lg",
-      cell: (s) => (
-        <span className="text-sm text-ink-2">
-          {[s.responsibleName, s.paidFrom, s.countryCode ?? "Shared", `remind ${s.reminderDays}d`].filter(Boolean).join(" · ")}
-        </span>
-      ),
-    },
     { key: "actions", header: "", align: "right", cell: (s) => <SubscriptionActions sub={subView(s)} lookups={lookups} can={can} actions={actions} /> },
   ];
 
@@ -127,18 +117,19 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
           </div>
         }
       />
-      <div className="mb-6 grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Due next 30 days" value={formatMoney(o.due30.totalBaseMinor, base)} note={`${o.due30.count} payments`} noteTone={o.due30.count ? "amber" : "neutral"} detail={`60 days ${formatMoney(o.due60.totalBaseMinor, base, { cents: false })} · 90 days ${formatMoney(o.due90.totalBaseMinor, base, { cents: false })}`} />
-        <StatCard label="Monthly recurring" value={formatMoney(o.monthlyRecurringBaseMinor, base)} detail="Active subscriptions as a monthly cost (weekly × 52 ÷ 12, yearly ÷ 12)" />
-        <StatCard label="Overdue" value={formatMoney(o.overdue.totalBaseMinor, base)} note={o.overdue.count ? `${o.overdue.count} not marked paid` : "Nothing overdue"} noteTone={o.overdue.count ? "red" : "green"} detail="Past the due date" />
-        <StatCard label="Active" value={String(o.activeCount)} detail={`${o.subscriptions.length - o.activeCount} paused, cancelled or completed`} />
+      <div className="mb-[var(--space-gap)] grid grid-cols-1 gap-cards @min-[34rem]:grid-cols-2 @min-[60rem]:grid-cols-4">
+        <StatCard label="Due next 30 days" value={whole(o.due30.totalBaseMinor)} note={`${o.due30.count} payments`} noteTone={o.due30.count ? "amber" : "neutral"} detail={`60 days ${whole(o.due60.totalBaseMinor)} · 90 days ${whole(o.due90.totalBaseMinor)}`} />
+        <StatCard label="Monthly recurring" value={whole(o.monthlyRecurringBaseMinor)} note="Per month" detail="Active subscriptions (weekly × 52 ÷ 12, yearly ÷ 12)" />
+        <StatCard label="Overdue" value={whole(o.overdue.totalBaseMinor)} note={o.overdue.count ? `${o.overdue.count} not marked paid` : "Nothing overdue"} noteTone={o.overdue.count ? "red" : "green"} detail="Past the due date" />
+        <StatCard label="Active" value={String(o.activeCount)} note={o.activeCount === 1 ? "Subscription" : "Subscriptions"} detail={`${o.subscriptions.length - o.activeCount} paused, cancelled or completed`} />
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[1fr_1.6fr]">
+      {/* side by side only when the table has room to fit without scrolling; stacked (timeline first) otherwise */}
+      <div className="grid grid-cols-1 gap-cards @min-[100rem]:grid-cols-[minmax(0,1fr)_minmax(0,1.7fr)]">
         <Card>
           <CardHeader
             title="Upcoming"
-            subtitle={`${shown.length} payments · ${formatMoney(shownTotal, base)}`}
+            subtitle={`${shown.length} payments · ${whole(shownTotal)}`}
             aside={
               <PillSwitch
                 label="Window"
@@ -150,21 +141,19 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
           {shown.length === 0 ? (
             <EmptyState title="Nothing due">No active payments fall due in the next {windowDays} days.</EmptyState>
           ) : (
-            <ol className="flex flex-col divide-y divide-line">
+            <ol className="grid-fill [--min:20rem] [row-gap:0]">
               {shown.map((x: Occurrence) => (
-                <li key={`${x.subscriptionId}-${x.dueDate}`} className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0">
-                  <span className="flex min-w-0 items-center gap-3">
-                    <span className="grid size-10 shrink-0 place-items-center rounded-xl border border-line font-display font-bold text-ink">{x.vendor.slice(0, 1).toUpperCase()}</span>
-                    <span className="min-w-0">
-                      <span className="block truncate font-medium text-ink">{x.vendor}</span>
-                      <span className="block text-xs text-muted">
-                        {x.category} · due {fmtDate(x.dueDate)}
-                      </span>
+                <li key={`${x.subscriptionId}-${x.dueDate}`} className="flex min-h-14 items-center gap-3 border-b border-line/70 py-2.5">
+                  <span className="grid size-9 shrink-0 place-items-center rounded-xl border border-line font-display font-bold text-ink">{x.vendor.slice(0, 1).toUpperCase()}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="clamp-2 font-medium leading-snug text-ink">{x.vendor}</span>
+                    <span className="block whitespace-nowrap text-xs text-muted">
+                      {x.category} · {fmtShortDate(x.dueDate)}
                     </span>
                   </span>
-                  <span className="flex shrink-0 items-center gap-3">
+                  <span className="flex shrink-0 flex-col items-end gap-1">
+                    <span className="num whitespace-nowrap font-mono text-sm font-semibold text-ink">{formatMoney(x.amountBaseMinor, base)}</span>
                     <Badge tone={x.overdue ? "red" : x.dueSoon ? "amber" : "neutral"}>{dueLabel(x.daysUntil)}</Badge>
-                    <span className="num w-24 text-right font-mono font-semibold text-ink">{formatMoney(x.amountBaseMinor, base)}</span>
                   </span>
                 </li>
               ))}

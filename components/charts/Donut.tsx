@@ -54,7 +54,7 @@ export function Donut({ items, currency, caption, centerLabel }: { items: Array<
           <li key={it.key} className="flex items-center justify-between gap-3 text-[15px]">
             <span className="flex min-w-0 items-center gap-3">
               <span className="size-3 shrink-0 rounded-[3px]" style={{ background: COLOURS[i % COLOURS.length] }} aria-hidden="true" />
-              <span className="truncate text-ink">{it.label}</span>
+              <span className="clamp-2 text-ink">{it.label}</span>
             </span>
             <span className="flex shrink-0 gap-4 font-mono text-sm">
               <span className="text-muted">{formatCompact(it.value, currency)}</span>

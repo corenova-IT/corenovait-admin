@@ -17,7 +17,7 @@ export default async function SettingsPage() {
   return (
     <>
       <PageHeader title="Settings" subtitle="Lists used across the portal · admin only · every change is in the audit log" />
-      <div className="grid gap-6 xl:grid-cols-2">
+      <div className="grid grid-cols-1 gap-cards @min-[64rem]:grid-cols-2">
         <Card>
           <CardHeader
             title="Revenue streams"

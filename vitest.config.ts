@@ -11,6 +11,7 @@ export default defineConfig({
   },
   test: {
     include: ["tests/**/*.test.ts"],
+    exclude: ["tests/e2e/**", "node_modules/**"],
     // starts one throwaway MySQL 8 server for the whole run (or uses TEST_DATABASE_URL)
     globalSetup: ["tests/mysql-global-setup.ts"],
     testTimeout: 60_000,

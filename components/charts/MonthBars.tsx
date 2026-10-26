@@ -65,17 +65,20 @@ export function MonthBars({ data, currency, label }: { data: Array<{ month: stri
           );
         })}
       </svg>
-      <table className="sr-only">
-        <caption>{label}</caption>
-        <tbody>
-          {data.map((d) => (
-            <tr key={d.month}>
-              <th scope="row">{fmtMonth(d.month, true)}</th>
-              <td>{formatMoney(d.value, currency)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      {/* a table ignores width:1px and overflow, so the screen-reader copy sits in a hidden div */}
+      <div className="sr-only">
+        <table>
+          <caption>{label}</caption>
+          <tbody>
+            {data.map((d) => (
+              <tr key={d.month}>
+                <th scope="row">{fmtMonth(d.month, true)}</th>
+                <td>{formatMoney(d.value, currency)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </figure>
   );
 }

@@ -15,7 +15,7 @@ export function TopClients({ clients, currency, subtitle }: { clients: Array<{ c
               <span className="flex min-w-0 items-center gap-3">
                 <Avatar name={c.client} />
                 <span className="min-w-0">
-                  <span className="block truncate font-medium text-ink">{c.client}</span>
+                  <span className="clamp-2 leading-snug font-medium text-ink">{c.client}</span>
                   <span className="font-mono text-xs text-muted">
                     {c.deals} {c.deals === 1 ? "deal" : "deals"}
                   </span>

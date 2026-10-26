@@ -68,6 +68,16 @@ const expenseView = (r: ExpenseRow): ExpenseView => ({
   notes: r.notes,
 });
 
+/** Amount in the base currency, with the original amount underneath when it was in another currency. */
+function Amount({ base, original }: { base: string; original: string | null }) {
+  return (
+    <span className="num block whitespace-nowrap font-mono">
+      <span className="font-semibold text-ink">{base}</span>
+      {original && <span className="block text-xs text-muted">{original}</span>}
+    </span>
+  );
+}
+
 export default async function TransactionsPage({ searchParams }: { searchParams: Promise<SP> }) {
   const actor = await requirePerm("transactions");
   const sp = await searchParams;
@@ -99,15 +109,15 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
   const page = filters.page ?? 1;
 
   const incomeColumns: Column<IncomeRow>[] = [
-    { key: "date", header: "Date", sort: sortLink("date", "desc"), cell: (r) => <span className="font-mono text-sm text-ink-2">{fmtDate(r.entryDate)}</span> },
+    { key: "date", header: "Date", sort: sortLink("date", "desc"), cell: (r) => <span className="whitespace-nowrap font-mono text-sm text-ink-2">{fmtDate(r.entryDate)}</span> },
     {
       key: "client",
       header: "Client",
       sort: sortLink("client", "asc"),
       cell: (r) => (
-        <div className="min-w-[180px]">
-          <p className="font-medium text-ink">{r.client || "—"}</p>
-          <p className="text-sm text-muted">
+        <div className="min-w-[10rem]">
+          <p className="clamp-2 font-medium leading-snug text-ink">{r.client || "No client"}</p>
+          <p className="clamp-2 text-sm text-muted">
             {[r.description, r.invoiceRef].filter(Boolean).join(" · ")}
             {r.invoiceFileId && (
               <a href={`/api/files/${r.invoiceFileId}?download=1`} className="ml-2 inline-flex items-center gap-1 text-accent-text hover:underline">
@@ -118,23 +128,28 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
         </div>
       ),
     },
-    { key: "stream", header: "Stream", hideBelow: "md", cell: (r) => <span className="text-ink-2">{r.streamName}</span> },
-    { key: "country", header: "Country", hideBelow: "lg", cell: (r) => <Badge>{r.countryCode}</Badge> },
+    {
+      key: "stream",
+      header: "Stream",
+      hideBelow: "md",
+      cell: (r) => (
+        <div className="min-w-[8rem]">
+          <p className="clamp-2 leading-snug text-ink-2">{r.streamName}</p>
+          <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-muted">
+            <span className="font-mono">{r.countryCode}</span>
+            {r.representativeName && <span>via {r.representativeName}</span>}
+          </p>
+        </div>
+      ),
+    },
     {
       key: "amount",
-      header: "Amount",
+      header: `Amount (${base})`,
       align: "right",
       sort: sortLink("amount", "desc"),
-      cell: (r) => <span className="num font-mono">{formatMoney(r.amountMinor, r.currency)}</span>,
-    },
-    {
-      key: "base",
-      header: base,
-      align: "right",
-      cell: (r) => <span className="num font-mono font-semibold">{formatMoney(r.amountBaseMinor, base)}</span>,
+      cell: (r) => <Amount base={formatMoney(r.amountBaseMinor, base)} original={r.currency === base ? null : formatMoney(r.amountMinor, r.currency)} />,
     },
     { key: "status", header: "Status", sort: sortLink("status", "asc"), cell: (r) => <Badge tone={STATUS[r.status].tone}>{STATUS[r.status].label}</Badge> },
-    { key: "rep", header: "Rep", hideBelow: "lg", cell: (r) => <span className="text-sm text-ink-2">{r.representativeName ?? "—"}</span> },
     {
       key: "actions",
       header: "",
@@ -155,15 +170,15 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
   ];
 
   const expenseColumns: Column<ExpenseRow>[] = [
-    { key: "date", header: "Date", sort: sortLink("date", "desc"), cell: (r) => <span className="font-mono text-sm text-ink-2">{fmtDate(r.expenseDate)}</span> },
+    { key: "date", header: "Date", sort: sortLink("date", "desc"), cell: (r) => <span className="whitespace-nowrap font-mono text-sm text-ink-2">{fmtDate(r.expenseDate)}</span> },
     {
       key: "vendor",
       header: "Vendor",
       sort: sortLink("vendor", "asc"),
       cell: (r) => (
-        <div className="min-w-[180px]">
-          <p className="font-medium text-ink">{r.vendor || "—"}</p>
-          <p className="text-sm text-muted">
+        <div className="min-w-[10rem]">
+          <p className="clamp-2 font-medium leading-snug text-ink">{r.vendor || "No vendor"}</p>
+          <p className="clamp-2 text-sm text-muted">
             {r.description}
             {r.receiptFileId && (
               <a href={`/api/files/${r.receiptFileId}?download=1`} className="ml-2 inline-flex items-center gap-1 text-accent-text hover:underline">
@@ -174,22 +189,26 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
         </div>
       ),
     },
-    { key: "category", header: "Category", sort: sortLink("category", "asc"), cell: (r) => <Badge>{r.category}</Badge> },
+    {
+      key: "category",
+      header: "Category",
+      sort: sortLink("category", "asc"),
+      cell: (r) => (
+        <div className="flex flex-col items-start gap-1">
+          <Badge>{r.category}</Badge>
+          <span className="whitespace-nowrap text-xs text-muted">
+            {r.countryCode ?? "Shared"} · {r.isRecurring ? <span className="text-warning">Recurring</span> : "One-off"}
+          </span>
+        </div>
+      ),
+    },
     {
       key: "amount",
-      header: "Amount",
+      header: `Amount (${base})`,
       align: "right",
       sort: sortLink("amount", "desc"),
-      cell: (r) => <span className="num font-mono">{formatMoney(r.amountMinor, r.currency)}</span>,
+      cell: (r) => <Amount base={formatMoney(r.amountBaseMinor, base)} original={r.currency === base ? null : formatMoney(r.amountMinor, r.currency)} />,
     },
-    {
-      key: "base",
-      header: base,
-      align: "right",
-      cell: (r) => <span className="num font-mono font-semibold">{formatMoney(r.amountBaseMinor, base)}</span>,
-    },
-    { key: "country", header: "Country", hideBelow: "lg", cell: (r) => <Badge>{r.countryCode ?? "Shared"}</Badge> },
-    { key: "recurring", header: "Type", hideBelow: "md", cell: (r) => (r.isRecurring ? <Badge tone="amber">Recurring</Badge> : <Badge>One-off</Badge>) },
     {
       key: "actions",
       header: "",
@@ -224,7 +243,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
         }
       />
 
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-4">
+      <div className="mb-[var(--space-gap)] flex flex-wrap items-center justify-between gap-4">
         <PillSwitch
           label="Ledger"
           value={tab}
@@ -250,7 +269,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
       </div>
 
       <Card className="mb-6">
-        <form method="get" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 lg:items-end">
+        <form method="get" className="grid gap-4 @min-[34rem]:grid-cols-2 @min-[52rem]:grid-cols-3 @min-[76rem]:grid-cols-6 @min-[52rem]:items-end">
           <input type="hidden" name="tab" value={tab} />
           <Field label="Search" htmlFor="f-q" className="sm:col-span-2">
             <Input id="f-q" name="q" defaultValue={filters.q} placeholder={tab === "income" ? "Client, description, invoice" : "Vendor, description, category"} />

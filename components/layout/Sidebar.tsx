@@ -61,8 +61,8 @@ function UserCard({ name, role }: { name: string; role: string }) {
     <div className="glass flex items-center gap-3 rounded-[18px] p-3.5">
       <Avatar name={name} ring />
       <div className="min-w-0">
-        <p className="truncate text-[15px] font-semibold text-ink">{name}</p>
-        <p className="truncate text-xs text-muted">{role}</p>
+        <p className="clamp-2 text-[15px] font-semibold leading-snug text-ink">{name}</p>
+        <p className="clamp-2 text-xs text-muted">{role}</p>
       </div>
     </div>
   );

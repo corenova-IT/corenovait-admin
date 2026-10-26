@@ -64,7 +64,7 @@ export default async function RepresentativesPage() {
         sample={sample}
         actions={canCreate ? <RepButton users={users} action={saveRep} /> : undefined}
       />
-      <div className="mb-6 grid gap-5 sm:grid-cols-3">
+      <div className="mb-[var(--space-gap)] grid grid-cols-1 gap-cards @min-[40rem]:grid-cols-3">
         <StatCard label="Commission earned" value={formatMoney(sum("commissionEarnedBaseMinor"), base, { cents: false })} detail="On paid deals, all time" />
         <StatCard label="Paid out" value={formatMoney(sum("commissionPaidBaseMinor"), base, { cents: false })} detail="From the payout log" />
         <StatCard

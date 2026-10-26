@@ -15,7 +15,7 @@ export function PillSwitch({
   value: string;
 }) {
   return (
-    <nav aria-label={label} className="flex items-center gap-1 rounded-[16px] border border-line bg-surface p-1">
+    <nav aria-label={label} className="flex max-w-full flex-wrap items-center gap-1 rounded-[16px] border border-line bg-surface p-1">
       {options.map((o) => {
         const active = o.value === value;
         return (
@@ -24,7 +24,7 @@ export function PillSwitch({
             href={o.href}
             aria-current={active ? "true" : undefined}
             className={cx(
-              "rounded-[12px] px-4 py-2 text-sm font-semibold transition-colors",
+              "whitespace-nowrap rounded-[12px] px-3.5 py-2 text-sm font-semibold transition-colors",
               active ? "btn-primary-glow bg-accent text-on-accent" : "text-ink-2 hover:text-ink"
             )}
           >
@@ -39,7 +39,7 @@ export function PillSwitch({
 /** Small rounded tag for monospace metadata, like "UK + AUS = 90%". */
 export function Pill({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
-    <span className={cx("inline-flex items-center rounded-lg border border-line px-2 py-1 font-mono text-xs text-ink-2", className)}>
+    <span className={cx("inline-flex items-center whitespace-nowrap rounded-lg border border-line px-2 py-1 font-mono text-xs text-ink-2", className)}>
       {children}
     </span>
   );

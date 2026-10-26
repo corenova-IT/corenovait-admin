@@ -39,7 +39,7 @@ export function DataTable<T>({
     return <EmptyState title={empty?.title ?? "Nothing here yet"}>{empty?.body}</EmptyState>;
   }
   return (
-    <div className="-mx-2 overflow-x-auto px-2">
+    <div className="scroll-x -mx-2 px-2">
       <table className="w-full border-separate border-spacing-0 text-left">
         <caption className="sr-only">{caption}</caption>
         <thead>
@@ -49,7 +49,7 @@ export function DataTable<T>({
                 key={c.key}
                 scope="col"
                 className={cx(
-                  "label-mono border-b border-line pb-3 pr-4 font-normal",
+                  "label-mono whitespace-nowrap border-b border-line pb-3 pr-4 font-normal",
                   c.align === "right" && "text-right",
                   c.hideBelow && hide[c.hideBelow]
                 )}
@@ -76,7 +76,7 @@ export function DataTable<T>({
                 <td
                   key={c.key}
                   className={cx(
-                    "border-b border-line/70 py-4 pr-4 align-middle text-[15px] text-ink group-last:border-b-0",
+                    "h-14 border-b border-line/70 py-2.5 pr-4 align-middle text-[15px] text-ink group-last:border-b-0",
                     c.align === "right" && "text-right",
                     c.hideBelow && hide[c.hideBelow],
                     c.className

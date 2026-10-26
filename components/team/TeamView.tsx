@@ -313,11 +313,11 @@ export function TeamView({
         <div className="flex min-w-0 items-center gap-3">
           <Avatar name={m.name || m.email} size={38} ring={m.id === currentUserId} />
           <div className="min-w-0">
-            <p className="truncate font-semibold text-ink">
+            <p className="clamp-2 font-semibold text-ink">
               {m.name || "Unnamed"}
               {m.id === currentUserId && <span className="ml-2 font-mono text-xs font-normal text-muted">(you)</span>}
             </p>
-            <p className="truncate text-sm text-muted">{m.email}</p>
+            <p className="clamp-2 text-sm text-muted">{m.email}</p>
           </div>
         </div>
       ),

@@ -27,3 +27,12 @@ export function dueLabel(days: number): string {
   if (days === 1) return "tomorrow";
   return `in ${days} days`;
 }
+
+/** Short date for one-line list metadata: "29 Oct", or "29 Oct 27" outside the current year. */
+export function fmtShortDate(isoDate: string | null | undefined, now = new Date()): string {
+  if (!isoDate) return "—";
+  const d = new Date(`${isoDate.slice(0, 10)}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) return isoDate;
+  const sameYear = d.getUTCFullYear() === now.getUTCFullYear();
+  return d.toLocaleDateString("en-AU", { day: "numeric", month: "short", ...(sameYear ? {} : { year: "2-digit" }), timeZone: "UTC" });
+}

@@ -122,15 +122,15 @@ export function AuditTable({ rows, timeZone }: { rows: AuditRow[]; timeZone: str
         const a = ACTION_LABELS[r.action] ?? { label: r.action, tone: "neutral" as BadgeTone };
         const hasDetail = r.before !== null || r.after !== null;
         const line = (
-          <div className="grid grid-cols-1 items-center gap-x-4 gap-y-1.5 py-4 sm:grid-cols-[150px_120px_1fr] lg:grid-cols-[170px_130px_minmax(0,1fr)_minmax(0,260px)]">
+          <div className="grid grid-cols-1 items-center gap-x-4 gap-y-1.5 py-4 sm:grid-cols-[150px_120px_minmax(0,1fr)] lg:grid-cols-[170px_130px_minmax(0,1fr)_minmax(0,260px)]">
             <time dateTime={r.at} className="font-mono text-xs text-muted">{fmt.format(new Date(r.at))}</time>
             <span><Badge tone={a.tone}>{a.label}</Badge></span>
-            <span className="min-w-0 truncate text-[15px] text-ink">
+            <span className="min-w-0 text-[15px] text-ink [overflow-wrap:anywhere]">
               {ENTITY_LABELS[r.entity] ?? r.entity}
               {r.summary && <span className="text-ink-2"> · {r.summary}</span>}
               {r.entity_id && <span className="ml-2 font-mono text-xs text-muted">{r.entity_id.slice(0, 8)}</span>}
             </span>
-            <span className="min-w-0 truncate font-mono text-xs text-ink-2 lg:text-right">{r.actor_email ?? "system"}</span>
+            <span className="min-w-0 font-mono text-xs text-ink-2 [overflow-wrap:anywhere] lg:text-right">{r.actor_email ?? "system"}</span>
           </div>
         );
         return (

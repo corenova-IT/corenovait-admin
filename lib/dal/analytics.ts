@@ -188,6 +188,8 @@ export async function financeSummary(actor: Actor, opts: { country?: CountryFilt
     previousMarginPct: marginPct(prev.profitBaseMinor, prev.revenueBaseMinor),
     sharedExpensesExcludedBaseMinor: n(sharedRows[0]?.total),
     monthly,
+    /** the last month in `monthly` is still running (today isn't its last day) */
+    lastMonthPartial: addDays(today, 1).slice(0, 7) === thisMonth,
     byStream: byStream.map((s) => ({
       id: s.id,
       name: s.name,

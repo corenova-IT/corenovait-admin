@@ -223,7 +223,27 @@ a fresh database with the real migrations. Nothing touches your local or product
 - `tests/dal/auth.test.ts`: argon2id, lockout, idle and absolute timeouts, TOTP setup, replay and
   recovery codes, reset and invite links, server-side two-factor reset.
 - `tests/dal/boundaries.test.ts`: nothing outside `lib/dal` imports the database.
-- `tests/unit/`: TOTP against the RFC test vectors, encryption, upload type checks, money, passwords.
+- `tests/unit/`: TOTP against the RFC test vectors, encryption, upload type checks, money, passwords,
+  date labels.
+
+### Layout test (every page, every width)
+
+```bash
+npm run test:layout
+```
+
+Builds the app, starts it against a throwaway MySQL with the sample data, and opens every page in
+the installed Chrome at 1920, 1536, 1440, 1366, 1280, 1152, 1024, 768 and 390 px, in both themes
+(these widths also cover Windows display scaling at 125% and 150%). It fails if any text is clipped,
+anything sticks out of its card, a heading runs onto three lines, the page scrolls sideways, or a
+table needs sideways scrolling from 1280 px up. For a quicker run, limit it, e.g.
+`E2E_WIDTHS=1366,390 E2E_THEMES=dark npx playwright test` (after `npx next build --webpack`).
+
+The shared sizes live in `app/globals.css`: `--space-card` / `--space-gap` (fluid padding and gaps),
+`.kpi-number` (big figures, sized to their card), `.title-card`, `.clamp-2` (names wrap to two lines
+instead of being cut off) and `.scroll-x` (wide tables on small screens, with an edge fade). Page grids
+use container queries on the content area (`@min-[60rem]:grid-cols-4` etc.), so columns depend on the
+space beside the sidebar rather than the window width.
 
 ## 9. Deploy to Hostinger (Node.js)
 
