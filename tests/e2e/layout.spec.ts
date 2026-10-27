@@ -15,7 +15,7 @@ const THEMES = (process.env.E2E_THEMES ? process.env.E2E_THEMES.split(",") : ["d
 const BASE = "http://localhost:3210";
 const COOKIE = "__Host-cn_session";
 
-type Who = "none" | "admin" | "staff" | "mfaPending";
+type Who = "none" | "admin" | "staff" | "mfaPending" | "marketing";
 const tokens = () => JSON.parse(readFileSync(path.resolve(".e2e/sessions.json"), "utf8")) as Record<Exclude<Who, "none">, string> & { repId: string };
 
 const PAGES: Array<{ path: string | ((t: ReturnType<typeof tokens>) => string); as: Who }> = [
@@ -42,6 +42,11 @@ const PAGES: Array<{ path: string | ((t: ReturnType<typeof tokens>) => string); 
   { path: "/audit", as: "admin" },
   { path: "/account", as: "admin" },
   { path: "/no-access?module=team", as: "staff" },
+  { path: "/marketing", as: "admin" },
+  { path: "/marketing?channel=cold_call&page=2", as: "admin" },
+  { path: "/marketing?channel=individual_referral&campaign=none", as: "admin" },
+  { path: "/marketing", as: "marketing" },
+  { path: "/home", as: "marketing" },
 ];
 
 /** Runs in the page: returns a list of human-readable layout problems. */
@@ -70,7 +75,11 @@ function findLayoutProblems(checkTableScroll: boolean): string[] {
       return false;
     };
     // an <svg> itself can be the cause (its contents are skipped elsewhere)
-    const wide = [...document.querySelectorAll("body *")].filter((el) => !(el.parentElement?.closest("svg") || el.closest("dialog:not([open]), [hidden]")) && visible(el) && el.getBoundingClientRect().right > de.clientWidth + 1 && !insideScroller(el));
+    // absolutely positioned text (e.g. screen-reader-only) can escape a scroll box, so it's always a suspect
+    const escapes = (el: Element) => /(absolute|fixed)/.test(getComputedStyle(el).position);
+    const wide = [...document.querySelectorAll("body *")].filter(
+      (el) => !(el.parentElement?.closest("svg") || el.closest("dialog:not([open]), [hidden]")) && visible(el) && el.getBoundingClientRect().right > de.clientWidth + 1 && (escapes(el) || !insideScroller(el))
+    );
     const innermost = wide.filter((el) => !wide.some((o) => o !== el && el.contains(o))).slice(0, 3);
     out.push(`page scrolls sideways (${de.scrollWidth}px content in ${de.clientWidth}px), caused by: ${innermost.map(label).join(" ; ")}`);
   }

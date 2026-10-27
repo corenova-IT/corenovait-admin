@@ -36,6 +36,13 @@
       "when": 1793001425854,
       "tag": "0004_seed_expense_categories",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "5",
+      "when": 1793116484160,
+      "tag": "0005_marketing",
+      "breakpoints": true
     }
   ]
 }

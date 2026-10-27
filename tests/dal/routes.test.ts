@@ -163,6 +163,8 @@ describe("guarded pages, opened by a staff user", () => {
       { params: Promise.resolve({ id: "00000000-0000-4000-8000-000000000000" }) },
     ],
     ["/settings", () => import("@/app/(portal)/settings/page"), {}],
+    ["/marketing", () => import("@/app/(portal)/marketing/page"), { searchParams: Promise.resolve({}) }],
+    ["/marketing?channel=email", () => import("@/app/(portal)/marketing/page"), { searchParams: Promise.resolve({ channel: "email" }) }],
   ];
   for (const [route, load, props] of pages) {
     it(`${route} redirects to /no-access`, async () => {
@@ -184,6 +186,26 @@ describe("finances export route", () => {
     expect((await get()).status).toBe(403);
     jar.clear();
     expect((await get()).status).toBe(401);
+  });
+});
+
+describe("marketing export route", () => {
+  const get = async () => (await import("@/app/api/export/marketing/route")).GET(new Request("http://localhost/api/export/marketing?channel=email"));
+
+  it("refuses a staff user (403) and nobody signed in (401)", async () => {
+    expect((await get()).status).toBe(403);
+    jar.clear();
+    expect((await get()).status).toBe(401);
+  });
+
+  it("gives an admin a CSV and logs the export", async () => {
+    const { SESSION_COOKIE } = await import("@/lib/auth/session");
+    jar.set(SESSION_COOKIE, await sessionFor(t, ids.admin, { mfaVerified: true }));
+    const res = await get();
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toMatch(/^text\/csv/);
+    expect(res.headers.get("content-disposition")).toMatch(/^attachment; filename="marketing-/);
+    expect((await res.text()).split(/\r?\n/)[0]).toContain("occurred_at_local");
   });
 });
 

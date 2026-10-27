@@ -432,3 +432,81 @@ export const repPayouts = mysqlTable(
     check("payout_currency_chk", sql`${t.currency} regexp '^[A-Z]{3}$'`),
   ]
 );
+
+// ---------------------------------------------------------------- marketing
+export const MARKETING_CHANNELS = ["email", "cold_call", "direct", "individual_referral", "social", "other"] as const;
+export const MARKETING_OUTCOMES = ["no_response", "replied", "meeting", "deal_won", "deal_lost"] as const;
+
+/** A named push (e.g. "Spring dental clinics email"); activities can belong to one. */
+export const campaigns = mysqlTable(
+  "campaigns",
+  {
+    id: id(),
+    name: varchar("name", { length: 120 }).notNull(),
+    /** the main channel, or null when it mixes channels */
+    channel: mysqlEnum("channel", MARKETING_CHANNELS),
+    status: mysqlEnum("status", ["planned", "active", "paused", "finished"]).notNull().default("active"),
+    startDate: date("start_date", { mode: "string" }),
+    endDate: date("end_date", { mode: "string" }),
+    description: varchar("description", { length: 500 }).notNull().default(""),
+    isSample: boolean("is_sample").notNull().default(false),
+    createdBy: userRef("created_by")
+      .notNull()
+      .references(() => users.id),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    uniqueIndex("campaign_name_uq").on(t.name),
+    check("campaign_dates_chk", sql`${t.endDate} is null or ${t.startDate} is null or ${t.endDate} >= ${t.startDate}`),
+  ]
+);
+
+/**
+ * One call, email, referral or other touch, and how it went. occurred_at is
+ * UTC; the heatmap and insights read it in the company time zone. A won deal
+ * may carry its value (original currency + manual rate, like income).
+ */
+export const marketingActivities = mysqlTable(
+  "marketing_activities",
+  {
+    id: id(),
+    occurredAt: datetime("occurred_at", { mode: "date", fsp: 3 }).notNull(),
+    channel: mysqlEnum("channel", MARKETING_CHANNELS).notNull(),
+    campaignId: varchar("campaign_id", { length: 36 }).references(() => campaigns.id),
+    contactName: varchar("contact_name", { length: 200 }).notNull(),
+    contactCompany: varchar("contact_company", { length: 200 }).notNull().default(""),
+    outcome: mysqlEnum("outcome", MARKETING_OUTCOMES).notNull(),
+    dealValueMinor: bigint("deal_value_minor", { mode: "number" }),
+    dealCurrency: char("deal_currency", { length: 3 }),
+    dealFxRateToBase: decimal("deal_fx_rate_to_base", { precision: 18, scale: 8 }),
+    /** computed by MySQL: the deal value in the base currency, rounded half away from zero */
+    dealValueBaseMinor: bigint("deal_value_base_minor", { mode: "number" }).generatedAlwaysAs(
+      sql`round(\`deal_value_minor\` * \`deal_fx_rate_to_base\`)`,
+      { mode: "stored" }
+    ),
+    /** who did the outreach; drives the "assigned" scope */
+    ownerId: userRef("owner_id")
+      .notNull()
+      .references(() => users.id),
+    notes: text("notes"),
+    isSample: boolean("is_sample").notNull().default(false),
+    createdBy: userRef("created_by")
+      .notNull()
+      .references(() => users.id),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    index("mkt_occurred_idx").on(t.occurredAt),
+    index("mkt_owner_idx").on(t.ownerId),
+    index("mkt_created_by_idx").on(t.createdBy),
+    index("mkt_campaign_idx").on(t.campaignId),
+    index("mkt_channel_idx").on(t.channel, t.occurredAt),
+    // a value only on a won deal, and then all three money fields together
+    check(
+      "mkt_deal_value_chk",
+      sql`(${t.dealValueMinor} is null and ${t.dealCurrency} is null and ${t.dealFxRateToBase} is null) or (${t.outcome} = 'deal_won' and ${t.dealValueMinor} > 0 and ${t.dealCurrency} regexp '^[A-Z]{3}$' and ${t.dealFxRateToBase} > 0)`
+    ),
+  ]
+);

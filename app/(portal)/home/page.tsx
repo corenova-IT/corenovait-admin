@@ -15,6 +15,7 @@ import { requirePerm } from "@/lib/auth/session";
 import { countryFilter, financeSummary } from "@/lib/dal/analytics";
 import { hasSampleData } from "@/lib/dal/finance";
 import { hasPerm } from "@/lib/dal/guard";
+import { marketingSnapshot } from "@/lib/dal/marketing";
 import { paymentsOverview } from "@/lib/dal/payments";
 import { dueLabel, fmtMonth, fmtShortDate } from "@/lib/format";
 import { formatMoney } from "@/lib/money";
@@ -64,7 +65,12 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
 
   const country = countryFilter.parse((await searchParams).country);
   const canPayments = hasPerm(user, "payments", "view");
-  const [s, payments] = await Promise.all([financeSummary(user, { country }), canPayments ? paymentsOverview(user, { country }) : Promise.resolve(null)]);
+  const canMarketing = hasPerm(user, "marketing", "view");
+  const [s, payments, mk] = await Promise.all([
+    financeSummary(user, { country }),
+    canPayments ? paymentsOverview(user, { country }) : Promise.resolve(null),
+    canMarketing ? marketingSnapshot(user) : Promise.resolve(null),
+  ]);
   const base = s.baseCurrency;
   const cur = s.totals.current;
   const series = s.monthly;
@@ -210,9 +216,44 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
             </div>
           )}
         </Card>
-        <ComingTile className="@min-[60rem]:col-span-3" icon={<IconMegaphone />} title="Marketing snapshot" phase={3}>
-          Contacts reached, response rate and deals won will appear here once marketing activity is logged.
-        </ComingTile>
+        <Card className="flex flex-col @min-[60rem]:col-span-3">
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <span className="text-ink-2">
+              <IconMegaphone />
+            </span>
+            <h2 className="title-card mr-auto font-bold tracking-[-0.02em] text-ink">Marketing</h2>
+            {mk && (
+              <Link href="/marketing" className="text-sm text-accent-text hover:underline">
+                Open
+              </Link>
+            )}
+          </div>
+          {!mk ? (
+            <p className="text-sm text-muted">You don&apos;t have access to marketing.</p>
+          ) : mk.contacts === 0 ? (
+            <p className="text-sm text-muted">No activity logged in the last 30 days.</p>
+          ) : (
+            <>
+              <dl className="grid grid-cols-3 gap-3">
+                <div className="min-w-0">
+                  <dt className="label-mono">Reached</dt>
+                  <dd className="num mt-1 font-display text-2xl font-bold text-ink">{mk.contacts}</dd>
+                </div>
+                <div className="min-w-0">
+                  <dt className="label-mono">Replied</dt>
+                  <dd className="num mt-1 font-display text-2xl font-bold text-ink">{mk.ratePct}%</dd>
+                </div>
+                <div className="min-w-0">
+                  <dt className="label-mono">Won</dt>
+                  <dd className="num mt-1 font-display text-2xl font-bold text-ink">{mk.won}</dd>
+                </div>
+              </dl>
+              <p className="mt-auto pt-3 text-sm text-muted">
+                Last 30 days{mk.wonValueBaseMinor ? ` · ${whole(mk.wonValueBaseMinor)} in deals won` : ""}
+              </p>
+            </>
+          )}
+        </Card>
         <ComingTile className="@min-[60rem]:col-span-3" icon={<IconCalendar />} title="Next meetings" phase={4}>
           Your next meetings from the calendar.
         </ComingTile>

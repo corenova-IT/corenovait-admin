@@ -4,16 +4,20 @@ import { formatCompact, formatMoney } from "@/lib/money";
 /**
  * Twelve monthly bars on one shared scale, drawn on the server as SVG. Every
  * bar has a <title> tooltip and the same numbers are in a screen-reader table.
- * The current month is highlighted with the red glow.
+ * The current month is highlighted with the red glow. Values are money in
+ * `currency`, or plain counts when `unit` is given (e.g. "deals").
  */
-export function MonthBars({ data, currency, label }: { data: Array<{ month: string; value: number }>; currency: string; label: string }) {
+export function MonthBars({ data, currency, unit, label }: { data: Array<{ month: string; value: number }>; currency?: string; unit?: string; label: string }) {
+  const fmt = (v: number) => (unit || !currency ? `${v.toLocaleString("en-AU")} ${unit ?? ""}`.trim() : formatMoney(v, currency));
+  const tick = (v: number) => (unit || !currency ? v.toLocaleString("en-AU") : formatCompact(v, currency));
   const W = 720;
   const H = 220;
   const padL = 56;
   const padB = 28;
   const padT = 12;
   const max = Math.max(1, ...data.map((d) => d.value));
-  const step = niceStep(max / 3);
+  // counts step in whole numbers
+  const step = unit || !currency ? Math.max(1, Math.ceil(niceStep(max / 3))) : niceStep(max / 3);
   const top = Math.ceil(max / step) * step;
   const plotH = H - padB - padT;
   const slot = (W - padL) / data.length;
@@ -37,7 +41,7 @@ export function MonthBars({ data, currency, label }: { data: Array<{ month: stri
           <g key={t}>
             <line x1={padL} x2={W} y1={y(t)} y2={y(t)} stroke="var(--line)" strokeWidth={1} />
             <text x={padL - 10} y={y(t) + 4} textAnchor="end" fontSize={11} fill="var(--muted)" fontFamily="var(--font-plex-mono)">
-              {formatCompact(t, currency)}
+              {tick(t)}
             </text>
           </g>
         ))}
@@ -56,7 +60,7 @@ export function MonthBars({ data, currency, label }: { data: Array<{ month: stri
                 fill={last ? "var(--accent)" : "var(--accent-soft-strong, rgba(214,56,56,0.35))"}
                 filter={last ? "url(#bar-glow)" : undefined}
               >
-                <title>{`${fmtMonth(d.month, true)}: ${formatMoney(d.value, currency)}`}</title>
+                <title>{`${fmtMonth(d.month, true)}: ${fmt(d.value)}`}</title>
               </rect>
               <text x={x + barW / 2} y={H - 8} textAnchor="middle" fontSize={11} fill="var(--muted)" fontFamily="var(--font-plex-mono)">
                 {fmtMonth(d.month)}
@@ -73,7 +77,7 @@ export function MonthBars({ data, currency, label }: { data: Array<{ month: stri
             {data.map((d) => (
               <tr key={d.month}>
                 <th scope="row">{fmtMonth(d.month, true)}</th>
-                <td>{formatMoney(d.value, currency)}</td>
+                <td>{fmt(d.value)}</td>
               </tr>
             ))}
           </tbody>

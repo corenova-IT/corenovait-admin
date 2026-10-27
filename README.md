@@ -224,6 +224,43 @@ from a real database session, so a hand-made one is rejected.
   so the "vs prior year" figures have something to compare with. Every sample row is flagged and the
   pages show a **Sample data** badge. Production never shows invented numbers.
 
+### Marketing (Phase 3)
+
+- **Marketing** (`/marketing`): every call, email, referral or message is one **activity**: when it
+  happened, the channel (email, cold calling, direct, individual referral, social, other), an optional
+  campaign, who was contacted, the outcome (no response, replied, meeting booked, deal won, deal lost),
+  an optional deal value on a won deal, and the owner (who did the outreach).
+- **Log activity** opens a short form. After each save it clears and stays open, so a run of calls can
+  be logged one after another. Times are typed in the company time zone (Settings, default
+  Australia/Sydney) and stored in UTC; activity in the future is refused.
+- **The numbers** (for the filters on screen: channel, campaign, month and owner; the default view is
+  the last 12 months):
+  - *Contacts reached* = activities logged.
+  - *Response rate* = activities that got any answer (replied, meeting, deal won or lost) ÷ contacts.
+  - *Deals won* and *Revenue from marketing* (the value of won deals, converted to the base currency
+    by MySQL with the rate typed on the deal, rounded half away from zero).
+  - Each compares with the period before; the response rate change is in percentage points.
+  - *Channel performance*, *deals won by month*, and *campaigns with results* (all time).
+- **Heatmap and insights** use the company time zone, daylight saving included (computed with Intl,
+  so MySQL's time-zone tables aren't needed). Hours with fewer than 3 contacts aren't coloured.
+  *Best day* needs at least 20 contacts on a weekday and *best time* at least 15 in an hour; below
+  that the card says "Not enough activity yet" instead of guessing. *Best month* is the month in view
+  with the most deals won.
+- **Permissions and scope** (module "marketing", set per person on the Team page):
+  - *own*: only activity you logged; *assigned*: also activity someone logged with you as the owner;
+    *all*: everything. Figures, campaign results and exports follow the same scope.
+  - Only people with *all* can log activity for someone else or create, edit and delete campaigns
+    (campaigns are shared by everyone). A campaign with logged activity can't be deleted; mark it
+    finished instead.
+  - The default **Staff** preset has no marketing access (least privilege). To let a staff member log
+    their own calls, give them marketing view + create (+ edit/delete if wanted) with scope *own*, or
+    add that to the Staff preset.
+  - Every create, edit and delete is in the audit log with before and after values; exports
+    (`/api/export/marketing`, needs marketing export) are logged too.
+- **Sample data**: 24 months of clearly fake activity (about 1,600 rows) across seven sample campaigns,
+  logged by Alex (admin), Devon (manager) and Emery (`marketing@example.test`, staff with marketing
+  limited to their own activity). Sign in as Emery to see the *own* scope.
+
 ## 7. Uploads
 
 Files are stored in `UPLOAD_DIR` under random names, never in `public/`. Only PDF, PNG, JPG and WebP
@@ -248,6 +285,10 @@ a fresh database with the real migrations. Nothing touches your local or product
   as a signed-in staff user: each is refused and the database is unchanged.
 - `tests/dal/auth.test.ts`: argon2id, lockout, idle and absolute timeouts, TOTP setup, replay and
   recovery codes, reset and invite links, server-side two-factor reset.
+- `tests/dal/marketing.test.ts`: staff without marketing access can't read or change anything; the
+  own / assigned / all scopes; nobody below *all* can log for someone else or manage campaigns; audit
+  before/after; deal values in other currencies; the heatmap in Sydney time across daylight saving;
+  the "not enough data" rules for the insights.
 - `tests/dal/boundaries.test.ts`: nothing outside `lib/dal` imports the database.
 - `tests/unit/`: TOTP against the RFC test vectors, encryption, upload type checks, money, passwords,
   date labels.

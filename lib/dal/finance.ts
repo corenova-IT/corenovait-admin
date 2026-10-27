@@ -674,10 +674,11 @@ export async function hasSampleData(actor: Actor): Promise<boolean> {
   if (process.env.NODE_ENV === "production") return false;
   assertCaller(actor);
   const db = getDb();
-  const [[inc], [exp]] = await Promise.all([
+  const [[inc], [exp], [mkt]] = await Promise.all([
     db.select({ n: count() }).from(incomeEntries).where(eq(incomeEntries.isSample, true)),
     db.select({ n: count() }).from(expenses).where(eq(expenses.isSample, true)),
+    db.select({ n: count() }).from(schema.marketingActivities).where(eq(schema.marketingActivities.isSample, true)),
   ]);
-  return inc.n + exp.n > 0;
+  return inc.n + exp.n + mkt.n > 0;
 }
 

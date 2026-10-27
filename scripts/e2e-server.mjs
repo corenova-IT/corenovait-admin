@@ -3,8 +3,9 @@
  * real database:
  *   1. starts a throwaway MySQL 8.4 (mysql-memory-server, deleted on exit)
  *   2. applies the migrations and loads the development sample data
- *   3. creates sessions for an admin, a staff member and an admin who hasn't
- *      done two-factor yet, and writes their cookie tokens to .e2e/sessions.json
+ *   3. creates sessions for an admin, a staff member, a marketing staff member
+ *      and an admin who hasn't done two-factor yet, and writes their cookie
+ *      tokens to .e2e/sessions.json
  *   4. runs the production build (next start) on 127.0.0.1:3210
  * Playwright starts this as its webServer and stops it afterwards.
  */
@@ -59,6 +60,8 @@ const tokens = {
   admin: await session("admin.one@example.test", true),
   staff: await session("web.dev@example.test", false),
   mfaPending: await session("admin.two@example.test", false),
+  // staff with marketing access limited to their own activity
+  marketing: await session("marketing@example.test", false),
   repId: rep.id,
 };
 await conn.end();

@@ -257,6 +257,9 @@ body {
   }
   /* Sideways scroll for wide tables on small screens, with a visible edge */
   .scroll-x {
+    /* relative: screen-reader-only text inside (position: absolute) stays inside the scroll box
+       instead of being placed against the card and widening the page */
+    position: relative;
     overflow-x: auto;
     overscroll-behavior-x: contain;
     mask-image: linear-gradient(to right, transparent, #000 calc(var(--fade-l) * 2rem), #000 calc(100% - var(--fade-r) * 2rem), transparent);

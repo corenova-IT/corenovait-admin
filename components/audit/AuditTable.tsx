@@ -52,6 +52,9 @@ export const ENTITY_LABELS: Record<string, string> = {
   role_presets: "Role preset",
   auth: "Sign-in",
   transactions: "Transactions",
+  marketing_activities: "Marketing activity",
+  campaigns: "Campaign",
+  marketing: "Marketing",
 };
 
 const HIDDEN_FIELDS = new Set(["updated_at", "created_at", "updatedAt", "createdAt"]);

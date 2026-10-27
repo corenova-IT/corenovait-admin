@@ -36,7 +36,6 @@ export function visibleNav(perms: PermMap): NavItem[] {
 
 /** Pages that exist in the nav but are built in later phases. */
 export const COMING_SOON: Record<string, { title: string; phase: number; blurb: string; module: AppModule }> = {
-  marketing: { title: "Marketing", phase: 3, module: "marketing", blurb: "Channel performance, deals won by month, the response heatmap and the activity log." },
   calendar: { title: "Calendar", phase: 4, module: "calendar", blurb: "Month, week and agenda views for meetings, deadlines and payment dates." },
   tasks: { title: "Tasks", phase: 4, module: "tasks", blurb: "Board and list views, per-employee to-do lists, checklists and comments." },
   chat: { title: "Team chat", phase: 5, module: "chat", blurb: "Realtime channels and direct messages with unread counts and attachments." },
