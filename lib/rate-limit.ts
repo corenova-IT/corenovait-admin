@@ -44,5 +44,7 @@ g.__cnLimiters ??= {
   loginPerIp: new RateLimiter(20, 15 * 60_000),
   resetPerIp: new RateLimiter(5, 15 * 60_000),
   mfaPerUser: new RateLimiter(6, 10 * 60_000),
+  // the scheduler: a cron job calls it every few minutes; this leaves room for manual runs
+  cron: new RateLimiter(6, 60_000),
 };
 export const limiters = g.__cnLimiters;

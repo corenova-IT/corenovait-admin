@@ -65,13 +65,19 @@ const PUBLIC_ACTIONS = new Set([
   "app/dev/preview-actions.ts#previewAction",
 ]);
 /** Self-service: acts only on the caller's own account. */
-const SELF_ACTIONS = new Set(["app/(portal)/account/actions.ts#regenerateCodes", "app/(portal)/account/actions.ts#signOutEverywhere"]);
+const SELF_ACTIONS = new Set([
+  "app/(portal)/account/actions.ts#regenerateCodes",
+  "app/(portal)/account/actions.ts#signOutEverywhere",
+  // the caller's own notifications and email setting (tests/dal/notifications.test.ts)
+  "app/(portal)/notifications/actions.ts#markAllRead",
+  "app/(portal)/notifications/actions.ts#setEmailNotifications",
+]);
 /**
  * Staff may use tasks and the calendar (the Staff preset grants them with the
  * "assigned" scope). Called with a hostile form these must still change
  * nothing; their scope rules are tested in tests/dal/work.test.ts.
  */
-const STAFF_MODULES = ["app/(portal)/tasks/actions.ts", "app/(portal)/calendar/actions.ts"];
+const STAFF_MODULES = ["app/(portal)/tasks/actions.ts", "app/(portal)/calendar/actions.ts", "app/(portal)/chat/actions.ts"];
 
 function hostileForm() {
   const fd = new FormData();
@@ -200,6 +206,27 @@ describe("finances export route", () => {
     expect((await get()).status).toBe(403);
     jar.clear();
     expect((await get()).status).toBe(401);
+  });
+});
+
+describe("live chat routes", () => {
+  it("never return anything from a direct message the caller isn't in, and refuse nobody signed in", async () => {
+    const chat = await import("@/lib/dal/chat");
+    const other = await createPerson(t, { email: "other@example.test" });
+    const dm = await chat.openDirectMessage(await actorFor(t, ids.admin), other.id);
+    await chat.sendMessage(await actorFor(t, other.id), dm, "Private to the two of us");
+    const sync = await import("@/app/api/chat/sync/route");
+    const res = await sync.GET(new Request(`http://localhost/api/chat/sync?c=${dm}`));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.changes).toEqual([]);
+    expect(JSON.stringify(body)).not.toContain("Private to the two of us");
+    jar.clear();
+    expect((await sync.GET(new Request(`http://localhost/api/chat/sync?c=${dm}`))).status).toBe(401);
+    const stream = await import("@/app/api/chat/stream/route");
+    expect((await stream.GET(new Request(`http://localhost/api/chat/stream?c=${dm}`))).status).toBe(401);
+    const badges = await import("@/app/api/me/badges/route");
+    expect((await badges.GET()).status).toBe(401);
   });
 });
 

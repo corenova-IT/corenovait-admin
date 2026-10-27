@@ -69,3 +69,21 @@ export function resetEmail(to: string, token: string): Mail {
     html: layout("Reset your password", body, { href, label: "Choose a new password" }, footer),
   };
 }
+
+/** A notification, emailed when the person has email notifications on. */
+export function notificationEmail(to: string, n: { title: string; body: string; href: string }): Mail {
+  const href = n.href.startsWith("/") ? `${siteUrl()}${n.href}` : `${siteUrl()}/notifications`;
+  const footer = "You get these because email notifications are on. Turn them off on the Notifications page in the portal.";
+  return {
+    to,
+    subject: n.title.slice(0, 150),
+    text: `${n.title}
+
+${n.body}
+
+${href}
+
+${footer}`,
+    html: layout(n.title, n.body || "Open the portal to see it.", { href, label: "Open in the portal" }, footer),
+  };
+}

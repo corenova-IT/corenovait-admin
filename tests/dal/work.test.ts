@@ -209,6 +209,20 @@ describe("tasks scope", () => {
     expect(task).toMatchObject({ checklistDone: 1 });
   });
 
+  it("comments: anyone who can see the task comments, even without create permission", async () => {
+    const { loadUserPerms, writeUserPerms } = await import("@/lib/dal/internal");
+    const viewer = (await createPerson(t, { email: "viewer@example.test" })).id;
+    await t.db.transaction(async (tx) => {
+      const map = await loadUserPerms(tx, viewer);
+      map.tasks = { view: true, create: false, edit: false, delete: false, export: false, scope: "all" };
+      await writeUserPerms(tx, viewer, map);
+    });
+    const v = await as(viewer);
+    await expect(tk.createTask(v, { title: "Not allowed" })).rejects.toThrow(DENIED);
+    const id = await tk.addComment(v, forA, "Seen it");
+    await tk.deleteComment(v, id);
+  });
+
   it("comments: people who can see the task comment; you delete your own, an admin can moderate", async () => {
     const a = await as(ids.a);
     const c1 = await tk.addComment(a, forA, "Started on this");

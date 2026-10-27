@@ -27,7 +27,7 @@ export default async function DevPreview({ params }: { params: Promise<{ page: s
   const { page } = await params;
   const theme = (await cookies()).get(THEME_COOKIE)?.value === "light" ? "light" : "dark";
   const shell = (children: React.ReactNode) => (
-    <PortalShell nav={previewNav} user={{ name: "Alex Example", email: "admin.one@example.test", role: "Co-founder · Admin" }} theme={theme} unread={3}>
+    <PortalShell nav={previewNav} user={{ name: "Alex Example", email: "admin.one@example.test", role: "Co-founder · Admin" }} theme={theme} badges={{ notifications: 3, chat: 2 }}>
       {children}
     </PortalShell>
   );

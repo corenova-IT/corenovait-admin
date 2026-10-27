@@ -208,10 +208,20 @@ async function main() {
         emery: ids["marketing@example.test"],
       },
     });
+
+    const chat = await seedChat(db, schema, {
+      people: {
+        alex: admin,
+        blair: ids["admin.two@example.test"],
+        casey: ids["web.dev@example.test"],
+        devon: ids["design@example.test"],
+        emery: ids["marketing@example.test"],
+      },
+    });
     await writeAudit(db, null, {
       action: "create",
       entity: "income_entries",
-      summary: `Sample data: ${income.length} income entries, ${expenses.length} expenses, ${subs.length} subscriptions, ${marketing.activities} marketing activities in ${marketing.campaigns} campaigns, ${work.events} events, ${work.tasks} tasks (is_sample)`,
+      summary: `Sample data: ${income.length} income entries, ${expenses.length} expenses, ${subs.length} subscriptions, ${marketing.activities} marketing activities in ${marketing.campaigns} campaigns, ${work.events} events, ${work.tasks} tasks, ${chat.messages} chat messages (is_sample)`,
     });
 
     console.log("\nSample data loaded (development only):");
@@ -457,6 +467,82 @@ async function seedWork(
   await db.insert(schema.tasks).values(tasks);
   if (comments.length) await db.insert(schema.taskComments).values(comments);
   return { events: evs.length, tasks: tasks.length };
+}
+
+// ---------------------------------------------------------------- chat and notifications sample
+/**
+ * #general, #projects, #marketing and an archived #old-website, three direct
+ * messages, a few days of messages (some unread for Casey, with @mentions),
+ * and a handful of notifications so the bell has something to show.
+ */
+async function seedChat(
+  db: ReturnType<typeof import("../lib/db").getDb>,
+  schema: typeof import("../lib/db").schema,
+  opts: { people: { alex: string; blair: string; casey: string; devon: string; emery: string } }
+) {
+  const P = opts.people;
+  const now = Date.now();
+  const ago = (minutes: number) => new Date(now - minutes * 60_000);
+  const channel = (name: string, topic: string, extra: Partial<typeof schema.chatChannels.$inferInsert> = {}) => ({ id: randomUUID(), kind: "channel" as const, name, topic, isSample: true, createdBy: P.alex, ...extra });
+  const general = channel("general", "Company-wide chat", { isDefault: true });
+  const projects = channel("projects", "Client work in progress");
+  const marketing = channel("marketing", "Campaigns, leads and posts");
+  const old = channel("old-website", "The 2025 site rebuild", { archivedAt: ago(60 * 24 * 20) });
+  const dm = (a: string, b: string) => ({ id: randomUUID(), kind: "dm" as const, dmKey: [a, b].sort().join(":"), isSample: true, createdBy: a });
+  const alexCasey = dm(P.alex, P.casey);
+  const devonCasey = dm(P.devon, P.casey);
+  const alexBlair = dm(P.alex, P.blair);
+  await db.insert(schema.chatChannels).values([general, projects, marketing, old, alexCasey, devonCasey, alexBlair]);
+
+  const everyone = Object.values(P);
+  // Casey last read #general and Devon's DM a couple of hours ago, so they have unread messages
+  const read = (channelId: string, userId: string) => ({ channelId, userId, lastReadAt: userId === P.casey && (channelId === general.id || channelId === devonCasey.id || channelId === projects.id) ? ago(150) : new Date(now) });
+  await db.insert(schema.chatMembers).values([
+    ...everyone.map((u) => read(general.id, u)),
+    ...[P.alex, P.casey, P.devon].map((u) => read(projects.id, u)),
+    ...[P.alex, P.devon, P.emery].map((u) => read(marketing.id, u)),
+    ...[P.alex, P.devon].map((u) => read(old.id, u)),
+    ...[P.alex, P.casey].map((u) => read(alexCasey.id, u)),
+    ...[P.devon, P.casey].map((u) => read(devonCasey.id, u)),
+    ...[P.alex, P.blair].map((u) => read(alexBlair.id, u)),
+  ]);
+
+  const script: Array<[string, string, number, string]> = [
+    [general.id, P.alex, 60 * 50, "Morning all. Stand-up is moved to 9:45 today (sample)."],
+    [general.id, P.blair, 60 * 49, "Thanks, see you then."],
+    [general.id, P.devon, 60 * 26, "The new office wifi password is on the noticeboard."],
+    [general.id, P.emery, 60 * 25, "Reminder: the LinkedIn post goes out at 11. Likes and shares welcome!"],
+    [general.id, P.alex, 120, "@casey can you take a look at the contact form spam when you get a minute?"],
+    [general.id, P.devon, 90, "Lunch order going in at 12:30 if anyone wants in."],
+    [general.id, P.emery, 45, "Two new enquiries from the dental campaign this morning."],
+    [projects.id, P.devon, 60 * 30, "Example Dental home page: hero copy approved, waiting on photos."],
+    [projects.id, P.casey, 60 * 29, "I'll do the mobile pass once the photos land."],
+    [projects.id, P.alex, 100, "Client asked if we can launch on the 4th. @devon @casey does that still work?"],
+    [projects.id, P.devon, 80, "Works for me if the photos arrive by Friday."],
+    [marketing.id, P.emery, 60 * 20, "Cold-call list for this week is in the Marketing page."],
+    [marketing.id, P.devon, 60 * 19, "Nice. I'll take the referrals."],
+    [marketing.id, P.alex, 60 * 3, "Response rate on Tuesday mornings is way ahead. Let's book more calls then."],
+    [old.id, P.devon, 60 * 24 * 30, "Final files are archived on the drive."],
+    [alexCasey.id, P.alex, 60 * 6, "Hi Casey, thanks for picking up the analytics set-up."],
+    [alexCasey.id, P.casey, 60 * 5, "No problem, should be done tomorrow."],
+    [devonCasey.id, P.devon, 60 * 4, "Design review moved to Friday 3pm, sent you an invite."],
+    [devonCasey.id, P.devon, 30, "Also: can you send me the staging link?"],
+    [alexBlair.id, P.blair, 60 * 8, "Can we talk pricing for the Sample Gym proposal tomorrow?"],
+    [alexBlair.id, P.alex, 60 * 7, "Yes, 10am works."],
+  ];
+  const rows = script.map(([channelId, authorId, minutes, body]) => ({ id: randomUUID(), channelId, authorId, body, isSample: true, createdAt: ago(minutes), updatedAt: ago(minutes) }));
+  await db.insert(schema.chatMessages).values(rows);
+
+  const notes: Array<typeof schema.notifications.$inferInsert> = [
+    { userId: P.casey, type: "chat_mention", title: "Alex Example mentioned you in #general", body: "@casey can you take a look at the contact form spam when you get a minute?", href: `/chat?c=${general.id}`, dedupeKey: `sample:mention:casey`, createdAt: ago(120) },
+    { userId: P.casey, type: "task_assigned", title: "New task for you: Check broken links (sample)", body: "Alex Example assigned it to you.", href: "/tasks?assignee=me", dedupeKey: "sample:assigned:casey", createdAt: ago(300) },
+    { userId: P.casey, type: "meeting_reminder", title: "At 11:00: Daily check-in (sample)", body: "https://meet.example.test/checkin", href: "/calendar?view=agenda", dedupeKey: "sample:meeting:casey", createdAt: ago(20), readAt: null },
+    { userId: P.alex, type: "payment_due", title: "Due soon: Sample Cloud Hosting", body: "A payment you look after is coming up.", href: "/payments", dedupeKey: "sample:payment:alex", createdAt: ago(600) },
+    { userId: P.alex, type: "task_due", title: "Due tomorrow: Prepare BAS figures (sample)", body: "A task assigned to you is due soon.", href: "/tasks?assignee=me", dedupeKey: "sample:due:alex", createdAt: ago(900), readAt: ago(800) },
+  ];
+  // already handled, so the scheduler doesn't email the samples
+  await db.insert(schema.notifications).values(notes.map((x) => ({ ...x, emailSkipped: true })));
+  return { messages: rows.length };
 }
 
 main().catch((err) => {

@@ -2,7 +2,8 @@ import Link from "next/link";
 import { BarList } from "@/components/charts/BarList";
 import { Donut } from "@/components/charts/Donut";
 import { TrendChart } from "@/components/charts/TrendChart";
-import { IconCalendar, IconCard, IconChat, IconMegaphone, IconTasks } from "@/components/icons";
+import { IconCalendar, IconCard, IconMegaphone, IconTasks } from "@/components/icons";
+import { ChatCard } from "@/components/home/ChatCard";
 import { MeetingList, ProgressList, QuickActions, TaskList, type QuickAction } from "@/components/home/WorkCards";
 import { Badge } from "@/components/ui/Badge";
 import { ButtonLink } from "@/components/ui/Button";
@@ -14,6 +15,7 @@ import { StatCard } from "@/components/ui/StatCard";
 import { requirePerm } from "@/lib/auth/session";
 import type { Actor } from "@/lib/dal/guard";
 import { upcomingEvents } from "@/lib/dal/calendar";
+import { unreadChatSummary } from "@/lib/dal/chat";
 import { myOpenTasks, teamProgress } from "@/lib/dal/tasks";
 import { toTaskView } from "@/lib/task-view";
 import { countryFilter, financeSummary } from "@/lib/dal/analytics";
@@ -72,19 +74,21 @@ async function MyDay({ user, sample }: { user: Actor; sample: boolean }) {
   const canTasks = hasPerm(user, "tasks", "view");
   const canPayments = hasPerm(user, "payments", "view");
   const canMarketing = hasPerm(user, "marketing", "view");
-  const [today, soon, mine, payments, mk] = await Promise.all([
+  const canChat = hasPerm(user, "chat", "view");
+  const [today, soon, mine, payments, mk, chat] = await Promise.all([
     canCalendar ? upcomingEvents(user, { todayOnly: true, limit: 8 }) : Promise.resolve(null),
     canCalendar ? upcomingEvents(user, { days: 7, limit: 4 }) : Promise.resolve(null),
     canTasks ? myOpenTasks(user, 6) : Promise.resolve(null),
     canPayments ? paymentsOverview(user) : Promise.resolve(null),
     canMarketing ? marketingSnapshot(user) : Promise.resolve(null),
+    canChat ? unreadChatSummary(user, 4) : Promise.resolve(null),
   ]);
   const todayIso = today?.today ?? mine?.today ?? "";
   const dateLine = todayIso ? new Date(`${todayIso}T00:00:00Z`).toLocaleDateString("en-AU", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" }) : "";
   const actions = quickActionsFor(user);
   const laterThisWeek = soon?.events.filter((e) => e.date !== todayIso) ?? [];
   const dueSoon = payments?.timeline.filter((x) => x.daysUntil <= 7) ?? [];
-  const extras = (payments ? 1 : 0) + (mk ? 1 : 0) + (hasPerm(user, "chat", "view") ? 1 : 0);
+  const extras = (payments ? 1 : 0) + (mk ? 1 : 0) + (chat ? 1 : 0);
 
   return (
     <>
@@ -161,16 +165,7 @@ async function MyDay({ user, sample }: { user: Actor; sample: boolean }) {
               </p>
             </Card>
           )}
-          {hasPerm(user, "chat", "view") && (
-            <Card className="flex flex-col gap-3">
-              <div className="flex items-center gap-2 text-ink-2">
-                <IconChat />
-                <Pill>Phase 5</Pill>
-              </div>
-              <h2 className="title-card font-bold tracking-[-0.02em] text-ink">Unread chat</h2>
-              <p className="text-sm text-muted">Team chat and unread counts arrive in Phase 5.</p>
-            </Card>
-          )}
+          {chat && <ChatCard summary={chat} />}
         </div>
       )}
     </>
@@ -196,6 +191,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
     canTasks && user.perms.tasks.scope === "all" ? teamProgress(user) : Promise.resolve(null),
     canTasks && user.perms.tasks.scope !== "all" ? myOpenTasks(user, 4) : Promise.resolve(null),
   ]);
+  const chat = hasPerm(user, "chat", "view") ? await unreadChatSummary(user, 3) : null;
   const base = s.baseCurrency;
   const cur = s.totals.current;
   const series = s.monthly;
@@ -283,7 +279,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
           )}
         </Card>
 
-        <Card className="@min-[60rem]:col-span-5">
+        <Card className="@min-[60rem]:col-span-4">
           <CardHeader title="Revenue by country" aside={!country && s.byCountry.length > 0 ? <Pill>UK + AUS = {Math.round(ukAu)}%</Pill> : undefined} />
           <BarList
             currency={base}
@@ -292,7 +288,9 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
           {!country && <p className="mt-5 rounded-[14px] border border-line bg-surface-2 px-4 py-3 text-sm text-ink-2">Use the country switch at the top to see revenue, profit and costs for the UK or Australia alone.</p>}
         </Card>
 
-        <Card className="@min-[40rem]:col-span-2 @min-[60rem]:col-span-7">
+        <ChatCard summary={chat} className="@min-[60rem]:col-span-3" />
+
+        <Card className="@min-[40rem]:col-span-2 @min-[60rem]:col-span-5">
           <CardHeader
             title="Upcoming payments"
             subtitle={payments ? `${whole(payments.due30.totalBaseMinor)} · next 30 days` : undefined}
@@ -323,7 +321,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
           )}
         </Card>
 
-        <Card className="@container flex flex-col @min-[60rem]:col-span-3" accent={cur.outstandingBaseMinor > 0}>
+        <Card className="@container flex flex-col @min-[60rem]:col-span-6 @min-[80rem]:col-span-3" accent={cur.outstandingBaseMinor > 0}>
           <div className="mb-3 flex flex-wrap items-center gap-2">
             <h2 className="title-card mr-auto font-bold tracking-[-0.02em] text-ink">Outstanding</h2>
             {cur.outstandingBaseMinor > 0 ? <Badge tone="amber">Follow up</Badge> : <Badge tone="green">All paid</Badge>}
@@ -341,7 +339,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
             </div>
           )}
         </Card>
-        <Card className="flex flex-col @min-[60rem]:col-span-3">
+        <Card className="flex flex-col @min-[60rem]:col-span-6 @min-[80rem]:col-span-3">
           <TileHeader icon={<IconMegaphone />} title="Marketing" href={mk ? "/marketing" : undefined} />
           {!mk ? (
             <p className="text-sm text-muted">You don&apos;t have access to marketing.</p>
@@ -349,7 +347,8 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
             <p className="text-sm text-muted">No activity logged in the last 30 days.</p>
           ) : (
             <>
-              <dl className="grid grid-cols-3 gap-3">
+              {/* wraps to fewer columns rather than letting labels and figures run into each other */}
+              <dl className="grid grid-cols-[repeat(auto-fit,minmax(5.5rem,1fr))] gap-3">
                 <div className="min-w-0">
                   <dt className="label-mono">Reached</dt>
                   <dd className="num mt-1 font-display text-2xl font-bold text-ink">{mk.contacts}</dd>
@@ -369,7 +368,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
             </>
           )}
         </Card>
-        <Card className="flex flex-col @min-[60rem]:col-span-3">
+        <Card className="flex flex-col @min-[60rem]:col-span-6 @min-[80rem]:col-span-3">
           <TileHeader icon={<IconCalendar />} title="Next meetings" href={meetings ? "/calendar?view=agenda" : undefined} />
           {!meetings ? (
             <p className="text-sm text-muted">You don&apos;t have access to the calendar.</p>
@@ -379,7 +378,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
             <MeetingList items={meetings.events} today={meetings.today} />
           )}
         </Card>
-        <Card className="flex flex-col @min-[60rem]:col-span-3">
+        <Card className="flex flex-col @min-[60rem]:col-span-6 @min-[80rem]:col-span-3">
           <TileHeader icon={<IconTasks />} title={team ? "Team tasks this week" : "My tasks"} href={canTasks ? "/tasks" : undefined} />
           {team ? (
             team.people.length === 0 ? (

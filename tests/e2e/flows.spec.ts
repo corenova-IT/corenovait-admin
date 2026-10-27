@@ -82,3 +82,41 @@ test("My Day: a quick action opens the form straight away", async ({ browser }) 
   await expect(page.getByRole("dialog", { name: "New task" })).toBeVisible({ timeout: 10_000 });
   await ctx.close();
 });
+
+test("chat: a message appears live for someone else, with the typing indicator; DMs stay private", async ({ browser }) => {
+  const tokens = JSON.parse(readFileSync(path.resolve(".e2e/sessions.json"), "utf8"));
+  const casey = await as(browser, "staff");
+  const alex = await as(browser, "admin");
+  await alex.page.goto(BASE + "/chat", { waitUntil: "networkidle" });
+  await casey.page.goto(BASE + "/chat", { waitUntil: "networkidle" });
+  await expect(alex.page.getByRole("heading", { name: "#general" })).toBeVisible();
+
+  // Casey types: Alex sees "is typing" without reloading
+  const box = casey.page.getByLabel("Message #general");
+  await box.fill("Hello from the browser test, @alex");
+  await expect(alex.page.getByText(/is typing/)).toBeVisible({ timeout: 15_000 });
+  await box.press("Enter");
+  await expect(casey.page.getByText("Hello from the browser test,")).toBeVisible({ timeout: 10_000 });
+  // and the message arrives live on Alex's screen
+  await expect(alex.page.getByText("Hello from the browser test,")).toBeVisible({ timeout: 15_000 });
+  await expect(alex.page.getByText(/is typing/)).toHaveCount(0, { timeout: 15_000 });
+
+  // Casey edits it; the edit reaches Alex too
+  await casey.page.getByRole("button", { name: /^Edit message/ }).last().click();
+  await casey.page.getByLabel("Edit message").fill("Hello again, edited");
+  await casey.page.getByRole("button", { name: "Save" }).click();
+  await expect(alex.page.getByText("Hello again, edited")).toBeVisible({ timeout: 15_000 });
+
+  // the @mention reached Alex's notifications
+  await alex.page.goto(BASE + "/notifications", { waitUntil: "networkidle" });
+  await expect(alex.page.getByText(/mentioned you in #general/).first()).toBeVisible();
+  await alex.ctx.close();
+  await casey.ctx.close();
+
+  // Emery isn't in Alex and Casey's DM: the page says so and shows none of it
+  const emery = await as(browser, "marketing");
+  await emery.page.goto(`${BASE}/chat?c=${tokens.dmAlexCasey}`, { waitUntil: "networkidle" });
+  await expect(emery.page.getByText(/doesn.t exist or you.re not in it/)).toBeVisible();
+  await expect(emery.page.getByText("thanks for picking up the analytics")).toHaveCount(0);
+  await emery.ctx.close();
+});

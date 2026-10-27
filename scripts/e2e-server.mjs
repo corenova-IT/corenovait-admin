@@ -56,6 +56,10 @@ async function session(email, mfaVerified) {
   return token;
 }
 const [[rep]] = await conn.query("select id from representatives limit 1");
+// the sample DM between Alex (admin) and Casey (staff), to prove nobody else can open it
+const [[alex]] = await conn.query("select id from users where email = 'admin.one@example.test'");
+const [[casey]] = await conn.query("select id from users where email = 'web.dev@example.test'");
+const [[dm]] = await conn.query("select id from chat_channels where dm_key = ?", [[alex.id, casey.id].sort().join(":")]);
 const tokens = {
   admin: await session("admin.one@example.test", true),
   staff: await session("web.dev@example.test", false),
@@ -63,6 +67,7 @@ const tokens = {
   // staff with marketing access limited to their own activity
   marketing: await session("marketing@example.test", false),
   repId: rep.id,
+  dmAlexCasey: dm.id,
 };
 await conn.end();
 mkdirSync(path.join(ROOT, ".e2e"), { recursive: true });

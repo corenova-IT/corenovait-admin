@@ -80,6 +80,7 @@ All are server-only. See `.env.example` for comments.
 | `SITE_URL` | yes | e.g. `https://admin.corenovait.com.au`. Used in email links. |
 | `RESEND_API_KEY`, `MAIL_FROM` | production | Resend key and a sender on your verified domain. |
 | `UPLOAD_DIR` | production | Absolute path **outside** the app folder and `public_html`. |
+| `CRON_SECRET` | production | At least 32 random characters (`npm run gen:key`). Protects the scheduler endpoint the cron job calls (section 9). Without it, reminders and notification emails don't run. |
 | `SESSION_IDLE_MINUTES` | no | Default 30. |
 | `SESSION_MAX_HOURS` | no | Default 12. Sessions end after this even if active. |
 | `DATABASE_POOL_SIZE` | no | Default 5. |
@@ -296,7 +297,7 @@ from a real database session, so a hand-made one is rejected.
     done, open tasks and overdue ones.
   - Scope: *own* = tasks you created; *assigned* = also tasks assigned to you (the Staff default);
     *all* = everything. Below *all* you can only assign a task to yourself or leave it unassigned.
-    People who can see a task and create tasks can comment; you can delete your own comments (and
+    Anyone who can see a task can comment on it; you can delete your own comments (and
     people with delete + *all* can remove any). Deleting a task keeps it, with its comments, in the
     audit log.
 - **Home**: *Next meetings* and *Team tasks this week* (or *My tasks* for people who only see their
@@ -310,6 +311,84 @@ from a real database session, so a hand-made one is rejected.
 - **Sample data**: about 45 events five weeks either side of today (weekly stand-up, sprint planning,
   client calls, deadlines, an offsite) and about 35 tasks across the team with checklists and comments.
   `web.dev@example.test` (Casey, staff) shows the *My Day* view.
+
+### Chat and notifications (Phase 5)
+
+- **Team chat** (`/chat`): channels (`#general` plus ones admins create) and direct messages between two
+  people, with unread counts (sidebar badge, Home, My Day), online status (active in the last 90 seconds),
+  a typing indicator, editing and deleting your own messages, and attachments (PDF, PNG, JPG, WebP, up to
+  `UPLOAD_MAX_MB`, checked from the file's bytes) served only through `/api/files/[id]`.
+- **Who can read what** (enforced in `lib/dal/chat.ts`, tested in `tests/dal/chat.test.ts`):
+  - Reading anything needs **membership** of that channel or DM. `#general` includes everyone with chat
+    access; other channels include exactly the people an admin chose.
+  - **Direct messages are private to the two people in them.** There is no admin override: admins can't
+    list, open, sync or download anything from someone else's DM, and DMs never appear in channel
+    management.
+  - **Admins manage channels** (create, rename, topic, members, archive and restore; `#general` can't be
+    archived). The management view shows names and member counts, never messages. An admin who wants to
+    read a channel must add themselves as a member, which is recorded in the audit log.
+  - Archived channels are read-only for their members.
+  - Permissions: chat *view* = use chat; *create* = post and start DMs; *edit* (or *delete*) = edit and
+    delete **your own** messages. The chat scope isn't used: membership decides.
+  - The audit log records channel changes and message edits and deletes, **without the message text or
+    attachment names**, so the audit log can't be used to read DMs. New messages aren't logged.
+- **Live updates** without long-lived connections (Hostinger friendly): the page listens to
+  **Server-Sent Events** at `/api/chat/stream`; each stream checks for changes every 2 seconds and closes
+  after 25 seconds, and the browser reconnects with the latest position. If events don't arrive within
+  8 seconds (for example a proxy that buffers them), the page switches to **polling**
+  `/api/chat/sync` every 4 seconds. Both return the same data; the transport is swappable in
+  `components/chat/useChatFeed.ts`. The header of the conversation shows "live" or "live · polling".
+- **Notifications** (`/notifications`, bell in the top bar with the unread count): task assigned to you,
+  task due today or tomorrow, meeting reminders (at the event's reminder time, default 10 minutes before),
+  payments inside their reminder window (to the person looking after them), and @mentions in chat
+  (`@first-name`, `@fullname` or `@email-name`, only for people in that conversation). Each person sees only
+  their own. People only get reminders for things they're allowed to see.
+- **Email**: each person can turn "Email me as well" on or off on the Notifications page (on by default;
+  audited). Emails are sent by the scheduler through Resend, so they arrive within one cron interval.
+  Without `RESEND_API_KEY` in development they're printed in the terminal instead.
+
+### Notifications and the cron job
+
+Hostinger doesn't keep a background process running, so reminders and emails are made by a
+**scheduler endpoint** that a cron job calls every 5 minutes:
+
+`POST /api/cron/notifications` (GET also works) with the header `Authorization: Bearer <CRON_SECRET>`.
+
+- Without `CRON_SECRET` (or with one shorter than 32 characters) it answers 503 and does nothing.
+- A wrong or missing token gets 401. It allows 6 runs a minute and answers 429 after that.
+- It's **idempotent**: every reminder has a unique key (task + due date, event + person + start time,
+  payment + due date) and each email is claimed before it's sent, so running it twice, or two runs at
+  once, never duplicates anything. A failed email is retried on the next run for up to two days.
+- The answer is JSON with counts, e.g. `{"ok":true,"taskDue":2,"meetings":1,"payments":0,"emailed":3,...}`.
+- The secret is never written to logs.
+
+**Set it up on Hostinger:**
+
+1. Generate a secret on your PC: `npm run gen:key` (copy the output).
+2. hPanel → your Node.js app → **Environment variables**: add `CRON_SECRET` with that value. Redeploy or
+   restart the app.
+3. hPanel → **Advanced → Cron Jobs** → *Create a new cron job*:
+   - Type: **Custom** (command).
+   - Command (one line; replace the domain and the secret):
+
+     ```
+     curl -fsS -m 60 -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://admin.corenovait.com.au/api/cron/notifications > /dev/null
+     ```
+
+   - Schedule: every 5 minutes (minute `*/5`, every hour, every day, every month, every weekday), shown
+     in hPanel as `*/5 * * * *`.
+4. Save. To check it works, run the same command once over SSH (hPanel → Advanced → SSH access) without
+   `> /dev/null`, or from your PC: you should see `{"ok":true,...}`. A `401` means the secret in the
+   command doesn't match `CRON_SECRET`; `503` means `CRON_SECRET` isn't set on the app. (If your hPanel
+   shows cron output, you can read the result there instead.) After that, new reminders appear on the
+   Notifications page within five minutes of being due.
+
+The cron command is visible only inside your hPanel account. If you change the secret, update both the
+app's environment variable and the cron command. To test locally:
+
+```
+curl -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" http://localhost:3000/api/cron/notifications
+```
 
 ## 7. Uploads
 
@@ -344,6 +423,13 @@ a fresh database with the real migrations. Nothing touches your local or product
   .ics, checklists, comments, My tasks, team progress, audit.
 - `tests/dal/settings.test.ts`: the company time zone (admin only, validated, audited, used by the
   marketing heatmap).
+- `tests/dal/chat.test.ts`: nobody can read a channel or DM they aren't in (messages, sync, typing,
+  attachments), not even an admin; admins manage channels but must add themselves (audited) to read one;
+  edit and delete only your own; unread counts, typing, mentions, archived channels.
+- `tests/dal/notifications.test.ts`: task assigned, due-soon, meeting and payment reminders only for people
+  who may see them, the scheduler run twice or in parallel creates nothing extra, emails sent once and only
+  with the setting on, your own notifications only, and the cron endpoint (503 without a secret, 401 with a
+  wrong one, rate limit).
 - `tests/dal/boundaries.test.ts`: nothing outside `lib/dal` imports the database.
 - `tests/unit/`: TOTP against the RFC test vectors, encryption, upload type checks, money, passwords,
   date labels.
@@ -360,8 +446,9 @@ the installed Chrome at 1920, 1536, 1440, 1366, 1280, 1152, 1024, 768 and 390 px
 anything sticks out of its card, a heading runs onto three lines, the page scrolls sideways, or a
 table needs sideways scrolling from 1280 px up. The same run also does the interactive flows in
 `tests/e2e/flows.spec.ts`: dragging a task between board columns, ticking a checklist and commenting,
-dragging a calendar event to another day, logging marketing activity, and a My Day quick action, each
-checked again after a reload. For a quicker run, limit it, e.g.
+dragging a calendar event to another day, logging marketing activity, a My Day quick action, and live chat
+between two people (typing indicator, the message and an edit arriving without a reload, the @mention
+notification, and a third person unable to open their DM), each checked again after a reload. For a quicker run, limit it, e.g.
 `E2E_WIDTHS=1366,390 E2E_THEMES=dark npx playwright test` (after `npx next build --webpack`).
 
 The shared sizes live in `app/globals.css`: `--space-card` / `--space-gap` (fluid padding and gaps),

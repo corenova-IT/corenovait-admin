@@ -39,3 +39,13 @@ export function mailConfig(): { apiKey: string; from: string } | null {
 }
 
 export const isProduction = () => process.env.NODE_ENV === "production";
+
+/**
+ * Shared secret for the scheduler endpoint (/api/cron/notifications), which
+ * a Hostinger cron job calls every few minutes. Null (endpoint disabled) when
+ * unset or shorter than 32 characters.
+ */
+export function cronSecret(): string | null {
+  const v = process.env.CRON_SECRET?.trim();
+  return v && v.length >= 32 ? v : null;
+}

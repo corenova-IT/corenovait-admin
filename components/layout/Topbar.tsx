@@ -8,6 +8,7 @@ import { Avatar } from "@/components/ui/Avatar";
 import { NAV } from "@/lib/nav";
 import type { Theme } from "@/lib/theme";
 import { ThemeToggle } from "./ThemeToggle";
+import { useBadges, type Badges } from "./badges";
 
 function ProfileMenu({ name, email }: { name: string; email: string }) {
   const [open, setOpen] = useState(false);
@@ -73,7 +74,8 @@ function useWide() {
   );
 }
 
-export function Topbar({ name, email, theme, unread }: { name: string; email: string; theme: Theme; unread: number }) {
+export function Topbar({ name, email, theme, badges: initial }: { name: string; email: string; theme: Theme; badges: Badges }) {
+  const unread = useBadges(initial).notifications;
   const pathname = usePathname();
   // on a phone the long hint ("Search clients, invoices, tasks") would be cut off, so just "Search"
   const wide = useWide();
@@ -95,18 +97,18 @@ export function Topbar({ name, email, theme, unread }: { name: string; email: st
         />
       </form>
       <ThemeToggle initial={theme} />
-      <button
-        type="button"
+      <Link
+        href="/notifications"
         aria-label={unread > 0 ? `Notifications, ${unread} unread` : "Notifications, none unread"}
         className="relative grid size-12 shrink-0 place-items-center rounded-[14px] border border-line bg-surface text-ink-2 hover:border-accent-line hover:text-ink"
       >
         <IconBell />
         {unread > 0 && (
-          <span className="absolute right-2.5 top-2.5 grid min-w-4 place-items-center rounded-full bg-accent px-1 font-mono text-[10px] leading-4 text-on-accent">
+          <span aria-hidden="true" className="absolute right-2 top-2 grid min-w-4 place-items-center rounded-full bg-accent px-1 font-mono text-[10px] leading-4 text-on-accent">
             {unread > 9 ? "9+" : unread}
           </span>
         )}
-      </button>
+      </Link>
       <ProfileMenu name={name} email={email} />
     </div>
   );

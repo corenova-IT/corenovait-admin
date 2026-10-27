@@ -9,9 +9,11 @@ import { cx } from "@/components/ui/cx";
 import type { NavItem } from "@/lib/nav";
 import { Logo } from "./Logo";
 import { NavIcon } from "./NavIcon";
+import { useBadges, type Badges } from "./badges";
 
-function NavList({ items, onNavigate }: { items: NavItem[]; onNavigate?: () => void }) {
+function NavList({ items, onNavigate, badges: initial }: { items: NavItem[]; onNavigate?: () => void; badges: Badges }) {
   const pathname = usePathname();
+  const chatUnread = useBadges(initial).chat;
   const groups: Array<{ key: NavItem["group"]; label: string }> = [
     { key: "workspace", label: "Workspace" },
     { key: "admin", label: "Admin" },
@@ -43,7 +45,13 @@ function NavList({ items, onNavigate }: { items: NavItem[]; onNavigate?: () => v
                       <span className={active ? "text-accent-text" : "text-muted"}>
                         <NavIcon name={item.icon} />
                       </span>
-                      {item.label}
+                      <span className="min-w-0 flex-1">{item.label}</span>
+                      {item.href === "/chat" && chatUnread > 0 && (
+                        <span className="grid min-w-6 place-items-center rounded-full bg-accent px-1.5 font-mono text-[11px] leading-5 text-on-accent">
+                          {chatUnread > 99 ? "99+" : chatUnread}
+                          <span className="sr-only"> unread</span>
+                        </span>
+                      )}
                     </Link>
                   </li>
                 );
@@ -68,7 +76,7 @@ function UserCard({ name, role }: { name: string; role: string }) {
   );
 }
 
-export function Sidebar({ items, userName, userRole }: { items: NavItem[]; userName: string; userRole: string }) {
+export function Sidebar({ items, userName, userRole, badges }: { items: NavItem[]; userName: string; userRole: string; badges: Badges }) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
   useEffect(() => setOpen(false), [pathname]);
@@ -81,7 +89,7 @@ export function Sidebar({ items, userName, userRole }: { items: NavItem[]; userN
           <Logo />
         </Link>
         <nav aria-label="Main" className="flex-1 overflow-y-auto">
-          <NavList items={items} />
+          <NavList items={items} badges={badges} />
         </nav>
         <UserCard name={userName} role={userRole} />
       </aside>
@@ -118,7 +126,7 @@ export function Sidebar({ items, userName, userRole }: { items: NavItem[]; userN
               </button>
             </div>
             <nav aria-label="Main" className="flex-1 overflow-y-auto">
-              <NavList items={items} onNavigate={() => setOpen(false)} />
+              <NavList items={items} badges={badges} onNavigate={() => setOpen(false)} />
             </nav>
             <UserCard name={userName} role={userRole} />
           </div>

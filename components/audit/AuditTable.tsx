@@ -59,6 +59,8 @@ export const ENTITY_LABELS: Record<string, string> = {
   calendar: "Calendar",
   tasks: "Task",
   task_comments: "Task comment",
+  chat_channels: "Chat channel",
+  chat_messages: "Chat message",
 };
 
 const HIDDEN_FIELDS = new Set(["updated_at", "created_at", "updatedAt", "createdAt"]);

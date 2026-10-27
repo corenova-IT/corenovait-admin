@@ -78,7 +78,7 @@ export async function toggleChecklist(_prev: TaskState, fd: FormData): Promise<T
 }
 
 export async function addComment(_prev: TaskState, fd: FormData): Promise<TaskState> {
-  const g = await actorWithPerm("tasks", "create");
+  const g = await actorWithPerm("tasks", "view");
   if (!g.actor) return { error: g.error };
   const id = uuid.safeParse(fd.get("taskId"));
   if (!id.success) return { error: MISSING };

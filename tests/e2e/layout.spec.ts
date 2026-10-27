@@ -16,7 +16,7 @@ const BASE = "http://localhost:3210";
 const COOKIE = "__Host-cn_session";
 
 type Who = "none" | "admin" | "staff" | "mfaPending" | "marketing";
-const tokens = () => JSON.parse(readFileSync(path.resolve(".e2e/sessions.json"), "utf8")) as Record<Exclude<Who, "none">, string> & { repId: string };
+const tokens = () => JSON.parse(readFileSync(path.resolve(".e2e/sessions.json"), "utf8")) as Record<Exclude<Who, "none">, string> & { repId: string; dmAlexCasey: string };
 
 const PAGES: Array<{ path: string | ((t: ReturnType<typeof tokens>) => string); as: Who }> = [
   { path: "/login", as: "none" },
@@ -55,6 +55,11 @@ const PAGES: Array<{ path: string | ((t: ReturnType<typeof tokens>) => string); 
   { path: "/tasks?view=list", as: "admin" },
   { path: "/tasks?assignee=me&view=list", as: "staff" },
   { path: "/tasks", as: "staff" },
+  { path: "/chat", as: "admin" },
+  { path: "/chat", as: "staff" },
+  { path: (t) => `/chat?c=${t.dmAlexCasey}`, as: "staff" },
+  { path: "/notifications", as: "admin" },
+  { path: "/notifications", as: "staff" },
 ];
 
 /** Runs in the page: returns a list of human-readable layout problems. */

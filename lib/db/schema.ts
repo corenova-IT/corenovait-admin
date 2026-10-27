@@ -111,6 +111,8 @@ export const users = mysqlTable(
     lockedUntil: datetime("locked_until", { mode: "date", fsp: 3 }),
     lastSignInAt: datetime("last_sign_in_at", { mode: "date", fsp: 3 }),
     invitedBy: userRef("invited_by"),
+    /** send notifications by email too (in-app ones always appear) */
+    notifyEmail: boolean("notify_email").notNull().default(true),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -606,4 +608,111 @@ export const taskComments = mysqlTable(
     createdAt: createdAt(),
   },
   (t) => [index("comment_task_idx").on(t.taskId, t.createdAt)]
+);
+
+// ---------------------------------------------------------------- chat
+/**
+ * Channels (#general plus ones admins create) and direct messages. Reading
+ * always needs membership: there is no admin override, so nobody can read a
+ * direct message they aren't part of. #general (is_default) includes every
+ * active user automatically.
+ */
+export const chatChannels = mysqlTable(
+  "chat_channels",
+  {
+    id: id(),
+    kind: mysqlEnum("kind", ["channel", "dm"]).notNull().default("channel"),
+    /** "general", "projects"…; empty for direct messages */
+    name: varchar("name", { length: 60 }).notNull().default(""),
+    topic: varchar("topic", { length: 200 }).notNull().default(""),
+    isDefault: boolean("is_default").notNull().default(false),
+    /** the two member ids, sorted and joined, so a pair has exactly one DM */
+    dmKey: varchar("dm_key", { length: 80 }),
+    archivedAt: datetime("archived_at", { mode: "date", fsp: 3 }),
+    isSample: boolean("is_sample").notNull().default(false),
+    createdBy: userRef("created_by")
+      .notNull()
+      .references(() => users.id),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [uniqueIndex("chat_dm_uq").on(t.dmKey), index("chat_kind_idx").on(t.kind, t.name)]
+);
+
+export const chatMembers = mysqlTable(
+  "chat_members",
+  {
+    channelId: varchar("channel_id", { length: 36 })
+      .notNull()
+      .references(() => chatChannels.id, { onDelete: "cascade" }),
+    userId: userRef("user_id")
+      .notNull()
+      .references(() => users.id),
+    /** messages after this are unread for this person */
+    lastReadAt: datetime("last_read_at", { mode: "date", fsp: 3 }).notNull().$defaultFn(() => new Date()),
+    /** set while they type; the typing indicator shows until it passes */
+    typingUntil: datetime("typing_until", { mode: "date", fsp: 3 }),
+    joinedAt: createdAt(),
+  },
+  (t) => [primaryKey({ columns: [t.channelId, t.userId] }), index("chat_member_user_idx").on(t.userId)]
+);
+
+export const chatMessages = mysqlTable(
+  "chat_messages",
+  {
+    id: id(),
+    channelId: varchar("channel_id", { length: 36 })
+      .notNull()
+      .references(() => chatChannels.id, { onDelete: "cascade" }),
+    authorId: userRef("author_id")
+      .notNull()
+      .references(() => users.id),
+    body: text("body").notNull(),
+    fileId: varchar("file_id", { length: 36 }).references(() => files.id, { onDelete: "set null" }),
+    editedAt: datetime("edited_at", { mode: "date", fsp: 3 }),
+    /** deleted messages keep their place but lose their text and file */
+    deletedAt: datetime("deleted_at", { mode: "date", fsp: 3 }),
+    isSample: boolean("is_sample").notNull().default(false),
+    createdAt: datetime("created_at", { mode: "date", fsp: 3 }).notNull().$defaultFn(() => new Date()),
+    /** bumped on every change, so live updates can send edits and deletes too */
+    updatedAt: datetime("updated_at", { mode: "date", fsp: 3 }).notNull().$defaultFn(() => new Date()),
+  },
+  (t) => [index("chat_msg_channel_idx").on(t.channelId, t.createdAt), index("chat_msg_updated_idx").on(t.channelId, t.updatedAt)]
+);
+
+/** When each person was last active in the portal (online status). */
+export const userPresence = mysqlTable("user_presence", {
+  userId: userRef("user_id")
+    .primaryKey()
+    .references(() => users.id),
+  lastSeenAt: datetime("last_seen_at", { mode: "date", fsp: 3 }).notNull(),
+});
+
+// ---------------------------------------------------------------- notifications
+export const NOTIFICATION_TYPES = ["task_assigned", "task_due", "meeting_reminder", "payment_due", "chat_mention"] as const;
+
+/**
+ * In-app notifications (and the email queue: emailed_at is set once sent).
+ * dedupe_key is unique, so the scheduler can run as often as it likes
+ * without creating the same reminder twice.
+ */
+export const notifications = mysqlTable(
+  "notifications",
+  {
+    id: id(),
+    userId: userRef("user_id")
+      .notNull()
+      .references(() => users.id),
+    type: mysqlEnum("type", NOTIFICATION_TYPES).notNull(),
+    title: varchar("title", { length: 200 }).notNull(),
+    body: varchar("body", { length: 500 }).notNull().default(""),
+    href: varchar("href", { length: 300 }).notNull().default(""),
+    dedupeKey: varchar("dedupe_key", { length: 191 }).notNull(),
+    readAt: datetime("read_at", { mode: "date", fsp: 3 }),
+    emailedAt: datetime("emailed_at", { mode: "date", fsp: 3 }),
+    /** emailing was attempted and skipped (setting off, or no mail set up), so it isn't retried */
+    emailSkipped: boolean("email_skipped").notNull().default(false),
+    createdAt: datetime("created_at", { mode: "date", fsp: 3 }).notNull().$defaultFn(() => new Date()),
+  },
+  (t) => [uniqueIndex("notif_dedupe_uq").on(t.dedupeKey), index("notif_user_idx").on(t.userId, t.readAt, t.createdAt), index("notif_email_idx").on(t.emailedAt, t.emailSkipped)]
 );

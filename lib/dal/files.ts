@@ -2,7 +2,7 @@ import "server-only";
 import { createHash, randomBytes } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { isProduction } from "@/lib/env";
 import { sniffType } from "@/lib/file-types";
@@ -39,7 +39,7 @@ function cleanName(name: string, ext: string) {
 
 export async function saveUpload(
   actor: Actor,
-  input: { module: AppModule; entityType?: string; entityId?: string; name: string; bytes: Buffer }
+  input: { module: AppModule; entityType?: string; entityId?: string; name: string; bytes: Buffer; private?: boolean }
 ): Promise<{ id: string; mimeType: string; sizeBytes: number }> {
   // attaching a receipt is part of adding OR editing a record
   if (!hasPerm(actor, input.module, "create") && !hasPerm(actor, input.module, "edit")) requirePerm(actor, input.module, "create");
@@ -68,7 +68,9 @@ export async function saveUpload(
   };
   await getDb().transaction(async (tx) => {
     await tx.insert(schema.files).values(row);
-    await writeAudit(tx, actorRef(actor), { action: "create", entity: "files", entityId: id, summary: `Uploaded ${row.originalName}`, after: { ...row, storageKey: undefined } });
+    // private (chat): the audit log records that a file was added, not its name, so admins can't read DMs through it
+    if (input.private) await writeAudit(tx, actorRef(actor), { action: "create", entity: "files", entityId: id, summary: "Uploaded a chat attachment" });
+    else await writeAudit(tx, actorRef(actor), { action: "create", entity: "files", entityId: id, summary: `Uploaded ${row.originalName}`, after: { ...row, storageKey: undefined } });
   });
   return { id, mimeType: type.mime, sizeBytes: row.sizeBytes };
 }
@@ -81,9 +83,27 @@ export async function getFileForDownload(actor: Actor, id: string) {
   if (!/^[0-9a-f-]{36}$/.test(id)) return null;
   const [f] = await getDb().select().from(schema.files).where(eq(schema.files.id, id));
   if (!f || !hasPerm(actor, f.module, "view")) return null;
+  // chat attachments: only members of that channel or DM, never the uploader or an admin outside it
+  if (f.module === "chat") {
+    if (f.entityType !== "chat_messages" || !f.entityId || !(await chatAttachmentVisible(actor, f.entityId, f.id))) return null;
+    if (!KEY.test(f.storageKey)) return null;
+    return { name: f.originalName, mimeType: f.mimeType, bytes: await readFile(path.join(uploadDir(), f.storageKey)) };
+  }
   const linkedOk = f.entityType && f.entityId && f.module === "transactions" ? await financeRecordVisible(actor, f.entityType, f.entityId) : false;
   if (!linkedOk && !rowAllowed(actor, f.module, { ownerId: f.uploadedBy })) return null;
   if (!KEY.test(f.storageKey)) return null;
   const bytes = await readFile(path.join(uploadDir(), f.storageKey));
   return { name: f.originalName, mimeType: f.mimeType, bytes };
+}
+
+/** The message still has this file, isn't deleted, and the caller is a member of its conversation. */
+async function chatAttachmentVisible(actor: Actor, messageId: string, fileId: string): Promise<boolean> {
+  const db = getDb();
+  const [msg] = await db.select().from(schema.chatMessages).where(eq(schema.chatMessages.id, messageId));
+  if (!msg || msg.deletedAt || msg.fileId !== fileId) return false;
+  const [member] = await db
+    .select({ userId: schema.chatMembers.userId })
+    .from(schema.chatMembers)
+    .where(and(eq(schema.chatMembers.channelId, msg.channelId), eq(schema.chatMembers.userId, actor.userId)));
+  return !!member;
 }

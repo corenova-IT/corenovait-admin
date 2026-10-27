@@ -73,7 +73,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
     ? {
         ...view(selected),
         commentList: selected.commentList.map((c) => ({ id: c.id, body: c.body, createdAt: c.createdAt.toISOString(), authorName: c.authorName, mine: c.mine })),
-        canComment: can.create,
+        canComment: true, // anyone who can see the task
         canModerate: can.delete && scope === "all",
       }
     : null;

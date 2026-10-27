@@ -9,6 +9,7 @@ import { localParts } from "@/lib/zoned";
 import { actorRef, writeAudit } from "./audit";
 import { AccessDenied, RuleError, hasPerm, requirePerm, rowAllowed, scopeWhere, type Actor } from "./guard";
 import { companyTimezone } from "./marketing";
+import { notify } from "./notifications";
 
 /**
  * Tasks (module "tasks"): the board, the list, "My tasks", checklists and
@@ -249,8 +250,22 @@ export async function createTask(actor: Actor, input: TaskInput): Promise<string
     await tx.insert(tasks).values({ id, ...values, completedAt: values.status === "done" ? new Date() : null, createdBy: actor.userId });
     const [after] = await tx.select().from(tasks).where(eq(tasks.id, id));
     await writeAudit(tx, actorRef(actor), { action: "create", entity: "tasks", entityId: id, after });
+    await notifyAssigned(tx, actor, id, values.title, values.assigneeId);
   });
   return id;
+}
+
+/** Tells the new assignee (unless they assigned it to themselves). */
+async function notifyAssigned(tx: Tx, actor: Actor, taskId: string, title: string, assigneeId: string | null) {
+  if (!assigneeId || assigneeId === actor.userId) return;
+  await notify(tx, {
+    userId: assigneeId,
+    type: "task_assigned",
+    title: `New task for you: ${title}`,
+    body: `${actor.fullName || actor.email} assigned it to you.`,
+    href: `/tasks?task=${taskId}`,
+    dedupeKey: `assigned:${taskId}:${assigneeId}:${Date.now()}`,
+  });
 }
 
 /** Loads a task for a change, checking edit permission and scope. */
@@ -272,6 +287,7 @@ export async function updateTask(actor: Actor, id: string, input: TaskInput) {
     await tx.update(tasks).set({ ...values, completedAt }).where(eq(tasks.id, id));
     const [after] = await tx.select().from(tasks).where(eq(tasks.id, id));
     await writeAudit(tx, actorRef(actor), { action: "update", entity: "tasks", entityId: id, before, after });
+    if (values.assigneeId !== before.assigneeId) await notifyAssigned(tx, actor, id, values.title, values.assigneeId);
   });
 }
 
@@ -314,9 +330,9 @@ export async function deleteTask(actor: Actor, id: string) {
 // ---------------------------------------------------------------- comments
 const commentBody = z.string().trim().min(1, "Write a comment first.").max(5000, "Keep comments under 5,000 characters.");
 
-/** Anyone who can see a task and create tasks can comment on it. */
+/** Anyone who can see a task can comment on it (no create permission needed). */
 export async function addComment(actor: Actor, taskId: string, body: string): Promise<string> {
-  requirePerm(actor, "tasks", "create");
+  requirePerm(actor, "tasks", "view");
   const parsed = commentBody.safeParse(body);
   if (!parsed.success) throw new RuleError(parsed.error.issues[0].message);
   const db = getDb();
