@@ -85,6 +85,29 @@ function findLayoutProblems(checkTableScroll: boolean): string[] {
     }
   }
 
+  // cards never overlap each other (one card inside another is fine)
+  const cards = [...document.querySelectorAll(".glass")].filter((c) => !skip(c) && visible(c) && getComputedStyle(c).position !== "absolute" && getComputedStyle(c).position !== "fixed");
+  for (let i = 0; i < cards.length; i++) {
+    for (let j = i + 1; j < cards.length; j++) {
+      const [a, b] = [cards[i], cards[j]];
+      if (a.contains(b) || b.contains(a)) continue;
+      const [ra, rb] = [a.getBoundingClientRect(), b.getBoundingClientRect()];
+      const w = Math.min(ra.right, rb.right) - Math.max(ra.left, rb.left);
+      const h = Math.min(ra.bottom, rb.bottom) - Math.max(ra.top, rb.top);
+      if (w > 2 && h > 2) out.push(`cards overlap by ${Math.round(h)}px: ${label(a)} and ${label(b)}`);
+    }
+  }
+
+  // an empty field's hint text fits inside the field
+  const ctx2d = document.createElement("canvas").getContext("2d")!;
+  for (const input of document.querySelectorAll<HTMLInputElement>("input[placeholder], textarea[placeholder]")) {
+    if (skip(input) || !visible(input) || input.value || input.tagName === "TEXTAREA") continue;
+    const s = getComputedStyle(input);
+    ctx2d.font = `${s.fontWeight} ${s.fontSize} ${s.fontFamily}`;
+    const room = input.clientWidth - parseFloat(s.paddingLeft) - parseFloat(s.paddingRight);
+    if (ctx2d.measureText(input.placeholder).width > room + 1) out.push(`hint text cut off: <input> "${input.placeholder}"`);
+  }
+
   // headings never break onto more than two lines
   for (const h of document.querySelectorAll("h1, h2, .title-card")) {
     if (skip(h) || !visible(h)) continue;

@@ -188,7 +188,7 @@ from a real database session, so a hand-made one is rejected.
   from zero. Totals are sums of those stored cents.
 - **CSV:** columns `date, stream, country, client, description, amount, currency, fx_rate, invoice_ref,
   status, representative, notes` (income) or `date, category, vendor, description, amount, currency,
-  fx_rate, recurring, notes` (expenses). Streams and representatives are matched by name, countries by
+  fx_rate, recurring, country, notes` (expenses; leave `country` empty for a shared cost). Streams and representatives are matched by name, countries by
   code (GB, AU, OTHER) or name. An import is all or nothing: if any row is invalid, nothing is saved and
   the problem rows are listed. Up to 1,000 rows / 1 MB per file. Exports neutralise spreadsheet
   formulas and are recorded in the audit log.
@@ -197,6 +197,32 @@ from a real database session, so a hand-made one is rejected.
 - **Commission:** earned only when a credited deal is marked **paid**, at the rate stored on that deal
   when it was credited (changing a rep's rate affects new deals only), rounded to the cent per deal.
   Owed = earned − payouts recorded in the payout log.
+
+### Finances, payments and settings (Phase 2B)
+
+- **Revenue means paid.** Every revenue total, chart and comparison counts income marked **paid** only.
+  Pending and overdue invoices are shown separately as **Outstanding** and are never added to revenue.
+- **Home** (`/home`) and **Finances** (`/analytics`): the last 12 months up to today (Sydney time),
+  compared with the 12 months before. Revenue, expenses, profit and margin; month, quarter and year
+  comparisons; revenue by stream and by country; stream × country; top clients; expenses by category.
+  The current month is still running, so charts draw it dashed and mark it "month to date".
+  The finance export (`/api/export/finances`) is audited.
+- **Country switch (All / UK / AUS):** income follows the client country. Expenses and subscriptions
+  tagged with a country follow it too; **untagged (shared) costs are left out** of a country view, and
+  the page says how much was left out.
+- **Payments** (`/payments`): subscriptions and regular costs with a billing cycle (weekly, monthly,
+  quarterly, yearly or one-off), a reminder window and the person responsible. The timeline shows what
+  falls due in the next 30, 60 or 90 days. **Mark paid** records the expense and moves the next due date
+  on; pause, resume, cancel and delete are under **Manage**. Monthly recurring = active subscriptions as
+  a monthly cost (weekly × 52 ÷ 12, quarterly ÷ 3, yearly ÷ 12).
+- **Payouts above what's owed** are allowed, but the form asks for confirmation first, and the audit log
+  records who confirmed it and both amounts.
+- **Settings** (`/settings`, admins only): the revenue stream, country and expense category lists.
+  Every change is audited. A stream or category already used by entries can't be deleted, only
+  archived (hidden from new entries, kept on old ones); a country in use can be renamed but not deleted.
+- **Sample data** (`npm run db:local`, development only) covers the 24 months up to the day it's loaded,
+  so the "vs prior year" figures have something to compare with. Every sample row is flagged and the
+  pages show a **Sample data** badge. Production never shows invented numbers.
 
 ## 7. Uploads
 

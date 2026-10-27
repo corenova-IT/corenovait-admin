@@ -33,7 +33,7 @@ export function SummaryCard({
   children?: React.ReactNode;
 }) {
   return (
-    <Link href={href} className="glass glass-glow @container flex h-full min-w-0 flex-col gap-4 card-pad transition-colors hover:border-accent-line">
+    <Link href={href} className="glass glass-glow @container flex min-w-0 flex-col gap-4 card-pad transition-colors hover:border-accent-line">
       <div className="flex items-start gap-3">
         {tag && <span className="mt-0.5 shrink-0 rounded-lg border border-line px-2 py-0.5 font-mono text-xs text-ink-2">{tag}</span>}
         <p className="title-card clamp-2 min-w-0 flex-1 font-bold text-ink">{name}</p>

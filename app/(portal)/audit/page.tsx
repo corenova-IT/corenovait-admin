@@ -28,9 +28,9 @@ export default async function AuditPage({ searchParams }: { searchParams: Promis
     <>
       <PageHeader title="Audit log" subtitle={`Read-only · every create, change, delete and export · times in ${timeZone}`} sample={sample} />
       <Card className="mb-6">
-        <form method="get" className="grid gap-4 @min-[34rem]:grid-cols-2 @min-[64rem]:grid-cols-[minmax(0,1.4fr)_repeat(4,minmax(0,1fr))_auto] @min-[64rem]:items-end">
+        <form method="get" className="grid gap-4 @min-[34rem]:grid-cols-2 @min-[64rem]:grid-cols-[minmax(0,2fr)_repeat(4,minmax(0,1fr))_auto] @min-[64rem]:items-end">
           <Field label="Search" htmlFor="q">
-            <Input id="q" name="q" defaultValue={f.q} placeholder="Person, summary or record ID" />
+            <Input id="q" name="q" defaultValue={f.q} placeholder="Person, summary or ID" />
           </Field>
           <Field label="Action" htmlFor="action">
             <Select id="action" name="action" defaultValue={f.action ?? ""}>

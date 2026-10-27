@@ -42,7 +42,8 @@ export default async function StreamsPage({ searchParams }: { searchParams: Prom
         <StatCard label="Average deal" value={deals ? whole(divRound(data.totalBaseMinor, deals)) : "None yet"} note="Per paid deal" detail="Revenue ÷ deals" />
       </div>
       <div className="grid grid-cols-1 gap-cards @min-[76rem]:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
-        <div className="grid-auto [--min:17rem]">
+        {/* wrapping row: the cards in the last row grow to fill it, so there is never an empty slot */}
+        <div className="flex flex-wrap gap-cards [&>*]:flex-[1_1_17rem]">
           {data.rows.map((s) => (
             <SummaryCard
               key={s.id}

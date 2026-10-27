@@ -230,7 +230,7 @@ body {
     letter-spacing: -0.025em;
     line-height: 1.05;
     white-space: nowrap;
-    font-size: clamp(1.375rem, 11cqi, 2.375rem);
+    font-size: clamp(1.5rem, 12.5cqi, 2.375rem);
   }
   .title-page {
     font-family: var(--font-display);

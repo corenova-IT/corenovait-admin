@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { IconBell, IconChevronDown, IconLock, IconLogout, IconSearch } from "@/components/icons";
 import { Avatar } from "@/components/ui/Avatar";
 import { NAV } from "@/lib/nav";
@@ -60,9 +60,24 @@ function ProfileMenu({ name, email }: { name: string; email: string }) {
   );
 }
 
+/** True when the window is at least 640px wide; the server assumes a wide screen. */
+function useWide() {
+  return useSyncExternalStore(
+    (onChange) => {
+      const mq = window.matchMedia("(min-width: 640px)");
+      mq.addEventListener("change", onChange);
+      return () => mq.removeEventListener("change", onChange);
+    },
+    () => window.matchMedia("(min-width: 640px)").matches,
+    () => true
+  );
+}
+
 export function Topbar({ name, email, theme, unread }: { name: string; email: string; theme: Theme; unread: number }) {
   const pathname = usePathname();
-  const placeholder = NAV.find((n) => pathname.startsWith(n.href))?.search ?? "Search";
+  // on a phone the long hint ("Search clients, invoices, tasks") would be cut off, so just "Search"
+  const wide = useWide();
+  const placeholder = (wide && NAV.find((n) => pathname.startsWith(n.href))?.search) || "Search";
   return (
     <div className="flex items-center gap-3">
       <form role="search" className="relative min-w-0 flex-1" action="#" onSubmit={(e) => e.preventDefault()}>

@@ -20,8 +20,6 @@ const PEOPLE = [
   { email: "former@example.test", name: "Frankie Fixture", title: "Contractor", preset: "staff", status: "deactivated" },
 ] as const;
 
-// 12 months of sample revenue in AUD-ish figures, roughly matching the design PDF's shape
-const MONTHS = ["2025-11", "2025-12", "2026-01", "2026-02", "2026-03", "2026-04", "2026-05", "2026-06", "2026-07", "2026-08", "2026-09", "2026-10"];
 const CLIENTS = ["Northwind Sample Co", "Example Retail Pty", "Placeholder Labs", "Demo Dental Group", "Fictional Freight Ltd", "Sample Studio"];
 
 async function main() {
@@ -67,33 +65,48 @@ async function main() {
       await writeAudit(tx, null, { action: "create", entity: "users", summary: "Sample people loaded for local development" });
     });
 
+    // 24 months up to today (company time): the last 12 roughly match the design PDF's shape, the
+    // 12 before them are a smaller year, so the "vs prior year" changes have something to compare with
+    const { addDays, addMonths, monthsBetween, todayIn } = await import("../lib/dates");
+    const today = todayIn("Australia/Sydney");
+    const MONTHS = monthsBetween(addMonths(`${today.slice(0, 7)}-01`, -23), today);
+    const RECENT = 12;
+    // a day in the month, never later than today (the current month is still running)
+    const dayIn = (m: string, day: number) => {
+      const d = `${m}-${String(day).padStart(2, "0")}`;
+      return d > today ? today : d;
+    };
+
     const admin = ids["admin.one@example.test"];
     const streams = await db.select().from(schema.streams);
     const repId = randomUUID();
     await db.insert(schema.representatives).values({ id: repId, name: "Riley Referral (sample)", commissionRate: "0.1000", createdBy: admin });
 
     const income: Array<typeof schema.incomeEntries.$inferInsert> = [];
-    MONTHS.forEach((m, i) => {
-      const growth = 1 + i * 0.04;
+    MONTHS.forEach((m, k) => {
+      // i: position in the last 12 months (negative for the year before), scaled down ~20% a year earlier
+      const i = k - (MONTHS.length - RECENT);
+      const trend = i < 0 ? 0.8 * (1 + (i + RECENT) * 0.04) : 1 + i * 0.04;
+      const growth = trend * (1 + 0.06 * Math.sin(k * 1.3));
       const plan = [
         { country: "GB", currency: "GBP", rate: "1.95000000", amount: Math.round(9_500 * growth) },
         { country: "AU", currency: "AUD", rate: "1.00000000", amount: Math.round(22_000 * growth) },
         { country: "OTHER", currency: "USD", rate: "1.52000000", amount: Math.round(3_400 * growth) },
       ];
       plan.forEach((row, j) => {
-        const stream = streams[(i + j) % streams.length];
+        const stream = streams[(k + j) % streams.length];
         income.push({
           id: randomUUID(),
-          entryDate: `${m}-${String(5 + j * 8).padStart(2, "0")}`,
+          entryDate: dayIn(m, 5 + j * 8),
           streamId: stream.id,
           countryCode: row.country,
-          client: CLIENTS[(i + j) % CLIENTS.length],
+          client: CLIENTS[(k + j) % CLIENTS.length],
           description: `Sample ${stream.name} project`,
           amountMinor: row.amount * 100,
           currency: row.currency,
           fxRateToBase: row.rate,
           invoiceRef: `SAMPLE-${m.replace("-", "")}-${j + 1}`,
-          status: i === MONTHS.length - 1 && j === 0 ? "pending" : i === MONTHS.length - 2 && j === 1 ? "overdue" : "paid",
+          status: i === RECENT - 1 && j === 0 ? "pending" : i === RECENT - 2 && j === 2 ? "overdue" : "paid",
           representativeId: stream.name === "Individual representatives" ? repId : null,
           commissionRate: stream.name === "Individual representatives" ? "0.1000" : null,
           isSample: true,
@@ -104,7 +117,8 @@ async function main() {
     await db.insert(schema.incomeEntries).values(income);
 
     const expenses: Array<typeof schema.expenses.$inferInsert> = [];
-    MONTHS.forEach((m) => {
+    MONTHS.forEach((m, k) => {
+      const scale = k < MONTHS.length - RECENT ? 0.9 : 1;
       // country null = a shared cost; tagged ones follow the UK / AUS switch on Home
       for (const [category, vendor, amount, recurring, countryCode] of [
         ["Hosting", "Sample Cloud Hosting", 119_000, true, null],
@@ -114,11 +128,11 @@ async function main() {
       ] as const) {
         expenses.push({
           id: randomUUID(),
-          expenseDate: `${m}-20`,
+          expenseDate: dayIn(m, 20),
           category,
           vendor,
           description: "Sample expense",
-          amountMinor: amount,
+          amountMinor: Math.round(amount * scale),
           currency: "AUD",
           fxRateToBase: "1.00000000",
           isRecurring: recurring,
@@ -130,7 +144,8 @@ async function main() {
     });
     await db.insert(schema.expenses).values(expenses);
     await db.insert(schema.repPayouts).values(
-      ["2026-03-31", "2026-06-30", "2026-09-30"].map((paidDate, i) => ({
+      // quarterly payouts on the last day of three of the recent months
+      [4, 7, 10].map((n) => addDays(`${MONTHS[MONTHS.length - RECENT + n]}-01`, -1)).map((paidDate, i) => ({
         id: randomUUID(),
         representativeId: repId,
         paidDate,
@@ -143,8 +158,6 @@ async function main() {
       }))
     );
     // the design's "upcoming expenses and subscriptions", due a few days from whenever this runs
-    const { addDays, todayIn } = await import("../lib/dates");
-    const today = todayIn("Australia/Sydney");
     const subs: Array<typeof schema.subscriptions.$inferInsert> = (
       [
         ["Sample Cloud Hosting", "Hosting", 119_000, "AUD", "1.00000000", "monthly", 3, null],
