@@ -10,8 +10,8 @@ import type { ExpenseView, IncomeView, LedgerAction, LedgerState, Lookups } from
 
 type Tab = "income" | "expenses";
 
-export function AddEntry({ tab, lookups, saveIncome, saveExpense }: { tab: Tab; lookups: Lookups; saveIncome: LedgerAction; saveExpense: LedgerAction }) {
-  const [open, setOpen] = useState(false);
+export function AddEntry({ tab, lookups, saveIncome, saveExpense, initialOpen = false }: { tab: Tab; lookups: Lookups; saveIncome: LedgerAction; saveExpense: LedgerAction; initialOpen?: boolean }) {
+  const [open, setOpen] = useState(initialOpen);
   const close = useCallback(() => setOpen(false), []);
   return (
     <>

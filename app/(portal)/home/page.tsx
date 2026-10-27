@@ -2,16 +2,20 @@ import Link from "next/link";
 import { BarList } from "@/components/charts/BarList";
 import { Donut } from "@/components/charts/Donut";
 import { TrendChart } from "@/components/charts/TrendChart";
-import { IconCalendar, IconMegaphone, IconOverview, IconTasks } from "@/components/icons";
+import { IconCalendar, IconCard, IconChat, IconMegaphone, IconTasks } from "@/components/icons";
+import { MeetingList, ProgressList, QuickActions, TaskList, type QuickAction } from "@/components/home/WorkCards";
 import { Badge } from "@/components/ui/Badge";
 import { ButtonLink } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Pill, PillSwitch } from "@/components/ui/Pill";
-import { EmptyState } from "@/components/ui/States";
 import { FitText } from "@/components/ui/FitText";
 import { StatCard } from "@/components/ui/StatCard";
 import { requirePerm } from "@/lib/auth/session";
+import type { Actor } from "@/lib/dal/guard";
+import { upcomingEvents } from "@/lib/dal/calendar";
+import { myOpenTasks, teamProgress } from "@/lib/dal/tasks";
+import { toTaskView } from "@/lib/task-view";
 import { countryFilter, financeSummary } from "@/lib/dal/analytics";
 import { hasSampleData } from "@/lib/dal/finance";
 import { hasPerm } from "@/lib/dal/guard";
@@ -31,17 +35,145 @@ function change(pct: number | null, upIsGood: boolean): { note: string; tone: "g
   return { note: `${pct >= 0 ? "+" : ""}${pct.toFixed(1)}%`, tone: good ? "green" : upIsGood ? "red" : "amber" };
 }
 
-/** A later phase's card: no numbers until the data exists. The phase tag sits above the title so it never squeezes it. */
-function ComingTile({ icon, title, phase, children, className }: { icon: React.ReactNode; title: string; phase: number; children: React.ReactNode; className?: string }) {
+/** Icon, title and an "Open" link, the same on every small Home card. */
+function TileHeader({ icon, title, href }: { icon: React.ReactNode; title: string; href?: string }) {
   return (
-    <Card className={`flex flex-col gap-3 ${className ?? ""}`}>
-      <div className="flex items-center gap-2 text-ink-2">
-        {icon}
-        <Pill>Phase {phase}</Pill>
+    <div className="mb-3 flex flex-wrap items-center gap-2">
+      <span className="text-ink-2">{icon}</span>
+      <h2 className="title-card mr-auto font-bold tracking-[-0.02em] text-ink">{title}</h2>
+      {href && (
+        <Link href={href} className="text-sm text-accent-text hover:underline">
+          Open
+        </Link>
+      )}
+    </div>
+  );
+}
+
+/** Shortcuts to the forms this person may use. */
+function quickActionsFor(user: Actor): QuickAction[] {
+  const out: QuickAction[] = [];
+  if (hasPerm(user, "tasks", "create")) out.push({ href: "/tasks?new=1", label: "New task", icon: "task" });
+  if (hasPerm(user, "calendar", "create")) out.push({ href: "/calendar?new=1", label: "New event", icon: "event" });
+  if (hasPerm(user, "marketing", "create")) out.push({ href: "/marketing?new=1", label: "Log activity", icon: "marketing" });
+  if (hasPerm(user, "transactions", "create")) out.push({ href: "/transactions?new=1", label: "Add income", icon: "income" });
+  if (hasPerm(user, "payments", "create")) out.push({ href: "/payments?new=1", label: "Add payment", icon: "payment" });
+  return out;
+}
+
+/**
+ * Staff home ("My Day"): today's meetings, the tasks due for you, quick
+ * actions for what you're allowed to do, and payments or marketing only when
+ * you have access to them.
+ */
+async function MyDay({ user, sample }: { user: Actor; sample: boolean }) {
+  const first = (user.fullName || "there").split(" ")[0];
+  const canCalendar = hasPerm(user, "calendar", "view");
+  const canTasks = hasPerm(user, "tasks", "view");
+  const canPayments = hasPerm(user, "payments", "view");
+  const canMarketing = hasPerm(user, "marketing", "view");
+  const [today, soon, mine, payments, mk] = await Promise.all([
+    canCalendar ? upcomingEvents(user, { todayOnly: true, limit: 8 }) : Promise.resolve(null),
+    canCalendar ? upcomingEvents(user, { days: 7, limit: 4 }) : Promise.resolve(null),
+    canTasks ? myOpenTasks(user, 6) : Promise.resolve(null),
+    canPayments ? paymentsOverview(user) : Promise.resolve(null),
+    canMarketing ? marketingSnapshot(user) : Promise.resolve(null),
+  ]);
+  const todayIso = today?.today ?? mine?.today ?? "";
+  const dateLine = todayIso ? new Date(`${todayIso}T00:00:00Z`).toLocaleDateString("en-AU", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" }) : "";
+  const actions = quickActionsFor(user);
+  const laterThisWeek = soon?.events.filter((e) => e.date !== todayIso) ?? [];
+  const dueSoon = payments?.timeline.filter((x) => x.daysUntil <= 7) ?? [];
+  const extras = (payments ? 1 : 0) + (mk ? 1 : 0) + (hasPerm(user, "chat", "view") ? 1 : 0);
+
+  return (
+    <>
+      <PageHeader title={`Hello, ${first}`} subtitle={`${dateLine} · your day at CoreNovaIT`} sample={sample} />
+      {actions.length > 0 && (
+        <Card className="mb-[var(--space-gap)]">
+          <h2 className="label-mono mb-3">Quick actions</h2>
+          <QuickActions actions={actions} />
+        </Card>
+      )}
+      <div className="grid grid-cols-1 gap-cards @min-[56rem]:grid-cols-2">
+        <Card className="flex flex-col">
+          <TileHeader icon={<IconCalendar />} title="Today's meetings" href={canCalendar ? "/calendar?view=agenda" : undefined} />
+          {!today ? (
+            <p className="text-sm text-muted">You don&apos;t have access to the calendar.</p>
+          ) : today.events.length === 0 ? (
+            <p className="text-sm text-muted">Nothing on today.</p>
+          ) : (
+            <MeetingList items={today.events} today={today.today} showDay={false} />
+          )}
+          {laterThisWeek.length > 0 && (
+            <div className="mt-5 border-t border-line pt-4">
+              <h3 className="label-mono mb-2">Later this week</h3>
+              <MeetingList items={laterThisWeek} today={todayIso} />
+            </div>
+          )}
+        </Card>
+        <Card className="flex flex-col">
+          <TileHeader icon={<IconTasks />} title="My tasks" href={canTasks ? "/tasks?assignee=me" : undefined} />
+          {!mine ? (
+            <p className="text-sm text-muted">You don&apos;t have access to tasks.</p>
+          ) : mine.tasks.length === 0 ? (
+            <p className="text-sm text-muted">Nothing due this week. Nice.</p>
+          ) : (
+            <>
+              <TaskList tasks={mine.tasks.map(toTaskView)} />
+              {mine.openTotal > mine.tasks.length && (
+                <p className="mt-3 text-sm text-muted">
+                  {mine.openTotal} open in total ·{" "}
+                  <Link href="/tasks?assignee=me" className="text-accent-text hover:underline">
+                    see all
+                  </Link>
+                </p>
+              )}
+            </>
+          )}
+        </Card>
       </div>
-      <h2 className="title-card font-bold tracking-[-0.02em] text-ink">{title}</h2>
-      <p className="text-sm text-muted">{children}</p>
-    </Card>
+      {extras > 0 && (
+        <div className={`mt-[var(--space-gap)] grid grid-cols-1 gap-cards ${extras > 1 ? "@min-[48rem]:grid-cols-2" : ""} ${extras > 2 ? "@min-[72rem]:grid-cols-3" : ""}`}>
+          {payments && (
+            <Card className="flex flex-col">
+              <TileHeader icon={<IconCard />} title="Payments this week" href="/payments" />
+              {dueSoon.length === 0 ? (
+                <p className="text-sm text-muted">Nothing due in the next 7 days.</p>
+              ) : (
+                <ul className="flex flex-col divide-y divide-line">
+                  {dueSoon.slice(0, 5).map((x) => (
+                    <li key={`${x.subscriptionId}-${x.dueDate}`} className="flex min-h-12 items-center justify-between gap-3 py-2">
+                      <span className="clamp-2 min-w-0 text-sm font-medium text-ink">{x.vendor}</span>
+                      <Badge tone={x.overdue ? "red" : x.dueSoon ? "amber" : "neutral"}>{dueLabel(x.daysUntil)}</Badge>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Card>
+          )}
+          {mk && (
+            <Card className="flex flex-col">
+              <TileHeader icon={<IconMegaphone />} title="My marketing" href="/marketing" />
+              <p className="text-sm text-ink-2">
+                Last 30 days: <span className="font-semibold text-ink">{mk.contacts}</span> contacts reached, <span className="font-semibold text-ink">{mk.touches}</span> touches
+                {mk.ratePct !== null ? `, ${mk.ratePct}% got a response` : ""}, <span className="font-semibold text-ink">{mk.won}</span> deals won.
+              </p>
+            </Card>
+          )}
+          {hasPerm(user, "chat", "view") && (
+            <Card className="flex flex-col gap-3">
+              <div className="flex items-center gap-2 text-ink-2">
+                <IconChat />
+                <Pill>Phase 5</Pill>
+              </div>
+              <h2 className="title-card font-bold tracking-[-0.02em] text-ink">Unread chat</h2>
+              <p className="text-sm text-muted">Team chat and unread counts arrive in Phase 5.</p>
+            </Card>
+          )}
+        </div>
+      )}
+    </>
   );
 }
 
@@ -49,27 +181,20 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   const user = await requirePerm("home");
   const sample = await hasSampleData(user);
 
-  if (!hasPerm(user, "finances", "view")) {
-    const first = (user.fullName || "there").split(" ")[0];
-    return (
-      <>
-        <PageHeader title={`Hello, ${first}`} subtitle="Your day at CoreNovaIT" sample={sample} />
-        <Card>
-          <EmptyState icon={<IconOverview size={22} />} title="Your “My Day” page arrives in Phase 4">
-            Today&apos;s meetings, the tasks due for you, unread chat and quick actions will appear here.
-          </EmptyState>
-        </Card>
-      </>
-    );
-  }
+  if (!hasPerm(user, "finances", "view")) return <MyDay user={user} sample={sample} />;
 
   const country = countryFilter.parse((await searchParams).country);
   const canPayments = hasPerm(user, "payments", "view");
   const canMarketing = hasPerm(user, "marketing", "view");
-  const [s, payments, mk] = await Promise.all([
+  const canCalendar = hasPerm(user, "calendar", "view");
+  const canTasks = hasPerm(user, "tasks", "view");
+  const [s, payments, mk, meetings, team, mine] = await Promise.all([
     financeSummary(user, { country }),
     canPayments ? paymentsOverview(user, { country }) : Promise.resolve(null),
     canMarketing ? marketingSnapshot(user) : Promise.resolve(null),
+    canCalendar ? upcomingEvents(user, { days: 14, limit: 4 }) : Promise.resolve(null),
+    canTasks && user.perms.tasks.scope === "all" ? teamProgress(user) : Promise.resolve(null),
+    canTasks && user.perms.tasks.scope !== "all" ? myOpenTasks(user, 4) : Promise.resolve(null),
   ]);
   const base = s.baseCurrency;
   const cur = s.totals.current;
@@ -217,20 +342,10 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
           )}
         </Card>
         <Card className="flex flex-col @min-[60rem]:col-span-3">
-          <div className="mb-3 flex flex-wrap items-center gap-2">
-            <span className="text-ink-2">
-              <IconMegaphone />
-            </span>
-            <h2 className="title-card mr-auto font-bold tracking-[-0.02em] text-ink">Marketing</h2>
-            {mk && (
-              <Link href="/marketing" className="text-sm text-accent-text hover:underline">
-                Open
-              </Link>
-            )}
-          </div>
+          <TileHeader icon={<IconMegaphone />} title="Marketing" href={mk ? "/marketing" : undefined} />
           {!mk ? (
             <p className="text-sm text-muted">You don&apos;t have access to marketing.</p>
-          ) : mk.contacts === 0 ? (
+          ) : mk.touches === 0 ? (
             <p className="text-sm text-muted">No activity logged in the last 30 days.</p>
           ) : (
             <>
@@ -240,7 +355,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
                   <dd className="num mt-1 font-display text-2xl font-bold text-ink">{mk.contacts}</dd>
                 </div>
                 <div className="min-w-0">
-                  <dt className="label-mono">Replied</dt>
+                  <dt className="label-mono">Response</dt>
                   <dd className="num mt-1 font-display text-2xl font-bold text-ink">{mk.ratePct}%</dd>
                 </div>
                 <div className="min-w-0">
@@ -249,17 +364,39 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
                 </div>
               </dl>
               <p className="mt-auto pt-3 text-sm text-muted">
-                Last 30 days{mk.wonValueBaseMinor ? ` · ${whole(mk.wonValueBaseMinor)} in deals won` : ""}
+                Last 30 days · {mk.touches} touches{mk.wonValueBaseMinor ? ` · ${whole(mk.wonValueBaseMinor)} won` : ""}
               </p>
             </>
           )}
         </Card>
-        <ComingTile className="@min-[60rem]:col-span-3" icon={<IconCalendar />} title="Next meetings" phase={4}>
-          Your next meetings from the calendar.
-        </ComingTile>
-        <ComingTile className="@min-[60rem]:col-span-3" icon={<IconTasks />} title="Team tasks this week" phase={4}>
-          Progress per team member from the task board.
-        </ComingTile>
+        <Card className="flex flex-col @min-[60rem]:col-span-3">
+          <TileHeader icon={<IconCalendar />} title="Next meetings" href={meetings ? "/calendar?view=agenda" : undefined} />
+          {!meetings ? (
+            <p className="text-sm text-muted">You don&apos;t have access to the calendar.</p>
+          ) : meetings.events.length === 0 ? (
+            <p className="text-sm text-muted">Nothing booked in the next two weeks.</p>
+          ) : (
+            <MeetingList items={meetings.events} today={meetings.today} />
+          )}
+        </Card>
+        <Card className="flex flex-col @min-[60rem]:col-span-3">
+          <TileHeader icon={<IconTasks />} title={team ? "Team tasks this week" : "My tasks"} href={canTasks ? "/tasks" : undefined} />
+          {team ? (
+            team.people.length === 0 ? (
+              <p className="text-sm text-muted">No open tasks.</p>
+            ) : (
+              <ProgressList people={team.people.slice(0, 5)} />
+            )
+          ) : mine ? (
+            mine.tasks.length === 0 ? (
+              <p className="text-sm text-muted">Nothing due this week.</p>
+            ) : (
+              <TaskList tasks={mine.tasks.map(toTaskView)} />
+            )
+          ) : (
+            <p className="text-sm text-muted">You don&apos;t have access to tasks.</p>
+          )}
+        </Card>
       </div>
     </>
   );

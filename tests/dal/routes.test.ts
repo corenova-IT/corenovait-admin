@@ -66,6 +66,12 @@ const PUBLIC_ACTIONS = new Set([
 ]);
 /** Self-service: acts only on the caller's own account. */
 const SELF_ACTIONS = new Set(["app/(portal)/account/actions.ts#regenerateCodes", "app/(portal)/account/actions.ts#signOutEverywhere"]);
+/**
+ * Staff may use tasks and the calendar (the Staff preset grants them with the
+ * "assigned" scope). Called with a hostile form these must still change
+ * nothing; their scope rules are tested in tests/dal/work.test.ts.
+ */
+const STAFF_MODULES = ["app/(portal)/tasks/actions.ts", "app/(portal)/calendar/actions.ts"];
 
 function hostileForm() {
   const fd = new FormData();
@@ -121,6 +127,13 @@ describe("every server action, called by a staff user", () => {
         if (PUBLIC_ACTIONS.has(key)) continue;
         if (SELF_ACTIONS.has(key)) continue;
         const before = await snapshot(t);
+        if (STAFF_MODULES.includes(file)) {
+          const r = (await (fn as (p: unknown, f: FormData) => Promise<unknown>)({}, hostileForm())) as { ok?: string; error?: string };
+          expect(r, key).not.toHaveProperty("ok");
+          expect(r.error, key).toBeTruthy();
+          expect(await snapshot(t), `${key} changed the database`).toEqual(before);
+          continue;
+        }
         let result: unknown;
         try {
           result = await (fn as (p: unknown, f: FormData) => Promise<unknown>)({}, hostileForm());
@@ -166,6 +179,7 @@ describe("guarded pages, opened by a staff user", () => {
     ["/marketing", () => import("@/app/(portal)/marketing/page"), { searchParams: Promise.resolve({}) }],
     ["/marketing?channel=email", () => import("@/app/(portal)/marketing/page"), { searchParams: Promise.resolve({ channel: "email" }) }],
   ];
+  // /tasks and /calendar are open to staff by default; their data is scoped (tests/dal/work.test.ts)
   for (const [route, load, props] of pages) {
     it(`${route} redirects to /no-access`, async () => {
       const page = (await load()).default;
@@ -186,6 +200,25 @@ describe("finances export route", () => {
     expect((await get()).status).toBe(403);
     jar.clear();
     expect((await get()).status).toBe(401);
+  });
+});
+
+describe("calendar .ics routes", () => {
+  it("the full export refuses a staff user (403) and nobody signed in (401)", async () => {
+    const get = async () => (await import("@/app/api/calendar/ics/route")).GET();
+    expect((await get()).status).toBe(403);
+    jar.clear();
+    expect((await get()).status).toBe(401);
+  });
+
+  it("a single event the staff user isn't invited to is a 404", async () => {
+    const { createEvent } = await import("@/lib/dal/calendar");
+    const id = await createEvent(await actorFor(t, ids.admin), { title: "Private", start: "2026-10-02T10:00", end: "2026-10-02T11:00" });
+    const get = async (eventId: string) => (await import("@/app/api/calendar/event/[id]/route")).GET(new Request(`http://localhost/api/calendar/event/${eventId}`), { params: Promise.resolve({ id: eventId }) });
+    expect((await get(id)).status).toBe(404);
+    expect((await get("not-a-uuid")).status).toBe(404);
+    jar.clear();
+    expect((await get(id)).status).toBe(401);
   });
 });
 

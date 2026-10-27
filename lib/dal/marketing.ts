@@ -100,18 +100,27 @@ function filterWhere(actor: Actor, f: MarketingFilters): Array<SQL | undefined> 
 const between = (from: Date, to: Date) => and(gte(acts.occurredAt, from), lt(acts.occurredAt, to));
 
 // ---------------------------------------------------------------- the numbers
-type Tally = { contacts: number; responded: number; won: number; wonValueBaseMinor: number };
-const emptyTally = (): Tally => ({ contacts: 0, responded: 0, won: 0, wonValueBaseMinor: 0 });
+/**
+ * Touches = activities logged. Contacts = unique contacts: each company counts
+ * once in a period (or each person, when no company was given), compared
+ * ignoring case and spaces at the ends. Response rate is per touch.
+ */
+export const contactKey = sql<string>`lower(trim(case when ${acts.contactCompany} <> '' then ${acts.contactCompany} else ${acts.contactName} end))`;
+
+type Tally = { touches: number; responded: number; won: number; wonValueBaseMinor: number };
+const emptyTally = (): Tally => ({ touches: 0, responded: 0, won: 0, wonValueBaseMinor: 0 });
 const tallyCols = {
-  contacts: count(),
+  touches: count(),
   responded: sql<string>`coalesce(sum(${respondedSql}), 0)`,
   won: sql<string>`coalesce(sum(${acts.outcome} = 'deal_won'), 0)`,
   wonValue: sql<string>`coalesce(sum(case when ${acts.outcome} = 'deal_won' then ${acts.dealValueBaseMinor} end), 0)`,
 };
-const toTally = (r: { contacts: unknown; responded: unknown; won: unknown; wonValue: unknown } | undefined): Tally =>
-  r ? { contacts: n(r.contacts), responded: n(r.responded), won: n(r.won), wonValueBaseMinor: n(r.wonValue) } : emptyTally();
+/** the same, plus unique contacts (only where rows aren't added up afterwards) */
+const tallyWithContacts = { ...tallyCols, contacts: sql<string>`count(distinct ${contactKey})` };
+const toTally = (r: { touches: unknown; responded: unknown; won: unknown; wonValue: unknown } | undefined): Tally =>
+  r ? { touches: n(r.touches), responded: n(r.responded), won: n(r.won), wonValueBaseMinor: n(r.wonValue) } : emptyTally();
 const add = (a: Tally, b: Tally) => {
-  a.contacts += b.contacts;
+  a.touches += b.touches;
   a.responded += b.responded;
   a.won += b.won;
   a.wonValueBaseMinor += b.wonValueBaseMinor;
@@ -120,7 +129,8 @@ const add = (a: Tally, b: Tally) => {
 /** % change from the previous period, or null when there's nothing to compare with. */
 const change = (cur: number, prev: number) => (prev === 0 ? null : Math.round(((cur - prev) / Math.abs(prev)) * 1000) / 10);
 
-export type Insight = { label: string; ratePct: number; contacts: number; responded: number } | null;
+export type Insight = { label: string; ratePct: number; touches: number; responded: number } | null;
+type Cell = { touches: number; responded: number };
 
 export async function marketingSummary(actor: Actor, f: MarketingFilters = {}) {
   requirePerm(actor, "marketing", "view");
@@ -133,80 +143,102 @@ export async function marketingSummary(actor: Actor, f: MarketingFilters = {}) {
 
   // one row per UTC hour: small, and each hour maps to exactly one local weekday/hour/month
   const hourBucket = sql<string>`date_format(${acts.occurredAt}, '%Y-%m-%d %H')`;
-  const [buckets, byChannel, [prev]] = await Promise.all([
+  const [buckets, keys, byChannel, [prev]] = await Promise.all([
     db
       .select({ b: hourBucket, ...tallyCols })
       .from(acts)
       .where(and(...conds, between(p.chart.from, p.to)))
       .groupBy(hourBucket),
+    // who was contacted in which hour, to count unique contacts per local month and for the period
     db
-      .select({ channel: acts.channel, ...tallyCols, meetings: sql<string>`coalesce(sum(${acts.outcome} = 'meeting'), 0)`, lost: sql<string>`coalesce(sum(${acts.outcome} = 'deal_lost'), 0)` })
+      .selectDistinct({ b: hourBucket, k: contactKey })
+      .from(acts)
+      .where(and(...conds, between(p.chart.from, p.to))),
+    db
+      .select({ channel: acts.channel, ...tallyWithContacts, meetings: sql<string>`coalesce(sum(${acts.outcome} = 'meeting'), 0)`, lost: sql<string>`coalesce(sum(${acts.outcome} = 'deal_lost'), 0)` })
       .from(acts)
       .where(and(...conds, between(p.from, p.to)))
       .groupBy(acts.channel),
     db
-      .select(tallyCols)
+      .select(tallyWithContacts)
       .from(acts)
       .where(and(...conds, between(p.previous.from, p.previous.to))),
   ]);
 
+  const local = new Map<string, ReturnType<typeof localParts>>();
+  const at = (bucket: string) => {
+    let lp = local.get(bucket);
+    if (!lp) local.set(bucket, (lp = localParts(new Date(`${bucket.replace(" ", "T")}:00:00Z`), tz)));
+    return lp;
+  };
+  const inPeriod = (bucket: string) => new Date(`${bucket.replace(" ", "T")}:00:00Z`) >= p.from;
+
   const totals = emptyTally();
-  const heat = Array.from({ length: 7 }, () => Array.from({ length: 24 }, () => ({ contacts: 0, responded: 0 })));
+  const heat: Cell[][] = Array.from({ length: 7 }, () => Array.from({ length: 24 }, () => ({ touches: 0, responded: 0 })));
   const byMonth = new Map<string, Tally>();
   for (const r of buckets) {
     const t = toTally(r);
-    const at = new Date(`${r.b.replace(" ", "T")}:00:00Z`);
-    const lp = localParts(at, tz);
+    const lp = at(r.b);
     const m = byMonth.get(lp.month) ?? emptyTally();
     add(m, t);
     byMonth.set(lp.month, m);
-    if (at < p.from) continue; // only the chart reaches back further than the period
+    if (!inPeriod(r.b)) continue; // only the chart reaches back further than the period
     add(totals, t);
-    heat[lp.weekday][lp.hour].contacts += t.contacts;
+    heat[lp.weekday][lp.hour].touches += t.touches;
     heat[lp.weekday][lp.hour].responded += t.responded;
+  }
+  const monthContacts = new Map<string, Set<string>>();
+  const periodContacts = new Set<string>();
+  for (const r of keys) {
+    const month = at(r.b).month;
+    if (!monthContacts.has(month)) monthContacts.set(month, new Set());
+    monthContacts.get(month)!.add(r.k);
+    if (inPeriod(r.b)) periodContacts.add(r.k);
   }
 
   const chartMonths = Array.from({ length: 12 }, (_, i) => addMonths(`${p.chart.first}-01`, i).slice(0, 7));
-  const monthly = chartMonths.map((month) => ({ month, ...(byMonth.get(month) ?? emptyTally()) }));
+  const monthly = chartMonths.map((month) => ({ month, contacts: monthContacts.get(month)?.size ?? 0, ...(byMonth.get(month) ?? emptyTally()) }));
   const periodMonths = monthly.filter((m) => m.month >= p.firstMonth && m.month <= p.lastMonth);
 
-  // insights: best weekday and hour by response rate (with enough activity), best month by deals won
-  const days = heat.map((row) => row.reduce((a, c) => ({ contacts: a.contacts + c.contacts, responded: a.responded + c.responded }), { contacts: 0, responded: 0 }));
-  const hours = Array.from({ length: 24 }, (_, h) => heat.reduce((a, row) => ({ contacts: a.contacts + row[h].contacts, responded: a.responded + row[h].responded }), { contacts: 0, responded: 0 }));
-  const best = (cells: Array<{ contacts: number; responded: number }>, min: number, label: (i: number) => string): Insight => {
+  // insights: best weekday and hour by response rate (with enough touches), best month by deals won
+  const days = heat.map((row) => row.reduce((a, c) => ({ touches: a.touches + c.touches, responded: a.responded + c.responded }), { touches: 0, responded: 0 }));
+  const hours = Array.from({ length: 24 }, (_, h) => heat.reduce((a, row) => ({ touches: a.touches + row[h].touches, responded: a.responded + row[h].responded }), { touches: 0, responded: 0 }));
+  const best = (cells: Cell[], min: number, label: (i: number) => string): Insight => {
     let pick: Insight = null;
     cells.forEach((c, i) => {
-      if (c.contacts < min) return;
-      const rate = ratePct(c.responded, c.contacts)!;
-      if (!pick || rate > pick.ratePct || (rate === pick.ratePct && c.contacts > pick.contacts)) pick = { label: label(i), ratePct: rate, contacts: c.contacts, responded: c.responded };
+      if (c.touches < min) return;
+      const rate = ratePct(c.responded, c.touches)!;
+      if (!pick || rate > pick.ratePct || (rate === pick.ratePct && c.touches > pick.touches)) pick = { label: label(i), ratePct: rate, touches: c.touches, responded: c.responded };
     });
     return pick;
   };
   const bestMonth = periodMonths.reduce<(typeof periodMonths)[number] | null>(
-    (a, m) => (m.won > 0 && (!a || m.won > a.won || (m.won === a.won && (ratePct(m.responded, m.contacts) ?? 0) > (ratePct(a.responded, a.contacts) ?? 0))) ? m : a),
+    (a, m) => (m.won > 0 && (!a || m.won > a.won || (m.won === a.won && (ratePct(m.responded, m.touches) ?? 0) > (ratePct(a.responded, a.touches) ?? 0))) ? m : a),
     null
   );
 
-  const prevT = toTally(prev);
+  const prevT = { ...toTally(prev), contacts: n(prev?.contacts) };
   const channelRows = CHANNELS.map((channel) => {
     const r = byChannel.find((x) => x.channel === channel);
     const t = toTally(r);
-    return { channel, ...t, meetings: n(r?.meetings), lost: n(r?.lost), ratePct: ratePct(t.responded, t.contacts) };
-  }).filter((r) => r.channel !== "other" || r.contacts > 0);
+    return { channel, ...t, contacts: n(r?.contacts), meetings: n(r?.meetings), lost: n(r?.lost), ratePct: ratePct(t.responded, t.touches) };
+  }).filter((r) => r.channel !== "other" || r.touches > 0);
+  const contacts = periodContacts.size;
 
   return {
     timezone: tz,
     baseCurrency: base,
     today,
     period: { months: p.months, firstMonth: p.firstMonth, lastMonth: p.lastMonth },
-    totals: { ...totals, ratePct: ratePct(totals.responded, totals.contacts) },
-    previous: { ...prevT, ratePct: ratePct(prevT.responded, prevT.contacts) },
+    totals: { ...totals, contacts, ratePct: ratePct(totals.responded, totals.touches) },
+    previous: { ...prevT, ratePct: ratePct(prevT.responded, prevT.touches) },
     change: {
-      contacts: change(totals.contacts, prevT.contacts),
+      contacts: change(contacts, prevT.contacts),
+      touches: change(totals.touches, prevT.touches),
       won: change(totals.won, prevT.won),
       wonValue: change(totals.wonValueBaseMinor, prevT.wonValueBaseMinor),
       /** percentage points, not a % of a % */
-      ratePoints: totals.contacts && prevT.contacts ? Math.round((ratePct(totals.responded, totals.contacts)! - ratePct(prevT.responded, prevT.contacts)!) * 10) / 10 : null,
+      ratePoints: totals.touches && prevT.touches ? Math.round((ratePct(totals.responded, totals.touches)! - ratePct(prevT.responded, prevT.touches)!) * 10) / 10 : null,
     },
     byChannel: channelRows,
     monthly,
@@ -214,7 +246,7 @@ export async function marketingSummary(actor: Actor, f: MarketingFilters = {}) {
     insights: {
       day: best(days, INSIGHT_MIN.day, (i) => WEEKDAYS[i]),
       hour: best(hours, INSIGHT_MIN.hour, (h) => String(h)),
-      month: bestMonth ? { month: bestMonth.month, won: bestMonth.won, wonValueBaseMinor: bestMonth.wonValueBaseMinor, ratePct: ratePct(bestMonth.responded, bestMonth.contacts) } : null,
+      month: bestMonth ? { month: bestMonth.month, won: bestMonth.won, wonValueBaseMinor: bestMonth.wonValueBaseMinor, ratePct: ratePct(bestMonth.responded, bestMonth.touches) } : null,
     },
   };
 }
@@ -225,9 +257,9 @@ export async function marketingSnapshot(actor: Actor) {
   requirePerm(actor, "marketing", "view");
   const db = getDb();
   const since = new Date(Date.now() - 30 * 86_400_000);
-  const [[r], base] = await Promise.all([db.select(tallyCols).from(acts).where(and(activityScope(actor), gte(acts.occurredAt, since))), baseCurrency(db)]);
+  const [[r], base] = await Promise.all([db.select(tallyWithContacts).from(acts).where(and(activityScope(actor), gte(acts.occurredAt, since))), baseCurrency(db)]);
   const t = toTally(r);
-  return { ...t, ratePct: ratePct(t.responded, t.contacts), baseCurrency: base };
+  return { ...t, contacts: n(r?.contacts), ratePct: ratePct(t.responded, t.touches), baseCurrency: base };
 }
 
 // ---------------------------------------------------------------- campaigns with results
@@ -237,14 +269,15 @@ export async function campaignResults(actor: Actor) {
   const [list, results] = await Promise.all([
     db.select().from(campaigns).orderBy(sql`field(${campaigns.status}, 'active', 'planned', 'paused', 'finished')`, desc(campaigns.startDate), asc(campaigns.name)),
     db
-      .select({ campaignId: acts.campaignId, ...tallyCols })
+      .select({ campaignId: acts.campaignId, ...tallyWithContacts })
       .from(acts)
       .where(and(activityScope(actor), sql`${acts.campaignId} is not null`))
       .groupBy(acts.campaignId),
   ]);
   return list.map((c) => {
-    const t = toTally(results.find((r) => r.campaignId === c.id));
-    return { ...c, ...t, ratePct: ratePct(t.responded, t.contacts) };
+    const r = results.find((x) => x.campaignId === c.id);
+    const t = toTally(r);
+    return { ...c, ...t, contacts: n(r?.contacts), ratePct: ratePct(t.responded, t.touches) };
   });
 }
 export type CampaignResult = Awaited<ReturnType<typeof campaignResults>>[number];

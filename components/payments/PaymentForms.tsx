@@ -138,8 +138,8 @@ function SubscriptionForm({ sub, lookups, action, onSaved }: { sub?: SubView; lo
   );
 }
 
-export function AddSubscription({ lookups, action }: { lookups: PaymentLookups; action: Action }) {
-  const [open, setOpen] = useState(false);
+export function AddSubscription({ lookups, action, initialOpen = false }: { lookups: PaymentLookups; action: Action; initialOpen?: boolean }) {
+  const [open, setOpen] = useState(initialOpen);
   const close = useCallback(() => setOpen(false), []);
   return (
     <>

@@ -27,6 +27,13 @@ import { deleteActivity, deleteCampaign, saveActivity, saveCampaign } from "./ac
 export const metadata = { title: "Marketing" };
 
 const PATH = "/marketing";
+
+/** column spans for the five-card KPI row (same layout as Finances) */
+const KPI = {
+  third: "@min-[52rem]:col-span-2 @min-[80rem]:col-span-1",
+  half: "@min-[52rem]:col-span-3 @min-[80rem]:col-span-1",
+  last: "@min-[34rem]:col-span-2 @min-[52rem]:col-span-3 @min-[80rem]:col-span-1",
+};
 const monthLong = (m: string) => new Date(`${m}-01T00:00:00Z`).toLocaleDateString("en-AU", { month: "long", year: "numeric", timeZone: "UTC" });
 
 /** "+12.5%" / "−3 pts" with a tone, or the steady "No prior period". */
@@ -83,6 +90,7 @@ export default async function MarketingPage({ searchParams }: { searchParams: Pr
 
   const t = s.totals;
   const contacts = changeNote(s.change.contacts);
+  const touches = changeNote(s.change.touches);
   const rate = changeNote(s.change.ratePoints, " pts");
   const won = changeNote(s.change.won);
   const value = changeNote(s.change.wonValue);
@@ -90,8 +98,9 @@ export default async function MarketingPage({ searchParams }: { searchParams: Pr
 
   const channelColumns: Column<(typeof s.byChannel)[number]>[] = [
     { key: "channel", header: "Channel", cell: (r) => <span className="font-medium text-ink">{CHANNEL_LABEL[r.channel]}</span> },
-    { key: "contacts", header: "Contacts", align: "right", cell: (r) => <span className="num font-mono">{r.contacts.toLocaleString("en-AU")}</span> },
-    { key: "responded", header: "Responded", align: "right", hideBelow: "md", cell: (r) => <span className="num font-mono text-ink-2">{r.responded.toLocaleString("en-AU")}</span> },
+    { key: "contacts", header: "Contacts", align: "right", hideBelow: "md", cell: (r) => <span className="num font-mono">{r.contacts.toLocaleString("en-AU")}</span> },
+    { key: "touches", header: "Touches", align: "right", cell: (r) => <span className="num font-mono">{r.touches.toLocaleString("en-AU")}</span> },
+    { key: "responded", header: "Responses", align: "right", hideBelow: "lg", cell: (r) => <span className="num font-mono text-ink-2">{r.responded.toLocaleString("en-AU")}</span> },
     {
       key: "rate",
       header: "Response rate",
@@ -185,7 +194,7 @@ export default async function MarketingPage({ searchParams }: { searchParams: Pr
           <div className="flex flex-wrap items-center gap-3">
             {can.export && <ExportLink href={hrefWith("/api/export/marketing", keep, {})} />}
             {can.campaigns && <AddCampaign action={saveCampaign} />}
-            {can.create && <LogActivity lookups={formLookups} action={saveActivity} />}
+            {can.create && <LogActivity lookups={formLookups} action={saveActivity} initialOpen={sp.new === "1"} />}
           </div>
         }
       />
@@ -250,32 +259,43 @@ export default async function MarketingPage({ searchParams }: { searchParams: Pr
         </form>
       </Card>
 
-      <div className="mb-[var(--space-gap)] grid grid-cols-1 gap-cards @min-[34rem]:grid-cols-2 @min-[60rem]:grid-cols-4">
-        <StatCard label="Contacts reached" value={t.contacts.toLocaleString("en-AU")} note={contacts.note} noteTone={contacts.tone} detail="Calls, emails, referrals and messages logged" trend={done.map((m) => m.contacts)} />
+      {/* five cards: 1 -> 2 (+1 wide) -> 3 + 2 -> 5 across, by the width of the content area, so none sits alone */}
+      <div className="mb-[var(--space-gap)] grid grid-cols-1 gap-cards @min-[34rem]:grid-cols-2 @min-[52rem]:grid-cols-6 @min-[80rem]:grid-cols-5">
         <StatCard
+          className={KPI.third}
+          label="Contacts reached"
+          value={t.contacts.toLocaleString("en-AU")}
+          note={contacts.note}
+          noteTone={contacts.tone}
+          detail="Unique: each company once (or person, if no company)"
+          trend={done.map((m) => m.contacts)}
+        />
+        <StatCard className={KPI.third} label="Touches" value={t.touches.toLocaleString("en-AU")} note={touches.note} noteTone={touches.tone} detail="Every call, email, referral and message logged" trend={done.map((m) => m.touches)} />
+        <StatCard
+          className={KPI.third}
           label="Response rate"
           value={t.ratePct === null ? "No activity" : `${t.ratePct}%`}
           note={rate.note}
           noteTone={rate.tone}
-          detail={`${t.responded.toLocaleString("en-AU")} replied, met or decided`}
-          trend={done.map((m) => (m.contacts ? Math.round((m.responded / m.contacts) * 1000) : 0))}
+          detail={`${t.responded.toLocaleString("en-AU")} of ${t.touches.toLocaleString("en-AU")} touches got a reply, meeting or decision`}
+          trend={done.map((m) => (m.touches ? Math.round((m.responded / m.touches) * 1000) : 0))}
         />
-        <StatCard label="Deals won" value={t.won.toLocaleString("en-AU")} note={won.note} noteTone={won.tone} detail="Activities marked deal won" trend={done.map((m) => m.won)} />
-        <StatCard label="Revenue from marketing" value={whole(t.wonValueBaseMinor)} note={value.note} noteTone={value.tone} detail={`Value of deals won, in ${base}`} trend={done.map((m) => m.wonValueBaseMinor)} />
+        <StatCard className={KPI.half} label="Deals won" value={t.won.toLocaleString("en-AU")} note={won.note} noteTone={won.tone} detail="Activities marked deal won" trend={done.map((m) => m.won)} />
+        <StatCard className={KPI.last} label="Revenue from marketing" value={whole(t.wonValueBaseMinor)} note={value.note} noteTone={value.tone} detail={`Value of deals won, in ${base}`} trend={done.map((m) => m.wonValueBaseMinor)} />
       </div>
 
       <div className="mb-[var(--space-gap)] grid grid-cols-1 gap-cards @min-[48rem]:grid-cols-3">
         <InsightCard
           label="Best day"
           value={insights.day?.label ?? null}
-          detail={insights.day && <>{insights.day.ratePct}% responded ({insights.day.contacts} contacts) vs {t.ratePct}% overall</>}
-          empty={`Needs at least ${INSIGHT_MIN.day} contacts on one weekday in this view.`}
+          detail={insights.day && <>{insights.day.ratePct}% of {insights.day.touches} touches got a response, vs {t.ratePct}% overall</>}
+          empty={`Needs at least ${INSIGHT_MIN.day} touches on one weekday in this view.`}
         />
         <InsightCard
           label="Best time"
           value={insights.hour ? hourRange(Number(insights.hour.label)) : null}
-          detail={insights.hour && <>{insights.hour.ratePct}% responded ({insights.hour.contacts} contacts) vs {t.ratePct}% overall</>}
-          empty={`Needs at least ${INSIGHT_MIN.hour} contacts in one hour of the day in this view.`}
+          detail={insights.hour && <>{insights.hour.ratePct}% of {insights.hour.touches} touches got a response, vs {t.ratePct}% overall</>}
+          empty={`Needs at least ${INSIGHT_MIN.hour} touches in one hour of the day in this view.`}
         />
         <InsightCard
           label="Best month"
@@ -283,7 +303,7 @@ export default async function MarketingPage({ searchParams }: { searchParams: Pr
           detail={
             insights.month && (
               <>
-                {insights.month.won} {insights.month.won === 1 ? "deal" : "deals"} won ({whole(insights.month.wonValueBaseMinor)}){insights.month.ratePct !== null ? `, ${insights.month.ratePct}% responded` : ""}
+                {insights.month.won} {insights.month.won === 1 ? "deal" : "deals"} won ({whole(insights.month.wonValueBaseMinor)}){insights.month.ratePct !== null ? `, ${insights.month.ratePct}% response rate` : ""}
               </>
             )
           }
@@ -292,8 +312,8 @@ export default async function MarketingPage({ searchParams }: { searchParams: Pr
       </div>
 
       <Card className="mb-[var(--space-gap)]">
-        <CardHeader title="Channel performance" subtitle={`${periodLabel} · response rate = replied, met or decided ÷ contacts`} />
-        {t.contacts === 0 ? (
+        <CardHeader title="Channel performance" subtitle={`${periodLabel} · contacts are unique per channel · response rate = touches that got a reply, meeting or decision ÷ touches`} />
+        {t.touches === 0 ? (
           <EmptyState title="No activity in this view">{can.create ? "Use Log activity to record calls, emails and referrals." : "Try a wider month or clear the filters."}</EmptyState>
         ) : (
           <DataTable caption="Channel performance" columns={channelColumns} rows={s.byChannel} rowKey={(r) => r.channel} />
@@ -324,7 +344,7 @@ export default async function MarketingPage({ searchParams }: { searchParams: Pr
                       {[c.channel ? CHANNEL_LABEL[c.channel] : "Mixed", c.startDate ? `${fmtShortDate(c.startDate)}${c.endDate ? ` – ${fmtShortDate(c.endDate)}` : " onwards"}` : null].filter(Boolean).join(" · ")}
                     </p>
                     <p className="mt-1 font-mono text-xs text-ink-2">
-                      {c.contacts} contacts · {c.ratePct === null ? "–" : `${c.ratePct}%`} · {c.won} won{c.wonValueBaseMinor ? ` · ${whole(c.wonValueBaseMinor)}` : ""}
+                      {c.contacts} contacts · {c.touches} touches · {c.ratePct === null ? "–" : `${c.ratePct}%`} · {c.won} won{c.wonValueBaseMinor ? ` · ${whole(c.wonValueBaseMinor)}` : ""}
                     </p>
                   </div>
                   {(can.campaignEdit || can.campaignDelete) && (

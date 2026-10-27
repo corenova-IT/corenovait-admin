@@ -99,7 +99,7 @@ export async function countRows(t: TestDb, table: string): Promise<number> {
 
 /** A fingerprint of every table, to prove a refused request changed nothing. */
 export async function snapshot(t: TestDb) {
-  const tables = ["users", "user_permissions", "preset_permissions", "sessions", "auth_tokens", "recovery_codes", "income_entries", "expenses", "files", "settings", "campaigns", "marketing_activities"];
+  const tables = ["users", "user_permissions", "preset_permissions", "sessions", "auth_tokens", "recovery_codes", "income_entries", "expenses", "files", "settings", "campaigns", "marketing_activities", "events", "event_attendees", "tasks", "task_comments"];
   const out: Record<string, unknown> = {};
   for (const tb of tables) {
     const [rows] = (await t.db.execute(sql`select * from ${sql.identifier(tb)}`)) as unknown as [unknown[]];

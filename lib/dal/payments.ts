@@ -157,6 +157,13 @@ export async function paymentsOverview(actor: Actor, opts: { country?: string } 
   };
 }
 
+/** Due dates between two dates (inclusive) for the calendar, in the caller's payments scope. Paid ones have moved on, so only what's still due shows. */
+export async function paymentDueDates(actor: Actor, from: string, to: string): Promise<Occurrence[]> {
+  requirePerm(actor, "payments", "view");
+  const { today, rows } = await loadSubs(getDb(), actor);
+  return timeline(rows, today, Math.max(0, daysBetween(today, to))).filter((o) => o.dueDate >= from && o.dueDate <= to);
+}
+
 // ---------------------------------------------------------------- create / edit
 export const subscriptionInput = z.object({
   vendor: z.string().trim().min(1, "Enter who it's paid to.").max(200),

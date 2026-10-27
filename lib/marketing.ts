@@ -37,15 +37,17 @@ export const OUTCOME_TONE: Record<Outcome, "neutral" | "amber" | "green" | "red"
 export const CAMPAIGN_STATUS_LABEL: Record<CampaignStatus, string> = { planned: "Planned", active: "Active", paused: "Paused", finished: "Finished" };
 
 /**
- * A contact "responded" if anything came back: a reply, a meeting, or a deal
- * either way. Response rate = responded ÷ contacts reached (activities logged).
+ * A touch (one logged activity) "got a response" if anything came back: a
+ * reply, a meeting, or a deal either way. Response rate = touches that got a
+ * response ÷ touches. "Contacts reached" is different: unique contacts (each
+ * company once, or each person when no company is given) in the period.
  */
 export const RESPONDED: readonly Outcome[] = ["replied", "meeting", "deal_won", "deal_lost"];
 
-/** Insights need enough activity to mean something; below this they say so instead of guessing. */
+/** Insights need enough touches to mean something; below this they say so instead of guessing. */
 export const INSIGHT_MIN = { day: 20, hour: 15 } as const;
 
 /** Response rate as a percentage with one decimal, or null when nothing was logged. */
-export function ratePct(responded: number, contacts: number): number | null {
-  return contacts > 0 ? Math.round((responded / contacts) * 1000) / 10 : null;
+export function ratePct(responded: number, touches: number): number | null {
+  return touches > 0 ? Math.round((responded / touches) * 1000) / 10 : null;
 }

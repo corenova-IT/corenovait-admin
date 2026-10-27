@@ -92,7 +92,7 @@ describe("scope", () => {
     const list = await mkt.listActivities(own, { month: "2026-02" });
     expect(list.rows.map((r) => r.contactName)).toEqual(["Own's contact"]);
     const s = await mkt.marketingSummary(own, { month: "2026-02" });
-    expect(s.totals.contacts).toBe(1);
+    expect(s.totals).toMatchObject({ contacts: 1, touches: 1 });
     expect(s.totals.responded).toBe(0);
   });
 
@@ -175,10 +175,11 @@ describe("money", () => {
 
 describe("heatmap and insights, in the company time zone", () => {
   /** Inserts activity directly (fast) at a local Sydney time. */
-  async function bulk(local: string, contacts: number, responded: number) {
+  /** names repeat between calls ("Bulk 0", "Bulk 1"…), so touches add up but unique contacts don't */
+  async function bulk(local: string, touches: number, responded: number) {
     const at = zonedToUtc(local, TZ);
     await t.db.insert(t.schema.marketingActivities).values(
-      Array.from({ length: contacts }, (_, i) => ({
+      Array.from({ length: touches }, (_, i) => ({
         occurredAt: at,
         channel: "cold_call" as const,
         contactName: `Bulk ${i}`,
@@ -194,12 +195,12 @@ describe("heatmap and insights, in the company time zone", () => {
     // Wed 7 Jan 2026 10:30 Sydney (summer, UTC+11) is Tue 23:30 UTC
     await mkt.createActivity(admin, activity({ occurredAt: "2026-01-07T10:30", contactName: "Summer" }));
     const jan = await mkt.marketingSummary(admin, { month: "2026-01" });
-    expect(jan.heat[2][10]).toEqual({ contacts: 1, responded: 1 });
-    expect(jan.heat[1][23].contacts).toBe(0);
+    expect(jan.heat[2][10]).toEqual({ touches: 1, responded: 1 });
+    expect(jan.heat[1][23].touches).toBe(0);
     // Tue 7 Jul 2026 10:30 Sydney (winter, UTC+10)
     await mkt.createActivity(admin, activity({ occurredAt: "2026-07-07T10:30", contactName: "Winter", outcome: "no_response" }));
     const jul = await mkt.marketingSummary(admin, { month: "2026-07" });
-    expect(jul.heat[1][10]).toEqual({ contacts: 1, responded: 0 });
+    expect(jul.heat[1][10]).toEqual({ touches: 1, responded: 0 });
     expect(jul.totals.ratePct).toBe(0);
   });
 
@@ -214,24 +215,41 @@ describe("heatmap and insights, in the company time zone", () => {
     const admin = await as(ids.admin);
     await bulk("2026-08-04T10:00", 10, 6); // Tuesday 10:00
     let s = await mkt.marketingSummary(admin, { month: "2026-08", channel: "cold_call" });
-    expect(s.insights.day).toBeNull(); // 10 < 20 contacts on any day
+    expect(s.insights.day).toBeNull(); // 10 < 20 touches on any day
     expect(s.insights.hour).toBeNull(); // 10 < 15 in any hour
 
-    await bulk("2026-08-11T10:00", 12, 6); // another Tuesday 10:00: Tue = 22 contacts, 12 responded
-    await bulk("2026-08-12T15:00", 24, 6); // Wednesday 15:00: 24 contacts, 6 responded
+    await bulk("2026-08-11T10:00", 12, 6); // another Tuesday 10:00: Tue = 22 touches, 12 responded
+    await bulk("2026-08-12T15:00", 24, 6); // Wednesday 15:00: 24 touches, 6 responded
     s = await mkt.marketingSummary(admin, { month: "2026-08", channel: "cold_call" });
-    expect(s.insights.day).toEqual({ label: "Tuesday", ratePct: 54.5, contacts: 22, responded: 12 });
-    expect(s.insights.hour).toEqual({ label: "10", ratePct: 54.5, contacts: 22, responded: 12 });
-    expect(s.totals).toMatchObject({ contacts: 46, responded: 18, ratePct: 39.1 });
+    expect(s.insights.day).toEqual({ label: "Tuesday", ratePct: 54.5, touches: 22, responded: 12 });
+    expect(s.insights.hour).toEqual({ label: "10", ratePct: 54.5, touches: 22, responded: 12 });
+    // 46 touches, but only "Bulk 0" … "Bulk 23" were contacted
+    expect(s.totals).toMatchObject({ touches: 46, contacts: 24, responded: 18, ratePct: 39.1 });
     // the channel table agrees with the totals
-    expect(s.byChannel.find((c) => c.channel === "cold_call")).toMatchObject({ contacts: 46, responded: 18, ratePct: 39.1 });
+    expect(s.byChannel.find((c) => c.channel === "cold_call")).toMatchObject({ touches: 46, contacts: 24, responded: 18, ratePct: 39.1 });
+  });
+
+  it("counts each company once, or each person when there's no company, ignoring case and spaces", async () => {
+    const admin = await as(ids.admin);
+    for (const [contactName, contactCompany, occurredAt] of [
+      ["Ann", "Acme Dental", "2025-11-03T10:00"],
+      ["Bob", " ACME dental ", "2025-11-04T10:00"],
+      ["Cara", "", "2025-11-05T10:00"],
+      ["cara ", "", "2025-11-06T10:00"],
+    ])
+      await mkt.createActivity(admin, activity({ contactName, contactCompany, occurredAt, channel: "direct" }));
+    const s = await mkt.marketingSummary(admin, { month: "2025-11" });
+    expect(s.totals).toMatchObject({ touches: 4, contacts: 2, responded: 4, ratePct: 100 });
+    expect(s.byChannel.find((c) => c.channel === "direct")).toMatchObject({ touches: 4, contacts: 2 });
+    expect(s.monthly.find((m) => m.month === "2025-11")).toMatchObject({ touches: 4, contacts: 2 });
   });
 
   it("compares with the previous period", async () => {
     const admin = await as(ids.admin);
-    await bulk("2026-09-08T10:00", 23, 10); // Sep: 23 contacts vs Aug's 46
+    await bulk("2026-09-08T10:00", 23, 10); // Sep: 23 touches (23 contacts) vs Aug's 46 (24 contacts)
     const s = await mkt.marketingSummary(admin, { month: "2026-09", channel: "cold_call" });
-    expect(s.change.contacts).toBe(-50);
+    expect(s.change.touches).toBe(-50);
+    expect(s.change.contacts).toBe(-4.2);
     expect(s.change.ratePoints).toBe(4.4); // 43.5% vs 39.1%
   });
 });
@@ -253,9 +271,30 @@ describe("campaigns", () => {
     await mkt.createActivity(admin, activity({ campaignId: id, outcome: "deal_won", dealValue: "2000", occurredAt: "2026-06-02T10:00" }));
     await mkt.createActivity(await as(ids.own), activity({ campaignId: id, outcome: "no_response", occurredAt: "2026-06-03T10:00" }));
     const all = (await mkt.campaignResults(admin)).find((c) => c.id === id)!;
-    expect(all).toMatchObject({ contacts: 2, responded: 1, won: 1, wonValueBaseMinor: 200000, ratePct: 50 });
+    // both touches were at "Example Pty", so one contact
+    expect(all).toMatchObject({ touches: 2, contacts: 1, responded: 1, won: 1, wonValueBaseMinor: 200000, ratePct: 50 });
     const mine = (await mkt.campaignResults(await as(ids.own))).find((c) => c.id === id)!;
-    expect(mine).toMatchObject({ contacts: 1, won: 0 });
+    expect(mine).toMatchObject({ touches: 1, contacts: 1, won: 0 });
     await expect(mkt.deleteCampaign(admin, id)).rejects.toThrow(/Mark it finished instead/);
+  });
+});
+
+describe("the Marketing staff preset", () => {
+  it("is Staff plus logging your own marketing activity, with no two-factor requirement", async () => {
+    const person = await createPerson(t, { email: "mkstaff@example.test", preset: "marketing_staff" });
+    const actor = await as(person.id);
+    expect(actor.mfaRequired).toBe(false);
+    expect(actor.perms.marketing).toEqual({ view: true, create: true, edit: false, delete: false, export: false, scope: "own" });
+    expect(actor.perms.tasks.view && actor.perms.calendar.view && actor.perms.chat.view && actor.perms.home.view).toBe(true);
+    for (const m of ["finances", "transactions", "payments", "team", "settings", "audit"] as const) expect(actor.perms[m].view, m).toBe(false);
+    // can log, can't edit or delete afterwards, and sees only their own
+    const id = await mkt.createActivity(actor, activity({ contactName: "Preset contact", occurredAt: "2026-04-14T10:00" }));
+    await expect(mkt.updateActivity(actor, id, activity({ contactName: "Edited" }))).rejects.toThrow(DENIED);
+    await expect(mkt.deleteActivity(actor, id)).rejects.toThrow(DENIED);
+    expect((await mkt.listActivities(actor, { month: "2026-04" })).rows.map((r) => r.contactName)).toEqual(["Preset contact"]);
+  });
+
+  it("is a separate preset: the default Staff preset still has no marketing access", async () => {
+    expect((await as(ids.plain)).perms.marketing.view).toBe(false);
   });
 });

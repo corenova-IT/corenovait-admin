@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useId, useRef } from "react";
 import { IconX } from "@/components/icons";
 import { cx } from "./cx";
 
@@ -30,12 +30,18 @@ function useDialog(open: boolean, onClose: () => void) {
   return ref;
 }
 
-function Header({ title, description, onClose }: { title: string; description?: string; onClose: () => void }) {
+function Header({ id, title, description, onClose }: { id: string; title: string; description?: string; onClose: () => void }) {
   return (
     <div className="mb-6 flex items-start justify-between gap-4">
-      <div>
-        <h2 className="font-display text-2xl font-bold tracking-[-0.02em] text-ink">{title}</h2>
-        {description && <p className="mt-1.5 text-sm text-muted">{description}</p>}
+      <div className="min-w-0">
+        <h2 id={`${id}-title`} className="font-display text-2xl font-bold tracking-[-0.02em] text-ink [overflow-wrap:anywhere]">
+          {title}
+        </h2>
+        {description && (
+          <p id={`${id}-desc`} className="mt-1.5 text-sm text-muted">
+            {description}
+          </p>
+        )}
       </div>
       <button
         type="button"
@@ -67,15 +73,18 @@ export function Modal({
   className?: string;
 }) {
   const ref = useDialog(open, onClose);
+  const id = useId();
   return (
     <dialog
       ref={ref}
+      aria-labelledby={`${id}-title`}
+      aria-describedby={description ? `${id}-desc` : undefined}
       onClick={(e) => e.target === ref.current && onClose()}
       className={cx("glass m-auto w-[min(520px,calc(100vw-2rem))] p-7 text-left font-normal text-ink", backdrop, className)}
     >
       {open && (
         <>
-          <Header title={title} description={description} onClose={onClose} />
+          <Header id={id} title={title} description={description} onClose={onClose} />
           {children}
         </>
       )}
@@ -99,9 +108,12 @@ export function Drawer({
   wide?: boolean;
 }) {
   const ref = useDialog(open, onClose);
+  const id = useId();
   return (
     <dialog
       ref={ref}
+      aria-labelledby={`${id}-title`}
+      aria-describedby={description ? `${id}-desc` : undefined}
       onClick={(e) => e.target === ref.current && onClose()}
       className={cx(
         "glass fixed inset-y-0 right-0 left-auto m-0 h-dvh max-h-dvh w-full overflow-y-auto rounded-none rounded-l-[20px] p-6 text-left font-normal text-ink sm:p-8",
@@ -111,7 +123,7 @@ export function Drawer({
     >
       {open && (
         <>
-          <Header title={title} description={description} onClose={onClose} />
+          <Header id={id} title={title} description={description} onClose={onClose} />
           {children}
         </>
       )}

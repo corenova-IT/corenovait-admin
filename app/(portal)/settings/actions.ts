@@ -5,6 +5,7 @@ import { z } from "zod";
 import { actorWithPerm, errorMessage } from "@/lib/auth/session";
 import type { Actor } from "@/lib/dal/guard";
 import * as lists from "@/lib/dal/lists";
+import { updateCompanyTimezone } from "@/lib/dal/settings";
 
 /**
  * Settings lists: streams, countries, expense categories. Admin only; the
@@ -77,6 +78,19 @@ export async function deleteListItem(_prev: ListState, fd: FormData): Promise<Li
       else await lists.deleteCategory(g.actor, id);
     }
     return done("Deleted.");
+  } catch (e) {
+    return { error: errorMessage(e) };
+  }
+}
+
+export async function saveTimezone(_prev: ListState, fd: FormData): Promise<ListState> {
+  const g = await actorWithPerm("settings", "edit");
+  if (!g.actor) return { error: g.error };
+  if (!g.actor.isAdmin) return { error: "Only admins can change company settings." };
+  try {
+    await updateCompanyTimezone(g.actor, str(fd, "timezone"));
+    revalidatePath("/", "layout");
+    return { ok: "Time zone saved. Dates, the marketing heatmap and the calendar now use it." };
   } catch (e) {
     return { error: errorMessage(e) };
   }

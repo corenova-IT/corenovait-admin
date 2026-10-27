@@ -7,7 +7,6 @@
  * Runs once: if the database already has people, it does nothing.
  */
 import { randomBytes, randomUUID } from "node:crypto";
-import { eq } from "drizzle-orm";
 import { loadEnvFile } from "./load-env.mjs";
 
 loadEnvFile();
@@ -17,8 +16,8 @@ const PEOPLE = [
   { email: "admin.two@example.test", name: "Blair Sample", title: "Co-founder", preset: "admin", status: "active" },
   { email: "web.dev@example.test", name: "Casey Demo", title: "Web developer", preset: "staff", status: "active" },
   { email: "design@example.test", name: "Devon Placeholder", title: "Designer", preset: "manager", status: "active" },
-  // staff plus marketing with the "own" scope (granted below): sees only the activity they log
-  { email: "marketing@example.test", name: "Emery Test", title: "Marketing", preset: "staff", status: "active" },
+  // the "Marketing staff" preset: staff defaults plus logging their own marketing activity
+  { email: "marketing@example.test", name: "Emery Test", title: "Marketing", preset: "marketing_staff", status: "active" },
   { email: "sales@example.test", name: "Gray Sample", title: "Sales", preset: "staff", status: "invited" },
   { email: "former@example.test", name: "Frankie Fixture", title: "Contractor", preset: "staff", status: "deactivated" },
 ] as const;
@@ -65,13 +64,6 @@ async function main() {
         });
         await copyPresetToUser(tx, id, p.preset);
       }
-      // what an admin would do on the Team page: give the marketing person their own activity log
-      const { loadUserPerms, writeUserPerms } = await import("../lib/dal/internal");
-      const emery = ids["marketing@example.test"];
-      const perms = await loadUserPerms(tx, emery);
-      perms.marketing = { view: true, create: true, edit: true, delete: true, export: false, scope: "own" };
-      await writeUserPerms(tx, emery, perms);
-      await tx.update(schema.users).set({ presetId: "custom" }).where(eq(schema.users.id, emery));
       await writeAudit(tx, null, { action: "create", entity: "users", summary: "Sample people loaded for local development" });
     });
 
@@ -204,15 +196,27 @@ async function main() {
         { id: ids["marketing@example.test"], weight: 1.6 },
       ],
     });
+
+    const work = await seedWork(db, schema, {
+      today,
+      admin,
+      people: {
+        alex: admin,
+        blair: ids["admin.two@example.test"],
+        casey: ids["web.dev@example.test"],
+        devon: ids["design@example.test"],
+        emery: ids["marketing@example.test"],
+      },
+    });
     await writeAudit(db, null, {
       action: "create",
       entity: "income_entries",
-      summary: `Sample data: ${income.length} income entries, ${expenses.length} expenses, ${subs.length} subscriptions, ${marketing.activities} marketing activities in ${marketing.campaigns} campaigns (is_sample)`,
+      summary: `Sample data: ${income.length} income entries, ${expenses.length} expenses, ${subs.length} subscriptions, ${marketing.activities} marketing activities in ${marketing.campaigns} campaigns, ${work.events} events, ${work.tasks} tasks (is_sample)`,
     });
 
     console.log("\nSample data loaded (development only):");
     console.log("  Sign in at http://localhost:3000/login with any of:");
-    for (const p of PEOPLE.filter((x) => x.status === "active")) console.log(`    ${p.email.padEnd(26)} ${p.email.startsWith("marketing") ? "staff + own marketing activity" : p.preset}`);
+    for (const p of PEOPLE.filter((x) => x.status === "active")) console.log(`    ${p.email.padEnd(26)} ${p.preset.replace("_", " ")}`);
     console.log(`  Password for all of them (local only, shown once): ${devPassword}`);
     console.log("  Admins and the manager set up two-factor on first sign-in; web.dev@example.test is plain staff.");
     console.log("  Lost it? npm run db:local -- --reset\n");
@@ -338,6 +342,121 @@ async function seedMarketing(
   }
   for (let i = 0; i < rows.length; i += 500) await db.insert(schema.marketingActivities).values(rows.slice(i, i + 500));
   return { activities: rows.length, campaigns: campaignRows.length };
+}
+
+// ---------------------------------------------------------------- calendar and tasks sample
+/**
+ * Five weeks either side of today: a weekly stand-up, sprint planning, client
+ * calls, deadlines and an offsite; and about forty tasks across the team, some
+ * overdue, some due this week, some done, with checklists and comments.
+ */
+async function seedWork(
+  db: ReturnType<typeof import("../lib/db").getDb>,
+  schema: typeof import("../lib/db").schema,
+  opts: { today: string; admin: string; people: { alex: string; blair: string; casey: string; devon: string; emery: string } }
+) {
+  const { addDays } = await import("../lib/dates");
+  const { zonedToUtc } = await import("../lib/zoned");
+  const tz = "Australia/Sydney";
+  const r = rng(4004);
+  const pick = <T,>(xs: readonly T[]) => xs[Math.floor(r() * xs.length)];
+  const P = opts.people;
+  const everyone = [P.alex, P.blair, P.casey, P.devon, P.emery];
+  const weekday = (d: string) => (new Date(`${d}T00:00:00Z`).getUTCDay() + 6) % 7;
+  const at = (d: string, hhmm: string) => zonedToUtc(`${d}T${hhmm}`, tz);
+
+  type Ev = typeof schema.events.$inferInsert;
+  const evs: Ev[] = [];
+  const att: Array<{ eventId: string; userId: string }> = [];
+  const add = (e: Omit<Ev, "id" | "isSample">, who: string[]) => {
+    const id = randomUUID();
+    evs.push({ id, isSample: true, ...e });
+    for (const u of new Set(who)) att.push({ eventId: id, userId: u });
+  };
+
+  for (let d = addDays(opts.today, -35); d <= addDays(opts.today, 35); d = addDays(d, 1)) {
+    const wd = weekday(d);
+    if (wd === 0)
+      add({ title: "Team stand-up (sample)", type: "meeting", startsAt: at(d, "09:30"), endsAt: at(d, "09:45"), videoUrl: "https://meet.example.test/standup", reminderMinutes: 10, createdBy: P.alex }, everyone);
+    if (wd === 2 && Math.floor((Date.parse(d) / 86_400_000) / 7) % 2 === 0)
+      add({ title: "Sprint planning (sample)", type: "meeting", startsAt: at(d, "14:00"), endsAt: at(d, "15:00"), location: "Meeting room", reminderMinutes: 30, createdBy: P.devon }, [P.alex, P.casey, P.devon]);
+    if (wd < 5 && r() < 0.45) {
+      const start = pick(["10:00", "11:00", "13:30", "15:00"]);
+      const end = start === "13:30" ? "14:00" : `${String(Number(start.slice(0, 2)) + 1).padStart(2, "0")}:00`;
+      add(
+        { title: `Call with ${pick(COMPANIES)} (sample)`, type: "meeting", startsAt: at(d, start), endsAt: at(d, end), location: r() < 0.5 ? "Phone" : "", videoUrl: r() < 0.5 ? "https://meet.example.test/client" : "", reminderMinutes: 10, createdBy: pick([P.alex, P.devon, P.emery]) },
+        [P.alex, pick([P.devon, P.emery, P.casey])]
+      );
+    }
+  }
+  // the staff member's own day, so "My Day" has something on it
+  add({ title: "Daily check-in (sample)", type: "meeting", startsAt: at(opts.today, "11:00"), endsAt: at(opts.today, "11:15"), videoUrl: "https://meet.example.test/checkin", reminderMinutes: 0, createdBy: P.casey }, [P.casey, P.devon]);
+  add({ title: "Design review with Devon (sample)", type: "meeting", startsAt: at(addDays(opts.today, 2), "15:00"), endsAt: at(addDays(opts.today, 2), "15:45"), createdBy: P.casey }, [P.casey, P.devon]);
+  for (const [offset, title] of [[4, "Website launch: Example Dental (sample)"], [12, "Quarterly BAS due (sample)"], [-6, "Proposal sent: Sample Gym (sample)"]] as const)
+    add({ title, type: "deadline", allDay: true, startsAt: at(addDays(opts.today, offset), "00:00"), endsAt: at(addDays(opts.today, offset + 1), "00:00"), createdBy: P.alex }, [P.alex, P.devon]);
+  add({ title: "Planning offsite (sample)", type: "other", allDay: true, startsAt: at(addDays(opts.today, 18), "00:00"), endsAt: at(addDays(opts.today, 20), "00:00"), location: "Example Retreat, Blue Mountains", createdBy: P.alex }, everyone);
+  await db.insert(schema.events).values(evs);
+  await db.insert(schema.eventAttendees).values(att);
+
+  const TASKS: Array<[string, string, string[]]> = [
+    ["Update the Example Dental home page", "website", ["Hero copy", "New photos", "Check on mobile"]],
+    ["Send the Sample Gym proposal", "client", []],
+    ["Fix contact form spam", "website", ["Add rate limit", "Test the email"]],
+    ["Draft October newsletter", "marketing", ["Topics", "Draft", "Review"]],
+    ["Prepare BAS figures", "finance", []],
+    ["Design new service icons", "design", ["Sketch", "Vector", "Export"]],
+    ["Follow up Demo Physio quote", "client", []],
+    ["Write case study: Placeholder Cafe", "marketing", ["Interview notes", "Draft"]],
+    ["Renew the SSL certificate", "internal", []],
+    ["Onboard Sample Salon", "client", ["Kick-off call", "Access", "Brand files"]],
+    ["Clean up the shared drive", "internal", []],
+    ["Logo options for Fictional Builders", "design", ["Three concepts", "Feedback round"]],
+    ["Set up analytics for Mock Legal", "website", []],
+    ["Plan LinkedIn posts for November", "marketing", []],
+    ["Chase overdue invoice: Northwind", "finance", []],
+    ["Speed up the portfolio page", "website", ["Image sizes", "Lazy loading"]],
+    ["Price list review", "internal", []],
+    ["Photo shoot brief", "design", []],
+  ];
+  const assignees: Array<string | null> = [P.casey, P.casey, P.devon, P.emery, P.alex, P.devon, null];
+  type Tk = typeof schema.tasks.$inferInsert;
+  const tasks: Tk[] = [];
+  const comments: Array<typeof schema.taskComments.$inferInsert> = [];
+  let n = 0;
+  for (const round of [0, 1]) {
+    for (const [title, label, check] of TASKS) {
+      if (round === 1 && r() < 0.35) continue;
+      n++;
+      const assigneeId = pick(assignees);
+      const status = pick(["todo", "todo", "in_progress", "in_progress", "review", "done", "done"] as const);
+      const due = r() < 0.15 ? null : addDays(opts.today, Math.floor(r() * 30) - 10);
+      const id = randomUUID();
+      const done = status === "done";
+      tasks.push({
+        id,
+        title: round ? `${title} (part 2, sample)` : `${title} (sample)`,
+        description: r() < 0.6 ? "Sample task. Details, links and notes go here." : null,
+        status,
+        priority: pick(["low", "medium", "medium", "medium", "high", "urgent"] as const),
+        assigneeId,
+        dueDate: due,
+        labels: r() < 0.3 ? [label, "client"].filter((v, i, a) => a.indexOf(v) === i) : [label],
+        checklist: check.map((text, i) => ({ id: `${n}-${i}`, text, done: done || r() < 0.4 })),
+        completedAt: done ? zonedToUtc(addDays(opts.today, -Math.floor(r() * 7)), tz) : null,
+        isSample: true,
+        createdBy: assigneeId && r() < 0.3 ? assigneeId : opts.admin,
+      });
+      if (r() < 0.4)
+        for (let c = 0; c < 1 + Math.floor(r() * 3); c++)
+          comments.push({ id: randomUUID(), taskId: id, authorId: pick(everyone), body: pick(["Started on this.", "Waiting on the client for files.", "Looks good to me.", "Can we push this to next week?", "Done the first part, see the checklist.", "Sent for review."]) });
+    }
+  }
+  // a few guaranteed for the staff member's "My Day": overdue, today, this week
+  for (const [title, offset, priority] of [["Reply to client feedback (sample)", -2, "high"], ["Publish blog post (sample)", 0, "medium"], ["Check broken links (sample)", 3, "low"]] as const)
+    tasks.push({ id: randomUUID(), title, status: "todo", priority, assigneeId: P.casey, dueDate: addDays(opts.today, offset), labels: ["website"], checklist: [], isSample: true, createdBy: opts.admin });
+  await db.insert(schema.tasks).values(tasks);
+  if (comments.length) await db.insert(schema.taskComments).values(comments);
+  return { events: evs.length, tasks: tasks.length };
 }
 
 main().catch((err) => {

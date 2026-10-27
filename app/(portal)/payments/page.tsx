@@ -37,7 +37,7 @@ const subView = (s: SubscriptionRow): SubView => ({
 
 const STATUS = { active: ["Active", "green"], paused: ["Paused", "amber"], cancelled: ["Cancelled", "neutral"], completed: ["Completed", "neutral"] } as const;
 
-export default async function PaymentsPage({ searchParams }: { searchParams: Promise<{ window?: string; country?: string }> }) {
+export default async function PaymentsPage({ searchParams }: { searchParams: Promise<{ window?: string; country?: string; new?: string }> }) {
   const actor = await requirePerm("payments");
   const sp = await searchParams;
   const windowDays = sp.window === "60" ? 60 : sp.window === "90" ? 90 : 30;
@@ -113,7 +113,7 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
                 { value: "AU", label: "AUS", href: hrefWith("/payments", keep, { country: "AU" }) },
               ]}
             />
-            {can.create && <AddSubscription lookups={lookups} action={saveSubscription} />}
+            {can.create && <AddSubscription lookups={lookups} action={saveSubscription} initialOpen={sp.new === "1"} />}
           </div>
         }
       />

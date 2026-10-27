@@ -43,6 +43,20 @@
       "when": 1793116484160,
       "tag": "0005_marketing",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1793122388032,
+      "tag": "0006_marketing_staff_preset",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "5",
+      "when": 1793122880088,
+      "tag": "0007_calendar_tasks",
+      "breakpoints": true
     }
   ]
 }

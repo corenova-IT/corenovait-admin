@@ -510,3 +510,100 @@ export const marketingActivities = mysqlTable(
     ),
   ]
 );
+
+// ---------------------------------------------------------------- calendar
+/**
+ * Events people create (meetings, deadlines, other). Task deadlines and payment
+ * due dates are shown on the calendar from their own tables, not copied here.
+ * Times are UTC; an all-day event runs from local midnight to local midnight.
+ */
+export const events = mysqlTable(
+  "events",
+  {
+    id: id(),
+    title: varchar("title", { length: 200 }).notNull(),
+    type: mysqlEnum("type", ["meeting", "deadline", "payment", "other"]).notNull().default("meeting"),
+    startsAt: datetime("starts_at", { mode: "date", fsp: 3 }).notNull(),
+    endsAt: datetime("ends_at", { mode: "date", fsp: 3 }).notNull(),
+    allDay: boolean("all_day").notNull().default(false),
+    location: varchar("location", { length: 300 }).notNull().default(""),
+    videoUrl: varchar("video_url", { length: 500 }).notNull().default(""),
+    description: text("description"),
+    /** remind this many minutes before (sent once notifications arrive); null = no reminder */
+    reminderMinutes: smallint("reminder_minutes"),
+    isSample: boolean("is_sample").notNull().default(false),
+    createdBy: userRef("created_by")
+      .notNull()
+      .references(() => users.id),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    index("event_starts_idx").on(t.startsAt),
+    index("event_created_by_idx").on(t.createdBy),
+    check("event_times_chk", sql`${t.endsAt} >= ${t.startsAt}`),
+    check("event_reminder_chk", sql`${t.reminderMinutes} is null or ${t.reminderMinutes} between 0 and 10080`),
+  ]
+);
+
+/** Who is invited; drives the "assigned" scope (staff see the events they're invited to). */
+export const eventAttendees = mysqlTable(
+  "event_attendees",
+  {
+    eventId: varchar("event_id", { length: 36 })
+      .notNull()
+      .references(() => events.id, { onDelete: "cascade" }),
+    userId: userRef("user_id")
+      .notNull()
+      .references(() => users.id),
+  },
+  (t) => [primaryKey({ columns: [t.eventId, t.userId] }), index("attendee_user_idx").on(t.userId)]
+);
+
+// ---------------------------------------------------------------- tasks
+export type ChecklistItem = { id: string; text: string; done: boolean };
+
+export const tasks = mysqlTable(
+  "tasks",
+  {
+    id: id(),
+    title: varchar("title", { length: 200 }).notNull(),
+    description: text("description"),
+    status: mysqlEnum("status", ["todo", "in_progress", "review", "done"]).notNull().default("todo"),
+    priority: mysqlEnum("priority", ["low", "medium", "high", "urgent"]).notNull().default("medium"),
+    /** who it's for; drives the "assigned" scope and "My tasks" */
+    assigneeId: userRef("assignee_id").references(() => users.id),
+    dueDate: date("due_date", { mode: "string" }),
+    /** short tags, e.g. ["website", "client"] */
+    labels: json("labels").$type<string[]>(),
+    checklist: json("checklist").$type<ChecklistItem[]>(),
+    completedAt: datetime("completed_at", { mode: "date", fsp: 3 }),
+    isSample: boolean("is_sample").notNull().default(false),
+    createdBy: userRef("created_by")
+      .notNull()
+      .references(() => users.id),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    index("task_assignee_idx").on(t.assigneeId, t.status),
+    index("task_due_idx").on(t.dueDate),
+    index("task_created_by_idx").on(t.createdBy),
+  ]
+);
+
+export const taskComments = mysqlTable(
+  "task_comments",
+  {
+    id: id(),
+    taskId: varchar("task_id", { length: 36 })
+      .notNull()
+      .references(() => tasks.id, { onDelete: "cascade" }),
+    authorId: userRef("author_id")
+      .notNull()
+      .references(() => users.id),
+    body: text("body").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [index("comment_task_idx").on(t.taskId, t.createdAt)]
+);

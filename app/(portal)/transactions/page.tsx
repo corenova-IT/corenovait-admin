@@ -238,7 +238,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
           <div className="flex flex-wrap gap-3">
             {can.export && <ExportLink href={exportHref} />}
             {can.create && <ImportCsv tab={tab} action={importCsv} />}
-            {can.create && <AddEntry tab={tab} lookups={lookups} saveIncome={saveIncome} saveExpense={saveExpense} />}
+            {can.create && <AddEntry tab={tab} lookups={lookups} saveIncome={saveIncome} saveExpense={saveExpense} initialOpen={sp.new === "1"} />}
           </div>
         }
       />

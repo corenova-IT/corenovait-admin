@@ -1,7 +1,7 @@
 import { ratePct } from "@/lib/marketing";
 import { WEEKDAYS, WEEKDAYS_SHORT, hourRange } from "@/lib/zoned";
 
-/** Cells with fewer contacts than this aren't coloured: one reply out of one call isn't a 100% hour. */
+/** Cells with fewer touches than this aren't coloured: one reply out of one call isn't a 100% hour. */
 export const HEAT_MIN = 3;
 
 /**
@@ -10,8 +10,8 @@ export const HEAT_MIN = 3;
  * and always to screen readers and on hover), so colour is never the only
  * signal.
  */
-export function Heatmap({ heat, timezone }: { heat: Array<Array<{ contacts: number; responded: number }>>; timezone: string }) {
-  const rates = heat.flat().filter((c) => c.contacts >= HEAT_MIN).map((c) => ratePct(c.responded, c.contacts)!);
+export function Heatmap({ heat, timezone }: { heat: Array<Array<{ touches: number; responded: number }>>; timezone: string }) {
+  const rates = heat.flat().filter((c) => c.touches >= HEAT_MIN).map((c) => ratePct(c.responded, c.touches)!);
   const max = Math.max(1, ...rates);
   const hours = Array.from({ length: 24 }, (_, h) => h);
 
@@ -19,7 +19,7 @@ export function Heatmap({ heat, timezone }: { heat: Array<Array<{ contacts: numb
     <figure className="m-0 @container">
       <div className="scroll-x -mx-1 px-1">
         <table className="w-full min-w-[36rem] table-fixed border-separate border-spacing-[3px] font-mono text-[10px]">
-          <caption className="sr-only">Response rate by weekday and hour, {timezone} time. Cells with fewer than {HEAT_MIN} contacts are marked too few.</caption>
+          <caption className="sr-only">Response rate by weekday and hour, {timezone} time. Cells with fewer than {HEAT_MIN} touches are marked too few.</caption>
           <colgroup>
             <col className="w-10" />
             {hours.map((h) => (
@@ -45,12 +45,12 @@ export function Heatmap({ heat, timezone }: { heat: Array<Array<{ contacts: numb
                   <span className="sr-only">{WEEKDAYS[d]}</span>
                 </th>
                 {row.map((c, h) => {
-                  const rate = ratePct(c.responded, c.contacts);
-                  const enough = c.contacts >= HEAT_MIN;
+                  const rate = ratePct(c.responded, c.touches);
+                  const enough = c.touches >= HEAT_MIN;
                   const text =
-                    c.contacts === 0
+                    c.touches === 0
                       ? "no activity"
-                      : `${c.contacts} ${c.contacts === 1 ? "contact" : "contacts"}, ${enough ? `${rate}% responded` : `too few to rate (${c.responded} responded)`}`;
+                      : `${c.touches} ${c.touches === 1 ? "touch" : "touches"}, ${enough ? `${rate}% got a response` : `too few to rate (${c.responded} got a response)`}`;
                   const strength = enough ? 0.14 + 0.78 * ((rate ?? 0) / max) : 0;
                   return (
                     <td
@@ -58,7 +58,7 @@ export function Heatmap({ heat, timezone }: { heat: Array<Array<{ contacts: numb
                       title={`${WEEKDAYS[d]} ${hourRange(h)}: ${text}`}
                       className={
                         "h-7 rounded-[5px] text-center align-middle " +
-                        (enough ? "text-ink" : c.contacts > 0 ? "border border-dashed border-line text-muted" : "bg-surface-2/60")
+                        (enough ? "text-ink" : c.touches > 0 ? "border border-dashed border-line text-muted" : "bg-surface-2/60")
                       }
                       style={enough ? { background: `color-mix(in oklab, var(--accent) ${Math.round(strength * 100)}%, var(--surface-2))` } : undefined}
                     >
@@ -82,9 +82,9 @@ export function Heatmap({ heat, timezone }: { heat: Array<Array<{ contacts: numb
           Higher response rate
         </span>
         <span className="flex items-center gap-2">
-          <span className="inline-block size-3 rounded-[3px] border border-dashed border-line" aria-hidden="true" /> Fewer than {HEAT_MIN} contacts
+          <span className="inline-block size-3 rounded-[3px] border border-dashed border-line" aria-hidden="true" /> Fewer than {HEAT_MIN} touches
         </span>
-        <span>Numbers are % responded · times in {timezone}</span>
+        <span>Numbers are % of touches that got a response · times in {timezone}</span>
       </figcaption>
     </figure>
   );

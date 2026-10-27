@@ -55,6 +55,10 @@ export const ENTITY_LABELS: Record<string, string> = {
   marketing_activities: "Marketing activity",
   campaigns: "Campaign",
   marketing: "Marketing",
+  events: "Calendar event",
+  calendar: "Calendar",
+  tasks: "Task",
+  task_comments: "Task comment",
 };
 
 const HIDDEN_FIELDS = new Set(["updated_at", "created_at", "updatedAt", "createdAt"]);
@@ -88,11 +92,12 @@ function Changes({ row }: { row: AuditRow }) {
   );
   if (keys.length === 0) return <p className="text-sm text-muted">No field values were recorded for this event.</p>;
   return (
-    <table className="w-full text-left text-sm">
+    // fixed layout + wrap anywhere: long values (JSON, ids) wrap inside the card instead of widening it
+    <table className="w-full table-fixed text-left text-sm">
       <caption className="sr-only">Field changes</caption>
       <thead>
         <tr>
-          <th scope="col" className="label-mono pb-2 pr-4 font-normal">Field</th>
+          <th scope="col" className="label-mono w-[28%] pb-2 pr-4 font-normal">Field</th>
           {row.action !== "create" && <th scope="col" className="label-mono pb-2 pr-4 font-normal">Before</th>}
           {row.action !== "delete" && <th scope="col" className="label-mono pb-2 font-normal">After</th>}
         </tr>
@@ -100,9 +105,9 @@ function Changes({ row }: { row: AuditRow }) {
       <tbody>
         {keys.map((k) => (
           <tr key={k} className="border-t border-line/60">
-            <th scope="row" className="py-2 pr-4 text-left font-mono text-xs font-normal text-muted">{k}</th>
-            {row.action !== "create" && <td className="py-2 pr-4 font-mono text-xs text-ink-2 line-through decoration-accent-text/60">{fmtValue(before[k])}</td>}
-            {row.action !== "delete" && <td className="py-2 font-mono text-xs text-ink">{fmtValue(after[k])}</td>}
+            <th scope="row" className="py-2 pr-4 text-left align-top font-mono text-xs font-normal text-muted [overflow-wrap:anywhere]">{k}</th>
+            {row.action !== "create" && <td className="py-2 pr-4 align-top font-mono text-xs text-ink-2 line-through decoration-accent-text/60 [overflow-wrap:anywhere]">{fmtValue(before[k])}</td>}
+            {row.action !== "delete" && <td className="py-2 align-top font-mono text-xs text-ink [overflow-wrap:anywhere]">{fmtValue(after[k])}</td>}
           </tr>
         ))}
       </tbody>

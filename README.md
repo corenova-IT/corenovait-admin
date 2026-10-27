@@ -235,15 +235,19 @@ from a real database session, so a hand-made one is rejected.
   Australia/Sydney) and stored in UTC; activity in the future is refused.
 - **The numbers** (for the filters on screen: channel, campaign, month and owner; the default view is
   the last 12 months):
-  - *Contacts reached* = activities logged.
-  - *Response rate* = activities that got any answer (replied, meeting, deal won or lost) ÷ contacts.
+  - *Touches* = activities logged (every call, email, referral or message).
+  - *Contacts reached* = unique contacts in the period: each **company** counts once, or each
+    **person** when no company was given (compared ignoring upper/lower case and spaces at the ends).
+    Calling Example Dental three times is 3 touches and 1 contact.
+  - *Response rate* = touches that got any answer (replied, meeting booked, deal won or deal lost)
+    ÷ touches. It's per touch, so it matches the heatmap and the best day and time.
   - *Deals won* and *Revenue from marketing* (the value of won deals, converted to the base currency
     by MySQL with the rate typed on the deal, rounded half away from zero).
   - Each compares with the period before; the response rate change is in percentage points.
   - *Channel performance*, *deals won by month*, and *campaigns with results* (all time).
 - **Heatmap and insights** use the company time zone, daylight saving included (computed with Intl,
-  so MySQL's time-zone tables aren't needed). Hours with fewer than 3 contacts aren't coloured.
-  *Best day* needs at least 20 contacts on a weekday and *best time* at least 15 in an hour; below
+  so MySQL's time-zone tables aren't needed). Hours with fewer than 3 touches aren't coloured.
+  *Best day* needs at least 20 touches on a weekday and *best time* at least 15 in an hour; below
   that the card says "Not enough activity yet" instead of guessing. *Best month* is the month in view
   with the most deals won.
 - **Permissions and scope** (module "marketing", set per person on the Team page):
@@ -252,14 +256,60 @@ from a real database session, so a hand-made one is rejected.
   - Only people with *all* can log activity for someone else or create, edit and delete campaigns
     (campaigns are shared by everyone). A campaign with logged activity can't be deleted; mark it
     finished instead.
-  - The default **Staff** preset has no marketing access (least privilege). To let a staff member log
-    their own calls, give them marketing view + create (+ edit/delete if wanted) with scope *own*, or
-    add that to the Staff preset.
+  - The default **Staff** preset has no marketing access (least privilege). The **Marketing staff**
+    preset is Staff plus marketing *view* and *create* with scope *own*: they log their own calls and
+    see only their own figures, and can't edit or delete afterwards. Admins can edit either preset on
+    the Team page.
   - Every create, edit and delete is in the audit log with before and after values; exports
     (`/api/export/marketing`, needs marketing export) are logged too.
 - **Sample data**: 24 months of clearly fake activity (about 1,600 rows) across seven sample campaigns,
-  logged by Alex (admin), Devon (manager) and Emery (`marketing@example.test`, staff with marketing
-  limited to their own activity). Sign in as Emery to see the *own* scope.
+  logged by Alex (admin), Devon (manager) and Emery (`marketing@example.test`, on the Marketing staff
+  preset). Sign in as Emery to see the *own* scope.
+- **Company time zone** (Settings, admins only): "today" for due dates, calendar times, and the marketing
+  heatmap and insights. Times are stored in UTC, so changing it doesn't alter any record. Audited with
+  the old and new value.
+
+### Calendar, tasks and My Day (Phase 4)
+
+- **Calendar** (`/calendar`): month, week and agenda (next 30 days) views, in the company time zone.
+  - Shows events (meetings, deadlines, other), plus **task due dates** for people who can see tasks
+    and **payment due dates** for people who can see payments, each in its own colour *and* with a
+    word or time on the chip ("Due", "Pay"), so colour is never the only signal.
+  - Events have a title, type, start and end (or all day), place, video link (https only), a reminder
+    and who's invited. Reminders are saved now and sent once notifications arrive in Phase 5.
+  - **Drag to reschedule**: drag your own event to another day; its local time and length are kept
+    (also across a daylight-saving change). The Edit form does the same from the keyboard.
+  - **.ics**: anyone can download an event they can see ("Add to my calendar"). *Export .ics*
+    (`/api/calendar/ics`, every event in your scope from 30 days ago to a year ahead) needs calendar
+    export and is in the audit log.
+  - Scope: *own* = events you created; *assigned* = also events you're invited to (the Staff default:
+    staff see only the events they're invited to); *all* = every event. Only the creator, or someone
+    with *all*, can change, move or delete an event; invited people see it but can't change it.
+- **Tasks** (`/tasks`):
+  - **Board** (To do, In progress, Review, Done): drag a card to another column; the status menu in
+    the task panel does the same from the keyboard. **List**: soonest due first; for people who see
+    everyone's tasks it's split into a to-do list per person.
+  - Each task: title, details, assignee, priority, due date, labels, a checklist (ticks are kept when
+    you edit the list) and comments. Overdue tasks are marked in red with the word "Overdue".
+  - Filters: person, priority, label, due (overdue / this week), search; **My tasks** = assigned to you.
+  - **Progress this week** (people who see all tasks): per person, how many tasks due this week are
+    done, open tasks and overdue ones.
+  - Scope: *own* = tasks you created; *assigned* = also tasks assigned to you (the Staff default);
+    *all* = everything. Below *all* you can only assign a task to yourself or leave it unassigned.
+    People who can see a task and create tasks can comment; you can delete your own comments (and
+    people with delete + *all* can remove any). Deleting a task keeps it, with its comments, in the
+    audit log.
+- **Home**: *Next meetings* and *Team tasks this week* (or *My tasks* for people who only see their
+  own) use real data.
+- **My Day** (Home for people without finance access): today's meetings (and later this week), my tasks
+  due (overdue, this week, undated), quick actions for exactly what this person may do (new task, new
+  event, log activity, add income, add payment; each opens the form directly), payments this week and
+  my marketing only when they have access. Unread chat arrives with Phase 5.
+- Every create, edit, move, status change, checklist tick, comment and delete is audited with before and
+  after values.
+- **Sample data**: about 45 events five weeks either side of today (weekly stand-up, sprint planning,
+  client calls, deadlines, an offsite) and about 35 tasks across the team with checklists and comments.
+  `web.dev@example.test` (Casey, staff) shows the *My Day* view.
 
 ## 7. Uploads
 
@@ -289,6 +339,11 @@ a fresh database with the real migrations. Nothing touches your local or product
   own / assigned / all scopes; nobody below *all* can log for someone else or manage campaigns; audit
   before/after; deal values in other currencies; the heatmap in Sydney time across daylight saving;
   the "not enough data" rules for the insights.
+- `tests/dal/work.test.ts`: calendar and task scope (staff see only events they're invited to and tasks
+  they created or are assigned), who can change what, drag to reschedule across daylight saving,
+  .ics, checklists, comments, My tasks, team progress, audit.
+- `tests/dal/settings.test.ts`: the company time zone (admin only, validated, audited, used by the
+  marketing heatmap).
 - `tests/dal/boundaries.test.ts`: nothing outside `lib/dal` imports the database.
 - `tests/unit/`: TOTP against the RFC test vectors, encryption, upload type checks, money, passwords,
   date labels.
@@ -303,7 +358,10 @@ Builds the app, starts it against a throwaway MySQL with the sample data, and op
 the installed Chrome at 1920, 1536, 1440, 1366, 1280, 1152, 1024, 768 and 390 px, in both themes
 (these widths also cover Windows display scaling at 125% and 150%). It fails if any text is clipped,
 anything sticks out of its card, a heading runs onto three lines, the page scrolls sideways, or a
-table needs sideways scrolling from 1280 px up. For a quicker run, limit it, e.g.
+table needs sideways scrolling from 1280 px up. The same run also does the interactive flows in
+`tests/e2e/flows.spec.ts`: dragging a task between board columns, ticking a checklist and commenting,
+dragging a calendar event to another day, logging marketing activity, and a My Day quick action, each
+checked again after a reload. For a quicker run, limit it, e.g.
 `E2E_WIDTHS=1366,390 E2E_THEMES=dark npx playwright test` (after `npx next build --webpack`).
 
 The shared sizes live in `app/globals.css`: `--space-card` / `--space-gap` (fluid padding and gaps),

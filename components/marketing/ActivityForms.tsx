@@ -152,8 +152,8 @@ function ActivityForm({ row, lookups, action, onSaved }: { row?: ActivityView; l
  * The quick "Log activity" panel. After each save the form clears (the panel
  * stays open) so a run of calls can be logged one after another.
  */
-export function LogActivity({ lookups, action }: { lookups: ActivityLookups; action: Action }) {
-  const [open, setOpen] = useState(false);
+export function LogActivity({ lookups, action, initialOpen = false }: { lookups: ActivityLookups; action: Action; initialOpen?: boolean }) {
+  const [open, setOpen] = useState(initialOpen);
   const [round, setRound] = useState(0);
   const [last, setLast] = useState<string | null>(null);
   const close = useCallback(() => {

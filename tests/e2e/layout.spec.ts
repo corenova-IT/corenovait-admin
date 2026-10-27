@@ -47,6 +47,14 @@ const PAGES: Array<{ path: string | ((t: ReturnType<typeof tokens>) => string); 
   { path: "/marketing?channel=individual_referral&campaign=none", as: "admin" },
   { path: "/marketing", as: "marketing" },
   { path: "/home", as: "marketing" },
+  { path: "/calendar", as: "admin" },
+  { path: "/calendar?view=week", as: "admin" },
+  { path: "/calendar?view=agenda", as: "admin" },
+  { path: "/calendar", as: "staff" },
+  { path: "/tasks", as: "admin" },
+  { path: "/tasks?view=list", as: "admin" },
+  { path: "/tasks?assignee=me&view=list", as: "staff" },
+  { path: "/tasks", as: "staff" },
 ];
 
 /** Runs in the page: returns a list of human-readable layout problems. */
