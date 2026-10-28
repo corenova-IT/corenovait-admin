@@ -441,6 +441,49 @@ Page weight (first visit, empty cache, compressed; from `tests/e2e/weight.spec.t
 About half is the shared React and Next.js runtime, cached after the first page. The budget in the test is
 450 KB per page and 380 KB of JavaScript.
 
+### Your profile and the logo
+
+**Your profile** (`/account`, from the menu under your picture in the top bar, or the card at the bottom of the
+sidebar). Everyone can edit their own, and nobody else's:
+
+- **Details:** display name, job title and phone (optional). Email address and role aren't editable here; an
+  admin changes them on **Team and permissions**. Changes to the name, job title or phone are audited.
+- **Profile picture:** JPG, PNG or WebP up to 2 MB. The type is checked from the file's contents, not its
+  name. The server crops it to a 512 px square, re-encodes it as WebP with `sharp` (which drops EXIF and all
+  other metadata, such as location), and stores it in `UPLOAD_DIR/avatars` under a random name. It's served
+  only by `/api/avatars/[id]`, to signed-in people. **Remove picture** goes back to the initials. Adding,
+  changing or removing a picture is audited, without the picture itself. Pictures show wherever a person's
+  initials did: the sidebar card and top bar, chat, the task board, comments and team progress, calendar
+  attendees, and the team page.
+- **Email me as well:** the notification email setting (the same one as on the Notifications page).
+- **Password:** needs your current password, follows the usual rules, and signs out every other device.
+  Wrong current passwords are limited to 5 tries per 15 minutes.
+- **Two-factor:** shows whether it's on and how many recovery codes are left. New recovery codes need your
+  password and a current code from your app.
+
+**The logo.** The CoreNovaIT atom is in `public/brand`:
+
+| File | Used for |
+| --- | --- |
+| `corenova-logo.png` | Light theme (dark orbit lines), and the header of every email, loaded from `SITE_URL` |
+| `corenova-logo-light-lines.png` | Dark theme (light orbit lines) |
+| `icon-32.png` | Browser tab icon |
+| `apple-touch-icon.png` (180 px), `icon-512.png` | Phone home screens and app icons, on white |
+
+`components/layout/Logo.tsx` puts both versions in the page and CSS shows the one for the active theme, so
+switching theme never shows the wrong one. The artwork is nearly square (768 × 774) and is always drawn in
+a square box without stretching; the layout test fails if it's missing, stretched or cut off at any width.
+Emails show the light-theme version on the white card, with the alt text "CoreNovaIT" and "CORENOVAIT
+PORTAL" written beside it, so they still read correctly when images are blocked.
+
+To change the logo, replace the two PNGs in `public/brand` (same names), then remake the icons:
+
+```bash
+npm run brand:icons
+```
+
+Commit the files it writes (`icon-32.png`, `apple-touch-icon.png`, `icon-512.png`).
+
 ## 7. Uploads
 
 Files are stored in `UPLOAD_DIR` under random names, never in `public/`. Only PDF, PNG, JPG and WebP
@@ -481,6 +524,10 @@ a fresh database with the real migrations. Nothing touches your local or product
   who may see them, the scheduler run twice or in parallel creates nothing extra, emails sent once and only
   with the setting on, your own notifications only, and the cron endpoint (503 without a secret, 401 with a
   wrong one, rate limit).
+- `tests/dal/profile.test.ts`: your own profile only; pictures cropped to 512 px with no metadata, wrong
+  types and files over 2 MB refused with a plain message; a password change needs the current one and signs
+  out other sessions; new recovery codes need the password and a code. `tests/dal/routes.test.ts` checks the
+  same through the actions and that only signed-in people can fetch a picture and nobody can replace one.
 - `tests/dal/search.test.ts`: search shows staff only the pages and rows they can see; nobody finds
   someone else's direct messages; `%` and `_` are plain text.
 - `tests/dal/backup.test.ts`: a backup restores every row exactly; the start-up backup runs before a

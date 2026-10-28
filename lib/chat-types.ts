@@ -19,6 +19,8 @@ export type ChatMessage = {
   channelId: string;
   authorId: string;
   authorName: string;
+  /** profile picture, or null for initials */
+  authorAvatar: string | null;
   body: string;
   file: { id: string; name: string; mimeType: string; sizeBytes: number } | null;
   createdAt: string;

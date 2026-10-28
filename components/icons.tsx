@@ -47,6 +47,7 @@ export const IconX = make(<path d="M6 6l12 12M18 6L6 18" />);
 export const IconPlus = make(<path d="M12 5v14M5 12h14" />);
 export const IconCheck = make(<path d="M5 12.5l4.5 4.5L19 7.5" />);
 export const IconLogout = make(<><path d="M15 4.5h3.5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H15" /><path d="M10 16.5L5.5 12 10 7.5M5.5 12H15" /></>);
+export const IconUser = make(<><circle cx="12" cy="8" r="3.75" /><path d="M4.75 20a7.25 7.25 0 0 1 14.5 0" /></>);
 export const IconLock = make(<><rect x="4.5" y="10.5" width="15" height="10" rx="2" /><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3" /></>);
 export const IconMenu = make(<path d="M4 7h16M4 12h16M4 17h16" />);
 export const IconMail = make(<><rect x="3" y="5" width="18" height="14" rx="2.5" /><path d="M3.5 6.5l8.5 6.5 8.5-6.5" /></>);

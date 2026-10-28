@@ -16,6 +16,7 @@ import { AccessDenied, RuleError, hasPerm, requirePerm, scopeWhere, type Actor }
 import { companyTimezone } from "./marketing";
 import { paymentDueDates } from "./payments";
 import { taskDeadlines } from "./tasks";
+import { avatarUrl } from "@/lib/avatar";
 
 /**
  * Calendar (module "calendar"): events with attendees, plus task deadlines
@@ -79,7 +80,7 @@ async function loadEvents(db: Db | Tx, actor: Actor, where: SQL | undefined, tz:
   const repeating = rows.filter((r) => r.e.recurrence !== "none").map((r) => r.e.id);
   const [att, exc] = await Promise.all([
     ids.length
-      ? db.select({ eventId: eventAttendees.eventId, id: users.id, name: users.fullName, email: users.email }).from(eventAttendees).innerJoin(users, eq(users.id, eventAttendees.userId)).where(inArray(eventAttendees.eventId, ids))
+      ? db.select({ eventId: eventAttendees.eventId, id: users.id, name: users.fullName, email: users.email, avatarKey: users.avatarKey, avatarAt: users.avatarUpdatedAt }).from(eventAttendees).innerJoin(users, eq(users.id, eventAttendees.userId)).where(inArray(eventAttendees.eventId, ids))
       : Promise.resolve([]),
     repeating.length ? db.select().from(eventExceptions).where(inArray(eventExceptions.eventId, repeating)) : Promise.resolve([]),
   ]);
@@ -99,7 +100,7 @@ async function loadEvents(db: Db | Tx, actor: Actor, where: SQL | undefined, tz:
       videoUrl: e.videoUrl,
       description: e.description,
       reminderMinutes: e.reminderMinutes,
-      attendees: att.filter((a) => a.eventId === e.id).map((a) => ({ id: a.id, name: a.name || a.email })),
+      attendees: att.filter((a) => a.eventId === e.id).map((a) => ({ id: a.id, name: a.name || a.email, avatar: avatarUrl(a.id, a.avatarKey ? a.avatarAt : null) })),
       createdByName: createdByName ?? "",
       mine: e.createdBy === actor.userId,
       recurrence: e.recurrence,

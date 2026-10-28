@@ -88,6 +88,11 @@ export const users = mysqlTable(
     email: varchar("email", { length: 254 }).notNull(),
     fullName: varchar("full_name", { length: 120 }).notNull().default(""),
     jobTitle: varchar("job_title", { length: 120 }).notNull().default(""),
+    /** optional, shown on the person's profile */
+    phone: varchar("phone", { length: 40 }).notNull().default(""),
+    /** profile picture: a random file name in UPLOAD_DIR/avatars (512 px WebP), and when it last changed */
+    avatarKey: varchar("avatar_key", { length: 64 }),
+    avatarUpdatedAt: datetime("avatar_updated_at", { mode: "date", fsp: 3 }),
     /** 'custom' means the matrix was edited by hand and no longer follows a preset */
     presetId: varchar("preset_id", { length: 32 })
       .notNull()

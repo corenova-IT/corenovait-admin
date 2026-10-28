@@ -108,6 +108,12 @@ body {
   color: var(--on-accent);
 }
 
+/* the logo: dark lines on the light theme, light lines on the dark one (components/layout/Logo.tsx) */
+[data-theme="light"] .logo-for-dark,
+:root:not([data-theme="light"]) .logo-for-light {
+  display: none;
+}
+
 /* Visible focus for keyboard users, everywhere */
 :focus-visible {
   outline: 2px solid var(--accent-text);

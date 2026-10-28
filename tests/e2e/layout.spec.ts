@@ -56,6 +56,24 @@ function findLayoutProblems(checkTableScroll: boolean): string[] {
     }
   }
 
+  // the logo: loaded, kept square (the artwork is nearly square), on screen, and not cut off by anything around it
+  for (const img of document.querySelectorAll<HTMLImageElement>("img.logo-mark")) {
+    if (!visible(img)) continue;
+    const r = img.getBoundingClientRect();
+    if (!img.complete || img.naturalWidth === 0) out.push(`logo didn't load: ${img.currentSrc}`);
+    if (Math.abs(r.width - r.height) > 1) out.push(`logo is stretched: ${Math.round(r.width)}×${Math.round(r.height)}`);
+    if (r.left < -1 || r.right > document.documentElement.clientWidth + 1) out.push("logo is off the side of the screen");
+    for (let p = img.parentElement; p && p !== document.body; p = p.parentElement) {
+      if (!/(hidden|clip|auto|scroll)/.test(getComputedStyle(p).overflow)) continue;
+      const pr = p.getBoundingClientRect();
+      if (r.left < pr.left - 1 || r.right > pr.right + 1 || r.top < pr.top - 1 || r.bottom > pr.bottom + 1) {
+        out.push(`logo is cut off by ${label(p)}`);
+        break;
+      }
+    }
+  }
+  if (!document.querySelector("img.logo-mark") && location.pathname !== "/no-access") out.push("no logo on the page");
+
   // cards never overlap each other (one card inside another is fine)
   const cards = [...document.querySelectorAll(".glass")].filter((c) => !skip(c) && visible(c) && getComputedStyle(c).position !== "absolute" && getComputedStyle(c).position !== "fixed");
   for (let i = 0; i < cards.length; i++) {

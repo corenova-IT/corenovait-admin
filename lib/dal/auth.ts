@@ -13,6 +13,7 @@ import {
 } from "@/lib/auth/totp";
 import { SESSION_IDLE_MINUTES, SESSION_MAX_HOURS } from "@/lib/env";
 import { passwordProblems } from "@/lib/password";
+import { avatarUrl } from "@/lib/avatar";
 import { actorRef, writeAudit } from "./audit";
 import { AccessDenied, RuleError, assertCaller, issueActor, type Actor } from "./guard";
 import { copyPresetToUser, deleteSessions, loadUserPerms } from "./internal";
@@ -100,6 +101,7 @@ export async function resolveSession(token: string | null | undefined, now = new
       email: u.email,
       fullName: u.fullName,
       jobTitle: u.jobTitle,
+      avatarUrl: avatarUrl(u.id, u.avatarKey ? u.avatarUpdatedAt : null),
       presetId: u.presetId,
       presetName: row.presetName,
       isAdmin: u.presetId === "admin",
@@ -211,7 +213,7 @@ export async function beginTotpSetup(token: string): Promise<{ secret: string; u
   return { secret, uri: otpauthUri(secret, u.email) };
 }
 
-async function issueRecoveryCodes(tx: Tx, userId: string): Promise<string[]> {
+export async function issueRecoveryCodes(tx: Tx, userId: string): Promise<string[]> {
   const codes = generateRecoveryCodes();
   await tx.delete(recoveryCodes).where(eq(recoveryCodes.userId, userId));
   await tx.insert(recoveryCodes).values(codes.map((c) => ({ userId, codeHash: sha256Hex(c) })));
@@ -289,16 +291,6 @@ export async function recoveryCodesLeft(actor: Actor): Promise<number> {
     .from(recoveryCodes)
     .where(and(eq(recoveryCodes.userId, actor.userId), isNull(recoveryCodes.usedAt)));
   return n;
-}
-
-export async function regenerateRecoveryCodes(actor: Actor): Promise<string[]> {
-  assertCaller(actor);
-  if (!actor.mfaEnabled || !actor.mfaVerified) throw new RuleError("Set up two-factor first.");
-  return getDb().transaction(async (tx) => {
-    const codes = await issueRecoveryCodes(tx, actor.userId);
-    await writeAudit(tx, actorRef(actor), { action: "recovery_codes_regenerated", entity: "users", entityId: actor.userId, summary: "New recovery codes issued; old ones stopped working" });
-    return codes;
-  });
 }
 
 // ------------------------------------------------------------------ email links

@@ -1,17 +1,19 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useId } from "react";
 import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
-import { FormMessage } from "@/components/ui/Field";
+import { Field, FormMessage, Input } from "@/components/ui/Field";
 
 type CodesState = { codes?: string[]; error?: string };
 
+/** New recovery codes, after your password and a current code from your app. */
 export function RecoveryCodesCard({ action, left }: { action: (prev: CodesState, fd: FormData) => Promise<CodesState>; left: number }) {
   const [state, formAction, pending] = useActionState(action, {});
+  const p = useId();
   return (
     <Card>
-      <CardHeader title="Recovery codes" />
+      <CardHeader title="Recovery codes" subtitle={`${left} unused`} />
       {state.codes ? (
         <div className="flex flex-col gap-4">
           <FormMessage tone="success">New codes issued. The old ones no longer work. Save these now; they won&apos;t be shown again.</FormMessage>
@@ -27,6 +29,14 @@ export function RecoveryCodesCard({ action, left }: { action: (prev: CodesState,
           <p className="text-[15px] leading-relaxed text-ink-2">
             Each recovery code signs you in once if you lose your phone. {left <= 3 ? "You're running low. " : ""}Getting new codes cancels the old ones.
           </p>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Your password" htmlFor={`${p}-pw`}>
+              <Input id={`${p}-pw`} name="password" type="password" autoComplete="current-password" required />
+            </Field>
+            <Field label="Code from your app" htmlFor={`${p}-code`}>
+              <Input id={`${p}-code`} name="code" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9 ]{6,7}" maxLength={7} required className="font-mono" />
+            </Field>
+          </div>
           <Button type="submit" variant="secondary" disabled={pending} className="self-start">
             {pending ? "Generating…" : "Get new recovery codes"}
           </Button>

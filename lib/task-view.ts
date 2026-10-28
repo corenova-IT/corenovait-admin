@@ -10,6 +10,7 @@ export const toTaskView = (t: TaskRow): TaskView => ({
   priority: t.priority,
   assigneeId: t.assigneeId,
   assigneeName: t.assigneeName,
+  assigneeAvatar: t.assigneeAvatar,
   dueDate: t.dueDate,
   labels: t.labels,
   checklist: t.checklist,

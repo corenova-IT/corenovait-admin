@@ -7,6 +7,8 @@ export type Member = {
   email: string;
   name: string;
   jobTitle: string;
+  /** profile picture, or null for initials */
+  avatarUrl: string | null;
   presetId: string;
   status: MemberStatus;
   mfaRequired: boolean;

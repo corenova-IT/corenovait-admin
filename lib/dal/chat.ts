@@ -11,6 +11,7 @@ import { AccessDenied, RuleError, assertCaller, hasPerm, requirePerm, type Actor
 import { loadUserPerms } from "./internal";
 import { notify } from "./notifications";
 import type { ChannelSummary, ChatMessage } from "@/lib/chat-types";
+import { avatarUrl } from "@/lib/avatar";
 export type { ChannelSummary, ChatMessage };
 
 /**
@@ -154,7 +155,7 @@ export async function unreadChatTotal(actor: Actor): Promise<number> {
 // ---------------------------------------------------------------- messages
 function messageQuery(db: Db | Tx) {
   return db
-    .select({ m: messages, authorName: users.fullName, authorEmail: users.email, fileName: files.originalName, fileMime: files.mimeType, fileSize: files.sizeBytes })
+    .select({ m: messages, authorName: users.fullName, authorEmail: users.email, authorAvatarKey: users.avatarKey, authorAvatarAt: users.avatarUpdatedAt, fileName: files.originalName, fileMime: files.mimeType, fileSize: files.sizeBytes })
     .from(messages)
     .leftJoin(users, eq(users.id, messages.authorId))
     .leftJoin(files, eq(files.id, messages.fileId));
@@ -165,6 +166,7 @@ const toMessage = (actor: Actor, r: MessageRow): ChatMessage => ({
   channelId: r.m.channelId,
   authorId: r.m.authorId,
   authorName: r.authorName || r.authorEmail || "Former member",
+  authorAvatar: avatarUrl(r.m.authorId, r.authorAvatarKey ? r.authorAvatarAt : null),
   body: r.m.deletedAt ? "" : r.m.body,
   file: r.m.fileId && !r.m.deletedAt ? { id: r.m.fileId, name: r.fileName ?? "attachment", mimeType: r.fileMime ?? "", sizeBytes: r.fileSize ?? 0 } : null,
   createdAt: r.m.createdAt.toISOString(),

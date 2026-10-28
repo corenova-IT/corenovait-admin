@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { cx } from "./cx";
 
 export function initials(name: string, fallback = "?"): string {
@@ -7,19 +8,28 @@ export function initials(name: string, fallback = "?"): string {
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
-/** Initials in a ring, like "MU" in the designs. */
-export function Avatar({ name, size = 40, ring = false, className }: { name: string; size?: number; ring?: boolean; className?: string }) {
+/**
+ * A person's profile picture in a ring, or their initials (like "MU" in the
+ * designs) when they haven't added one. Decorative: the name is always
+ * written next to it.
+ */
+export function Avatar({ name, src, size = 40, ring = false, className }: { name: string; src?: string | null; size?: number; ring?: boolean; className?: string }) {
   return (
     <span
       aria-hidden="true"
       style={{ width: size, height: size }}
       className={cx(
-        "grid shrink-0 place-items-center rounded-full border bg-surface-2 font-mono text-[12px] font-medium text-ink",
+        "relative grid shrink-0 place-items-center overflow-hidden rounded-full border bg-surface-2 font-mono text-[12px] font-medium text-ink",
         ring ? "border-accent-line shadow-[0_0_16px_-6px_var(--glow-strong)]" : "border-line",
         className
       )}
     >
-      {initials(name)}
+      {src ? (
+        // served by /api/avatars to signed-in people only, already a 512 px WebP, so not run through the image optimiser
+        <Image src={src} alt="" width={size} height={size} unoptimized className="size-full object-cover" />
+      ) : (
+        initials(name)
+      )}
     </span>
   );
 }

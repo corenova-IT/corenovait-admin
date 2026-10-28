@@ -52,8 +52,10 @@ g.__cnLimiters ??= {
   chatPerUser: new RateLimiter(30, 60_000),
   uploadPerUser: new RateLimiter(30, 10 * 60_000),
   exportPerUser: new RateLimiter(20, 10 * 60_000),
+  // the current password on the profile page (password change, new recovery codes)
+  passwordPerUser: new RateLimiter(5, 15 * 60_000),
 };
-export const limiters = g.__cnLimiters as Record<"loginPerAccount" | "loginPerIp" | "resetPerIp" | "mfaPerUser" | "cron" | "linkPerIp" | "chatPerUser" | "uploadPerUser" | "exportPerUser", RateLimiter>;
+export const limiters = g.__cnLimiters as Record<"loginPerAccount" | "loginPerIp" | "resetPerIp" | "mfaPerUser" | "cron" | "linkPerIp" | "chatPerUser" | "uploadPerUser" | "exportPerUser" | "passwordPerUser", RateLimiter>;
 
 /** The message shown when a limit is reached. */
 export const slowDown = (what: string, retryAfterSec: number) => `Too many ${what}. Try again in ${retryAfterSec < 90 ? `${retryAfterSec} seconds` : `${Math.ceil(retryAfterSec / 60)} minutes`}.`;

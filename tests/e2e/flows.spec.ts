@@ -120,3 +120,20 @@ test("chat: a message appears live for someone else, with the typing indicator; 
   await expect(emery.page.getByText("thanks for picking up the analytics")).toHaveCount(0);
   await emery.ctx.close();
 });
+
+test("profile: upload a picture, see it in the top bar, then remove it", async ({ browser }) => {
+  const { ctx, page } = await as(browser, "staff");
+  const sharp = (await import("sharp")).default;
+  const png = await sharp({ create: { width: 300, height: 200, channels: 3, background: "#3366cc" } }).png().toBuffer();
+  await page.goto(BASE + "/account", { waitUntil: "networkidle" });
+  await page.getByLabel("New picture").setInputFiles({ name: "me.png", mimeType: "image/png", buffer: png });
+  await Promise.all([saved(page), page.getByRole("button", { name: "Upload picture" }).click()]);
+  await expect(page.getByText("Picture updated.")).toBeVisible();
+  await page.reload({ waitUntil: "networkidle" });
+  await expect(page.locator('header img[src^="/api/avatars/"]')).toBeVisible();
+  await Promise.all([saved(page), page.getByRole("button", { name: "Remove picture" }).click()]);
+  await expect(page.getByText("Picture removed.")).toBeVisible();
+  await page.reload({ waitUntil: "networkidle" });
+  await expect(page.locator('header img[src^="/api/avatars/"]')).toHaveCount(0);
+  await ctx.close();
+});

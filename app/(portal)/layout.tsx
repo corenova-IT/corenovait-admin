@@ -14,7 +14,7 @@ export default async function PortalLayout({ children }: { children: React.React
 
   const [notifications, chat] = await Promise.all([unreadNotificationCount(actor), unreadChatTotal(actor)]);
   return (
-    <PortalShell nav={visibleNav(actor.perms)} user={{ name, email: actor.email, role }} theme={theme} badges={{ notifications, chat }}>
+    <PortalShell nav={visibleNav(actor.perms)} user={{ name, email: actor.email, role, avatarUrl: actor.avatarUrl }} theme={theme} badges={{ notifications, chat }}>
       {children}
     </PortalShell>
   );

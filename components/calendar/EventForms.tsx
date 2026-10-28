@@ -3,6 +3,7 @@
 import { useActionState, useCallback, useEffect, useId, useState } from "react";
 import { IconPlus } from "@/components/icons";
 import { Msg } from "@/components/transactions/LedgerForms";
+import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
 import { Drawer, Modal } from "@/components/ui/Dialog";
 import { Field, Input, Select, Textarea } from "@/components/ui/Field";
@@ -219,7 +220,20 @@ export function EventPanel({ event, editable, canDelete, lookups, save, remove, 
               </>
             )}
             <dt className="label-mono">Invited</dt>
-            <dd className="text-ink">{event.attendees.length ? event.attendees.map((a) => a.name).join(", ") : "Nobody else"}</dd>
+            <dd className="text-ink">
+              {event.attendees.length ? (
+                <ul className="flex flex-wrap gap-x-4 gap-y-2">
+                  {event.attendees.map((a) => (
+                    <li key={a.id} className="flex items-center gap-2">
+                      <Avatar name={a.name} src={a.avatar} size={26} />
+                      <span className="[overflow-wrap:anywhere]">{a.name}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                "Nobody else"
+              )}
+            </dd>
             <dt className="label-mono">Reminder</dt>
             <dd className="text-ink-2">{reminder}</dd>
             <dt className="label-mono">Created by</dt>

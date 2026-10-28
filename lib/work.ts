@@ -71,7 +71,7 @@ export type EventDetail = {
   videoUrl: string;
   description: string | null;
   reminderMinutes: number | null;
-  attendees: Array<{ id: string; name: string }>;
+  attendees: Array<{ id: string; name: string; avatar: string | null }>;
   createdByName: string;
   mine: boolean;
   /** repeating events: the rule, its last date, and which occurrence this is (its local start date) */

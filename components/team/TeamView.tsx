@@ -311,7 +311,7 @@ export function TeamView({
       header: "Person",
       cell: (m) => (
         <div className="flex min-w-0 items-center gap-3">
-          <Avatar name={m.name || m.email} size={38} ring={m.id === currentUserId} />
+          <Avatar name={m.name || m.email} src={m.avatarUrl} size={38} ring={m.id === currentUserId} />
           <div className="min-w-0">
             <p className="clamp-2 font-semibold text-ink">
               {m.name || "Unnamed"}

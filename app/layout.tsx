@@ -12,6 +12,14 @@ export const metadata: Metadata = {
   title: { default: "CoreNovaIT Portal", template: "%s · CoreNovaIT Portal" },
   description: "CoreNovaIT internal admin and staff portal",
   robots: { index: false, follow: false },
+  // made from the atom logo by npm run brand:icons
+  icons: {
+    icon: [
+      { url: "/brand/icon-32.png", sizes: "32x32", type: "image/png" },
+      { url: "/brand/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [{ url: "/brand/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+  },
 };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {

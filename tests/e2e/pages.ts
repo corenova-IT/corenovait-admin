@@ -32,6 +32,8 @@ export const PAGES: Array<{ path: string | ((t: ReturnType<typeof tokens>) => st
   { path: "/team", as: "admin" },
   { path: "/audit", as: "admin" },
   { path: "/account", as: "admin" },
+  { path: "/account", as: "staff" },
+  { path: "/reset-password?token=not-a-real-token-but-long-enough", as: "none" },
   { path: "/no-access?module=team", as: "staff" },
   { path: "/marketing", as: "admin" },
   { path: "/marketing?channel=cold_call&page=2", as: "admin" },

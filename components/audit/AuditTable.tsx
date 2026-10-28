@@ -34,6 +34,7 @@ export const ACTION_LABELS: Record<string, { label: string; tone: BadgeTone }> =
   mfa_reset: { label: "Two-factor reset", tone: "red" },
   recovery_code_used: { label: "Recovery code used", tone: "amber" },
   recovery_codes_regenerated: { label: "New recovery codes", tone: "neutral" },
+  password_changed: { label: "Password changed", tone: "neutral" },
 };
 
 export const ENTITY_LABELS: Record<string, string> = {

@@ -60,7 +60,7 @@ export function TaskList({ tasks }: { tasks: TaskView[] }) {
 }
 
 /** How each person is doing with the tasks due this week. */
-export function ProgressList({ people }: { people: Array<{ userId: string; name: string; open: number; overdue: number; weekTotal: number; weekDone: number }> }) {
+export function ProgressList({ people }: { people: Array<{ userId: string; name: string; avatar: string | null; open: number; overdue: number; weekTotal: number; weekDone: number }> }) {
   return (
     <ul className="flex flex-col gap-3.5">
       {people.map((p) => {
@@ -68,7 +68,7 @@ export function ProgressList({ people }: { people: Array<{ userId: string; name:
         return (
           <li key={p.userId}>
             <Link href={`/tasks?assignee=${p.userId}`} className="flex items-center gap-3 hover:opacity-90">
-              <Avatar name={p.name} size={30} />
+              <Avatar name={p.name} src={p.avatar} size={30} />
               <span className="min-w-0 flex-1">
                 <span className="flex items-baseline justify-between gap-2">
                   <span className="clamp-2 text-sm font-medium text-ink">{p.name}</span>

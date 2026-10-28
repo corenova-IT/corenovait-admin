@@ -27,12 +27,12 @@ const managerPerms = perms(
 );
 
 export const previewMembers: Member[] = [
-  { id: "00000000-0000-4000-8000-000000000001", email: "admin.one@example.test", name: "Alex Example", jobTitle: "Co-founder", presetId: "admin", status: "active", mfaRequired: true, mfaEnabled: true, lockedUntil: null, lastSignIn: "2026-10-25T08:00:00Z", perms: adminPerms },
-  { id: "00000000-0000-4000-8000-000000000002", email: "admin.two@example.test", name: "Blair Sample", jobTitle: "Co-founder", presetId: "admin", status: "active", mfaRequired: true, mfaEnabled: false, lockedUntil: null, lastSignIn: "2026-10-24T08:00:00Z", perms: adminPerms },
-  { id: "00000000-0000-4000-8000-000000000003", email: "web.dev@example.test", name: "Casey Demo", jobTitle: "Web developer", presetId: "staff", status: "active", mfaRequired: false, mfaEnabled: false, lockedUntil: null, lastSignIn: "2026-10-25T07:00:00Z", perms: staffPerms },
-  { id: "00000000-0000-4000-8000-000000000004", email: "design@example.test", name: "Devon Placeholder", jobTitle: "Designer", presetId: "manager", status: "active", mfaRequired: false, mfaEnabled: true, lockedUntil: null, lastSignIn: "2026-10-22T07:00:00Z", perms: managerPerms },
-  { id: "00000000-0000-4000-8000-000000000005", email: "marketing@example.test", name: "Emery Test", jobTitle: "Marketing", presetId: "staff", status: "invited", mfaRequired: false, mfaEnabled: false, lockedUntil: null, lastSignIn: null, perms: staffPerms },
-  { id: "00000000-0000-4000-8000-000000000006", email: "former@example.test", name: "Frankie Fixture", jobTitle: "Contractor", presetId: "custom", status: "deactivated", mfaRequired: false, mfaEnabled: false, lockedUntil: null, lastSignIn: "2026-09-01T07:00:00Z", perms: staffPerms },
+  { id: "00000000-0000-4000-8000-000000000001", email: "admin.one@example.test", name: "Alex Example", jobTitle: "Co-founder", avatarUrl: null, presetId: "admin", status: "active", mfaRequired: true, mfaEnabled: true, lockedUntil: null, lastSignIn: "2026-10-25T08:00:00Z", perms: adminPerms },
+  { id: "00000000-0000-4000-8000-000000000002", email: "admin.two@example.test", name: "Blair Sample", jobTitle: "Co-founder", avatarUrl: null, presetId: "admin", status: "active", mfaRequired: true, mfaEnabled: false, lockedUntil: null, lastSignIn: "2026-10-24T08:00:00Z", perms: adminPerms },
+  { id: "00000000-0000-4000-8000-000000000003", email: "web.dev@example.test", name: "Casey Demo", jobTitle: "Web developer", avatarUrl: null, presetId: "staff", status: "active", mfaRequired: false, mfaEnabled: false, lockedUntil: null, lastSignIn: "2026-10-25T07:00:00Z", perms: staffPerms },
+  { id: "00000000-0000-4000-8000-000000000004", email: "design@example.test", name: "Devon Placeholder", jobTitle: "Designer", avatarUrl: null, presetId: "manager", status: "active", mfaRequired: false, mfaEnabled: true, lockedUntil: null, lastSignIn: "2026-10-22T07:00:00Z", perms: managerPerms },
+  { id: "00000000-0000-4000-8000-000000000005", email: "marketing@example.test", name: "Emery Test", jobTitle: "Marketing", avatarUrl: null, presetId: "staff", status: "invited", mfaRequired: false, mfaEnabled: false, lockedUntil: null, lastSignIn: null, perms: staffPerms },
+  { id: "00000000-0000-4000-8000-000000000006", email: "former@example.test", name: "Frankie Fixture", jobTitle: "Contractor", avatarUrl: null, presetId: "custom", status: "deactivated", mfaRequired: false, mfaEnabled: false, lockedUntil: null, lastSignIn: "2026-09-01T07:00:00Z", perms: staffPerms },
 ];
 
 export const previewPresets: Preset[] = [

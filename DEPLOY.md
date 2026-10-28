@@ -162,7 +162,8 @@ browser; the portal has none and needs none.
 3. Open **Runtime logs**. On the first start you should see:
 
    ```
-   Applied 10 migrations. Database is up to date.
+   Applied 11 migrations. Database is up to date.
+   Image processing ready (sharp ..., libvips ...).
    CoreNovaIT portal listening on port ...
    ```
 
@@ -337,6 +338,7 @@ Try a restore once before you depend on it: restore a backup into a second, empt
 | --- | --- | --- |
 | Build fails | A problem in the pushed code | Read the build log under **Deployments**. The previous version keeps running. |
 | **The app doesn't start after a deploy** | A missing environment variable, the database step failed, or the backup couldn't be written | Read **Runtime logs**. "is not set" names the missing variable. "The backup before migrating failed" means `BACKUP_DIR` is wrong or the disk is full. "Migration failed" means restore the pre-migration backup (section 13) and revert the commit. |
+| "Image processing is NOT available" in the log | The server's Linux is older than `sharp` supports (it needs glibc 2.28 or newer) | The site still works, but profile pictures can't be uploaded. Ask Hostinger support which Linux the Node.js app runs on, and tell the developer. |
 | "Set UPLOAD_DIR…" in the log | `UPLOAD_DIR` missing or not an absolute path | Set it as in step 5. |
 | Invites and resets don't arrive | Resend key missing, or the domain isn't verified | Check `RESEND_API_KEY` and `MAIL_FROM`, Resend's **Logs** page and your spam folder. |
 | No reminders | The cron job isn't running | Run the cron command by hand (step 10) and read the answer. |
@@ -358,7 +360,7 @@ Tick each one before you tell the team the portal is open.
 **Site**
 
 - [ ] `https://` works with a valid certificate, and `SITE_URL` matches it exactly.
-- [ ] The runtime log shows "Database is up to date" and "listening".
+- [ ] The runtime log shows "Database is up to date", "Image processing ready" and "listening".
 
 **People and email**
 

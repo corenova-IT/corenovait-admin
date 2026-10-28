@@ -1,5 +1,6 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
+import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { actorFor, createPerson, seedStreamCountry, sessionFor, setupTestDatabase, snapshot } from "./db";
 
@@ -68,6 +69,11 @@ const PUBLIC_ACTIONS = new Set([
 const SELF_ACTIONS = new Set([
   "app/(portal)/account/actions.ts#regenerateCodes",
   "app/(portal)/account/actions.ts#signOutEverywhere",
+  // your own profile, picture and password (tests/dal/profile.test.ts: they never touch anyone else)
+  "app/(portal)/account/actions.ts#saveProfile",
+  "app/(portal)/account/actions.ts#uploadAvatar",
+  "app/(portal)/account/actions.ts#removeAvatar",
+  "app/(portal)/account/actions.ts#changePassword",
   // the caller's own notifications and email setting (tests/dal/notifications.test.ts)
   "app/(portal)/notifications/actions.ts#markAllRead",
   "app/(portal)/notifications/actions.ts#setEmailNotifications",
@@ -358,5 +364,71 @@ describe("rate limits (security review)", () => {
     expect((await acceptInvite({}, fd)).error).toMatch(/Too many attempts/);
     expect((await resetPassword({}, fd)).error).toMatch(/Too many attempts/);
     limiters.linkPerIp.reset("198.51.100.7");
+  });
+});
+
+describe("your profile (actions and the picture route)", () => {
+  const pngFile = async (name = "me.png") => {
+    const sharp = (await import("sharp")).default;
+    const bytes = await sharp({ create: { width: 64, height: 64, channels: 3, background: "#c33" } }).png().toBuffer();
+    return new File([new Uint8Array(bytes)], name, { type: "image/png" });
+  };
+  const userRowOf = async (id: string) => (await t.db.select().from(t.schema.users).where(eq(t.schema.users.id, id)))[0];
+
+  it("a staff user's profile actions change only their own account, whatever IDs the form carries", async () => {
+    const acts = await import("@/app/(portal)/account/actions");
+    const adminBefore = await userRowOf(ids.admin);
+    const fd = hostileForm(); // carries userId (the staff user), email, Admin preset and permissions
+    fd.set("userId", ids.admin);
+    fd.set("id", ids.admin);
+    fd.set("fullName", "Staff Renamed");
+    fd.set("picture", await pngFile());
+    expect(await acts.saveProfile({}, fd)).toMatchObject({ ok: "Profile saved." });
+    expect(await acts.uploadAvatar({}, fd)).toMatchObject({ ok: "Picture updated." });
+    const staff = await userRowOf(ids.staff);
+    expect(staff).toMatchObject({ fullName: "Staff Renamed", email: "staff@example.test", presetId: "staff" });
+    expect(staff.avatarKey).toMatch(/\.webp$/);
+    expect(await userRowOf(ids.admin)).toEqual(adminBefore);
+  });
+
+  it("a wrong file type or an oversized picture gets a plain message", async () => {
+    const acts = await import("@/app/(portal)/account/actions");
+    const fd = new FormData();
+    fd.set("picture", new File(["%PDF-1.7 not a picture"], "holiday.jpg", { type: "image/jpeg" }));
+    expect(await acts.uploadAvatar({}, fd)).toEqual({ error: "Upload a JPG, PNG or WebP picture." });
+    fd.set("picture", new File([new Uint8Array(2 * 1024 * 1024 + 1)], "big.png", { type: "image/png" }));
+    expect(await acts.uploadAvatar({}, fd)).toEqual({ error: "That picture is over 2 MB. Choose a smaller one." });
+  });
+
+  it("changing your password needs the current one", async () => {
+    const acts = await import("@/app/(portal)/account/actions");
+    const { limiters } = await import("@/lib/rate-limit");
+    limiters.passwordPerUser.reset(ids.staff);
+    const fd = new FormData();
+    fd.set("current", "Definitely-Wrong-42");
+    fd.set("password", "Another-Copper-Lantern-9");
+    fd.set("confirm", "Another-Copper-Lantern-9");
+    const before = (await userRowOf(ids.staff)).passwordHash;
+    expect(await acts.changePassword({}, fd)).toEqual({ error: "Your current password isn't right." });
+    expect((await userRowOf(ids.staff)).passwordHash).toBe(before);
+  });
+
+  it("pictures are only for signed-in people, and the route can't be used to replace one", async () => {
+    const route = await import("@/app/api/avatars/[id]/route");
+    const get = (id: string) => route.GET(new Request(`http://localhost/api/avatars/${id}`), { params: Promise.resolve({ id }) });
+    const own = await get(ids.staff);
+    expect(own.status).toBe(200);
+    expect(own.headers.get("content-type")).toBe("image/webp");
+    expect(own.headers.get("x-content-type-options")).toBe("nosniff");
+    expect((await get(ids.admin)).status).toBe(404); // no picture
+    expect(Object.keys(route).filter((k) => /^(POST|PUT|PATCH|DELETE)$/.test(k))).toEqual([]);
+    jar.clear();
+    expect((await get(ids.staff)).status).toBe(401);
+  });
+
+  it("removing your picture goes back to initials", async () => {
+    const acts = await import("@/app/(portal)/account/actions");
+    expect(await acts.removeAvatar({}, new FormData())).toMatchObject({ ok: "Picture removed." });
+    expect((await userRowOf(ids.staff)).avatarKey).toBeNull();
   });
 });

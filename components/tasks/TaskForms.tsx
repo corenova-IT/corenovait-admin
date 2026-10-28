@@ -20,6 +20,7 @@ export type TaskView = {
   priority: TaskPriority;
   assigneeId: string | null;
   assigneeName: string | null;
+  assigneeAvatar: string | null;
   dueDate: string | null;
   labels: string[];
   checklist: Array<{ id: string; text: string; done: boolean }>;

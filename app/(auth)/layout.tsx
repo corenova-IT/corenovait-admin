@@ -5,7 +5,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
     <main className="grid min-h-dvh place-items-center px-4 py-12">
       <div className="w-full max-w-[440px]">
         <div className="mb-8 flex justify-center">
-          <Logo />
+          <Logo size={56} />
         </div>
         {children}
         <p className="mt-8 text-center font-mono text-xs text-muted">Private CoreNovaIT workspace · authorised staff only</p>

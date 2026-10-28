@@ -13,6 +13,8 @@ export type Actor = Readonly<{
   email: string;
   fullName: string;
   jobTitle: string;
+  /** profile picture, or null for the initials */
+  avatarUrl: string | null;
   presetId: string;
   presetName: string;
   isAdmin: boolean;

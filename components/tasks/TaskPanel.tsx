@@ -15,7 +15,7 @@ import { PRIORITY_LABEL, PRIORITY_TONE, TASK_STATUSES, TASK_STATUS_LABEL, type T
 import { TaskForm, type TaskAction, type TaskLookups, type TaskView } from "./TaskForms";
 
 export type TaskDetail = TaskView & {
-  commentList: Array<{ id: string; body: string; createdAt: string; authorName: string | null; mine: boolean }>;
+  commentList: Array<{ id: string; body: string; createdAt: string; authorName: string | null; authorAvatar: string | null; mine: boolean }>;
   canComment: boolean;
   canModerate: boolean;
 };
@@ -133,7 +133,7 @@ export function TaskPanel({ task, lookups, actions, closeHref }: { task: TaskDet
             <ul className="flex flex-col gap-3">
               {task.commentList.map((c) => (
                 <li key={c.id} className="flex gap-3">
-                  <Avatar name={c.authorName ?? "?"} size={30} />
+                  <Avatar name={c.authorName ?? "?"} src={c.authorAvatar} size={30} />
                   <div className="min-w-0 flex-1 rounded-[14px] border border-line bg-surface-2 px-3.5 py-2.5">
                     <p className="flex flex-wrap items-baseline justify-between gap-x-3 text-xs text-muted">
                       <span className="font-semibold text-ink">{c.authorName ?? "Former member"}</span>

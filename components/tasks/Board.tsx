@@ -66,7 +66,7 @@ function Card({ task, query, dragging, onDragStart, onDragEnd }: { task: TaskVie
           </span>
           {task.assigneeName ? (
             <span className="flex shrink-0 items-center" title={`Assigned to ${task.assigneeName}`}>
-              <Avatar name={task.assigneeName} size={26} />
+              <Avatar name={task.assigneeName} src={task.assigneeAvatar} size={26} />
               <span className="sr-only">Assigned to {task.assigneeName}</span>
             </span>
           ) : (

@@ -12,7 +12,7 @@ export function PortalShell({
   children,
 }: {
   nav: NavItem[];
-  user: { name: string; email: string; role: string };
+  user: { name: string; email: string; role: string; avatarUrl: string | null };
   theme: Theme;
   badges: Badges;
   children: React.ReactNode;
@@ -25,10 +25,10 @@ export function PortalShell({
       >
         Skip to content
       </a>
-      <Sidebar items={nav} userName={user.name} userRole={user.role} badges={badges} />
+      <Sidebar items={nav} userName={user.name} userRole={user.role} userAvatar={user.avatarUrl} badges={badges} />
       <div className="min-w-0 flex-1">
         <header className="px-4 pt-5 sm:px-8 sm:pt-7 lg:px-10">
-          <Topbar name={user.name} email={user.email} theme={theme} badges={badges} />
+          <Topbar name={user.name} email={user.email} avatarUrl={user.avatarUrl} theme={theme} badges={badges} />
         </header>
         {/* @container: page grids size their columns to the space next to the sidebar, not the window */}
         <main id="main" tabIndex={-1} className="@container px-4 pb-16 pt-7 focus:outline-none sm:px-8 lg:px-10">

@@ -3,14 +3,14 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { IconBell, IconChevronDown, IconLock, IconLogout, IconSearch } from "@/components/icons";
+import { IconBell, IconChevronDown, IconLogout, IconSearch, IconUser } from "@/components/icons";
 import { Avatar } from "@/components/ui/Avatar";
 import { NAV } from "@/lib/nav";
 import type { Theme } from "@/lib/theme";
 import { ThemeToggle } from "./ThemeToggle";
 import { useBadges, type Badges } from "./badges";
 
-function ProfileMenu({ name, email }: { name: string; email: string }) {
+function ProfileMenu({ name, email, avatarUrl }: { name: string; email: string; avatarUrl: string | null }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -35,7 +35,7 @@ function ProfileMenu({ name, email }: { name: string; email: string }) {
         aria-expanded={open}
         className="flex h-12 items-center gap-2 rounded-[14px] border border-line bg-surface pl-1.5 pr-3 text-ink-2 hover:border-accent-line"
       >
-        <Avatar name={name} size={36} />
+        <Avatar name={name} src={avatarUrl} size={36} />
         <span className="sr-only">Account menu for {name}</span>
         <IconChevronDown size={16} />
       </button>
@@ -47,7 +47,7 @@ function ProfileMenu({ name, email }: { name: string; email: string }) {
           </div>
           <div className="pt-2">
             <Link role="menuitem" href="/account" className={item} onClick={() => setOpen(false)}>
-              <IconLock size={16} /> Security and two-factor
+              <IconUser size={16} /> Your profile
             </Link>
             <form action="/auth/signout" method="post">
               <button role="menuitem" type="submit" className={item}>
@@ -74,7 +74,7 @@ function useWide() {
   );
 }
 
-export function Topbar({ name, email, theme, badges: initial }: { name: string; email: string; theme: Theme; badges: Badges }) {
+export function Topbar({ name, email, avatarUrl, theme, badges: initial }: { name: string; email: string; avatarUrl: string | null; theme: Theme; badges: Badges }) {
   const unread = useBadges(initial).notifications;
   const pathname = usePathname();
   // on a phone the long hint ("Search clients, invoices, tasks") would be cut off, so just "Search"
@@ -115,7 +115,7 @@ export function Topbar({ name, email, theme, badges: initial }: { name: string; 
           </span>
         )}
       </Link>
-      <ProfileMenu name={name} email={email} />
+      <ProfileMenu name={name} email={email} avatarUrl={avatarUrl} />
     </div>
   );
 }

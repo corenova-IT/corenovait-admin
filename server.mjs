@@ -22,6 +22,14 @@ if (migration.status !== 0) {
   process.exit(migration.status ?? 1);
 }
 
+// sharp crops profile pictures and sizes the logo; say plainly in the log whether this server can run it
+try {
+  const { default: sharp } = await import("sharp");
+  console.log(`Image processing ready (sharp ${sharp.versions.sharp}, libvips ${sharp.versions.vips}).`);
+} catch (err) {
+  console.error(`Image processing is NOT available, so profile pictures can't be uploaded: ${err instanceof Error ? err.message.split("\n")[0] : "sharp failed to load"}. See DEPLOY.md, "If something goes wrong".`);
+}
+
 const { default: next } = await import("next");
 const port = Number.parseInt(process.env.PORT ?? "3000", 10);
 const app = next({ dev: false, dir: root });

@@ -34,11 +34,17 @@ export async function sendMail(mail: Mail): Promise<{ ok: true } | { ok: false }
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
+/** The light-theme logo (dark lines) on the email's white card, from the live site. If images are blocked, the alt text and the name beside it still say who it's from. */
+const logoUrl = () => `${siteUrl()}/brand/corenova-logo.png`;
+
 function layout(heading: string, body: string, cta: { href: string; label: string }, footer: string) {
   return `<!doctype html><html><body style="margin:0;background:#F5F1EA;font-family:Arial,sans-serif;color:#15171D">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:32px 16px">
 <table role="presentation" width="100%" style="max-width:520px;background:#fff;border-radius:16px;padding:32px">
-<tr><td><p style="margin:0 0 4px;font-size:13px;letter-spacing:.08em;color:#AF2524;font-weight:bold">CORENOVAIT PORTAL</p>
+<tr><td><table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 16px"><tr>
+<td style="padding-right:12px;vertical-align:middle"><img src="${esc(logoUrl())}" width="44" height="44" alt="CoreNovaIT" style="display:block;width:44px;height:44px;border:0;background:#fff"></td>
+<td style="vertical-align:middle"><p style="margin:0;font-size:13px;letter-spacing:.08em;color:#AF2524;font-weight:bold">CORENOVAIT PORTAL</p></td>
+</tr></table>
 <h1 style="margin:0 0 16px;font-size:22px">${esc(heading)}</h1>
 <p style="margin:0 0 24px;font-size:15px;line-height:1.6">${esc(body)}</p>
 <a href="${esc(cta.href)}" style="display:inline-block;background:#AF2524;color:#fff;text-decoration:none;padding:12px 20px;border-radius:10px;font-weight:bold">${esc(cta.label)}</a>

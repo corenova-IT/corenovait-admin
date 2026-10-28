@@ -10,6 +10,7 @@ import { actorRef, writeAudit } from "./audit";
 import { AccessDenied, RuleError, hasPerm, requirePerm, rowAllowed, scopeWhere, type Actor } from "./guard";
 import { companyTimezone } from "./marketing";
 import { notify } from "./notifications";
+import { avatarUrl } from "@/lib/avatar";
 
 /**
  * Tasks (module "tasks"): the board, the list, "My tasks", checklists and
@@ -57,6 +58,8 @@ function taskQuery(db: Db | Tx) {
       priority: tasks.priority,
       assigneeId: tasks.assigneeId,
       assigneeName: users.fullName,
+      assigneeAvatarKey: users.avatarKey,
+      assigneeAvatarAt: users.avatarUpdatedAt,
       dueDate: tasks.dueDate,
       labels: tasks.labels,
       checklist: tasks.checklist,
@@ -110,10 +113,12 @@ export async function listTasks(actor: Actor, f: TaskFilters = {}, opts: { page?
   return { ...d, tasks: rows.map((r) => decorate(actor, r, d.today)), total: rows.length, page: 1, pageSize: rows.length, doneCapped: done.length > BOARD_DONE_LIMIT };
 }
 
-function decorate<T extends { status: TaskStatus; dueDate: string | null; checklist: ChecklistItem[] | null; labels: string[] | null; createdBy: string; assigneeId: string | null; comments: unknown }>(actor: Actor, r: T, today: string) {
+function decorate<T extends { assigneeAvatarKey: string | null; assigneeAvatarAt: Date | null; status: TaskStatus; dueDate: string | null; checklist: ChecklistItem[] | null; labels: string[] | null; createdBy: string; assigneeId: string | null; comments: unknown }>(actor: Actor, r: T, today: string) {
   const checklist = r.checklist ?? [];
+  const { assigneeAvatarKey, assigneeAvatarAt, ...rest } = r;
   return {
-    ...r,
+    ...rest,
+    assigneeAvatar: avatarUrl(r.assigneeId, assigneeAvatarKey ? assigneeAvatarAt : null),
     labels: r.labels ?? [],
     checklist,
     comments: Number(r.comments ?? 0),
@@ -133,12 +138,12 @@ export async function getTask(actor: Actor, id: string) {
   const [row] = await taskQuery(db).where(and(eq(tasks.id, id), taskScope(actor)));
   if (!row) return null;
   const comments = await db
-    .select({ id: taskComments.id, body: taskComments.body, createdAt: taskComments.createdAt, authorId: taskComments.authorId, authorName: users.fullName })
+    .select({ id: taskComments.id, body: taskComments.body, createdAt: taskComments.createdAt, authorId: taskComments.authorId, authorName: users.fullName, avatarKey: users.avatarKey, avatarAt: users.avatarUpdatedAt })
     .from(taskComments)
     .leftJoin(users, eq(users.id, taskComments.authorId))
     .where(eq(taskComments.taskId, id))
     .orderBy(asc(taskComments.createdAt));
-  return { ...decorate(actor, row, d.today), commentList: comments.map((c) => ({ ...c, mine: c.authorId === actor.userId })) };
+  return { ...decorate(actor, row, d.today), commentList: comments.map(({ avatarKey, avatarAt, ...c }) => ({ ...c, authorAvatar: avatarUrl(c.authorId, avatarKey ? avatarAt : null), mine: c.authorId === actor.userId })) };
 }
 
 /** Assigned to the caller and not done: overdue, due this week, or undated. For "My tasks" and My Day. */
@@ -168,6 +173,8 @@ export async function teamProgress(actor: Actor) {
       userId: users.id,
       name: users.fullName,
       email: users.email,
+      avatarKey: users.avatarKey,
+      avatarAt: users.avatarUpdatedAt,
       open: sql<string>`coalesce(sum(${tasks.status} <> 'done'), 0)`,
       overdue: sql<string>`coalesce(sum(${tasks.status} <> 'done' and ${tasks.dueDate} < ${d.today}), 0)`,
       weekTotal: sql<string>`coalesce(sum(${tasks.dueDate} between ${d.weekStart} and ${d.weekEnd}), 0)`,
@@ -176,12 +183,12 @@ export async function teamProgress(actor: Actor) {
     .from(users)
     .leftJoin(tasks, eq(tasks.assigneeId, users.id))
     .where(eq(users.status, "active"))
-    .groupBy(users.id, users.fullName, users.email)
+    .groupBy(users.id, users.fullName, users.email, users.avatarKey, users.avatarUpdatedAt)
     .orderBy(asc(users.fullName));
   return {
     ...d,
     people: rows
-      .map((r) => ({ userId: r.userId, name: r.name || r.email, open: Number(r.open), overdue: Number(r.overdue), weekTotal: Number(r.weekTotal), weekDone: Number(r.weekDone) }))
+      .map((r) => ({ userId: r.userId, name: r.name || r.email, avatar: avatarUrl(r.userId, r.avatarKey ? r.avatarAt : null), open: Number(r.open), overdue: Number(r.overdue), weekTotal: Number(r.weekTotal), weekDone: Number(r.weekDone) }))
       .filter((p) => p.open + p.weekTotal > 0),
   };
 }

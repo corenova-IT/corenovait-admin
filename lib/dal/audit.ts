@@ -18,6 +18,7 @@ export const AUDIT_ACTIONS = [
   "invite",
   "invite_accepted",
   "password_reset",
+  "password_changed",
   "permissions",
   "preset",
   "sessions_reset",

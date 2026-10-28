@@ -75,7 +75,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
   const detail: TaskDetail | null = selected
     ? {
         ...view(selected),
-        commentList: selected.commentList.map((c) => ({ id: c.id, body: c.body, createdAt: c.createdAt.toISOString(), authorName: c.authorName, mine: c.mine })),
+        commentList: selected.commentList.map((c) => ({ id: c.id, body: c.body, createdAt: c.createdAt.toISOString(), authorName: c.authorName, authorAvatar: c.authorAvatar, mine: c.mine })),
         canComment: true, // anyone who can see the task
         canModerate: can.delete && scope === "all",
       }
@@ -192,7 +192,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
                 <li key={p.userId}>
                   <Link href={hrefWith(PATH, keep, { assignee: p.userId })} className="flex h-full flex-col gap-2.5 rounded-[14px] border border-line bg-surface-2 p-3.5 hover:border-accent-line">
                     <span className="flex items-center gap-2.5">
-                      <Avatar name={p.name} size={30} />
+                      <Avatar name={p.name} src={p.avatar} size={30} />
                       <span className="clamp-2 min-w-0 flex-1 font-medium leading-snug text-ink">{p.name}</span>
                       {p.overdue > 0 && <Badge tone="red">{p.overdue} overdue</Badge>}
                     </span>

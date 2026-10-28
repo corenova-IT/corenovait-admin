@@ -64,19 +64,20 @@ function NavList({ items, onNavigate, badges: initial }: { items: NavItem[]; onN
   );
 }
 
-function UserCard({ name, role }: { name: string; role: string }) {
+/** Your name and picture; opens your profile. */
+function UserCard({ name, role, avatar }: { name: string; role: string; avatar: string | null }) {
   return (
-    <div className="glass flex items-center gap-3 rounded-[18px] p-3.5">
-      <Avatar name={name} ring />
-      <div className="min-w-0">
-        <p className="clamp-2 text-[15px] font-semibold leading-snug text-ink">{name}</p>
-        <p className="clamp-2 text-xs text-muted">{role}</p>
-      </div>
-    </div>
+    <Link href="/account" className="glass flex items-center gap-3 rounded-[18px] p-3.5 hover:border-accent-line" aria-label={`Your profile: ${name}`}>
+      <Avatar name={name} src={avatar} ring />
+      <span className="min-w-0">
+        <span className="clamp-2 block text-[15px] font-semibold leading-snug text-ink">{name}</span>
+        <span className="clamp-2 block text-xs text-muted">{role}</span>
+      </span>
+    </Link>
   );
 }
 
-export function Sidebar({ items, userName, userRole, badges }: { items: NavItem[]; userName: string; userRole: string; badges: Badges }) {
+export function Sidebar({ items, userName, userRole, userAvatar, badges }: { items: NavItem[]; userName: string; userRole: string; userAvatar: string | null; badges: Badges }) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
   useEffect(() => setOpen(false), [pathname]);
@@ -91,7 +92,7 @@ export function Sidebar({ items, userName, userRole, badges }: { items: NavItem[
         <nav aria-label="Main" className="flex-1 overflow-y-auto">
           <NavList items={items} badges={badges} />
         </nav>
-        <UserCard name={userName} role={userRole} />
+        <UserCard name={userName} role={userRole} avatar={userAvatar} />
       </aside>
 
       {/* phone and tablet */}
@@ -128,7 +129,7 @@ export function Sidebar({ items, userName, userRole, badges }: { items: NavItem[
             <nav aria-label="Main" className="flex-1 overflow-y-auto">
               <NavList items={items} badges={badges} onNavigate={() => setOpen(false)} />
             </nav>
-            <UserCard name={userName} role={userRole} />
+            <UserCard name={userName} role={userRole} avatar={userAvatar} />
           </div>
         </div>
       )}

@@ -119,7 +119,9 @@ describe("two-factor", () => {
 
     const s1 = await auth.resolveSession(first.token);
     if (s1.status !== "ok") throw new Error("expected ok");
-    const recovery = await auth.regenerateRecoveryCodes(s1.actor);
+    // new codes need the password and a fresh code from the app (the next 30-second step: the first was used)
+    const { regenerateMyRecoveryCodes } = await import("@/lib/dal/profile");
+    const recovery = await regenerateMyRecoveryCodes(s1.actor, STRONG_PASSWORD, totp.totpAt(p.totpSecret!, now + 30_000));
     const used = await auth.verifySecondFactor(second.token, recovery[0].toLowerCase().replace("-", " "));
     expect(used).toEqual({ ok: true, usedRecoveryCode: true, recoveryCodesLeft: 9 });
 

@@ -84,7 +84,7 @@ function Message({ m, showHeader, canEdit, canDelete, canModerate, actions, onCh
 
   return (
     <li className={cx("group flex gap-3 rounded-xl px-2", showHeader ? "mt-3 pt-1" : "mt-0.5")}>
-      <span className="w-9 shrink-0">{showHeader && <Avatar name={m.authorName} size={34} />}</span>
+      <span className="w-9 shrink-0">{showHeader && <Avatar name={m.authorName} src={m.authorAvatar} size={34} />}</span>
       <div className="min-w-0 flex-1">
         {showHeader && (
           <p className="flex flex-wrap items-baseline gap-x-2">

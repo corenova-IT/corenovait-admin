@@ -1,6 +1,7 @@
 import "server-only";
 import { assertRealEmailInProduction } from "@/lib/sample-guard";
 import { asc, eq } from "drizzle-orm";
+import { avatarUrl } from "@/lib/avatar";
 import { getDb, schema } from "@/lib/db";
 import type { PermMap } from "@/lib/permissions";
 import { actorRef, writeAudit } from "./audit";
@@ -27,6 +28,7 @@ export type TeamMember = {
   email: string;
   name: string;
   jobTitle: string;
+  avatarUrl: string | null;
   presetId: string;
   status: "active" | "invited" | "deactivated";
   mfaRequired: boolean;
@@ -54,6 +56,7 @@ export async function listTeam(actor: Actor): Promise<{ members: TeamMember[]; p
     email: u.email,
     name: u.fullName,
     jobTitle: u.jobTitle,
+    avatarUrl: avatarUrl(u.id, u.avatarKey ? u.avatarUpdatedAt : null),
     presetId: u.presetId,
     status: u.status,
     mfaRequired: u.mfaRequired,
