@@ -1,6 +1,6 @@
 import { BarList } from "@/components/charts/BarList";
 import { Sparkline } from "@/components/charts/Sparkline";
-import { TrendChart } from "@/components/charts/TrendChart";
+import { TrendChart } from "@/components/charts/LazyTrendChart";
 import { TopClients } from "@/components/revenue/TopClients";
 import { ExportLink } from "@/components/transactions/LedgerActions";
 import { Card, CardHeader } from "@/components/ui/Card";
@@ -13,6 +13,7 @@ import { hasSampleData } from "@/lib/dal/finance";
 import { hasPerm } from "@/lib/dal/guard";
 import { fmtMonth } from "@/lib/format";
 import { formatMoney } from "@/lib/money";
+import { ScrollX } from "@/components/ui/ScrollX";
 
 export const metadata = { title: "Finances" };
 
@@ -49,7 +50,7 @@ function ComparisonTable({ s }: { s: FinanceSummary }) {
       </td>
     ));
   return (
-    <div className="scroll-x -mx-2 px-2">
+    <ScrollX label="Finance table" className="-mx-2 px-2">
       <table className="w-full min-w-[560px] text-left">
         <caption className="sr-only">Month, quarter and year comparisons</caption>
         <thead>
@@ -77,7 +78,7 @@ function ComparisonTable({ s }: { s: FinanceSummary }) {
           </tr>
         </tbody>
       </table>
-    </div>
+    </ScrollX>
   );
 }
 
@@ -211,7 +212,7 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
         {matrixStreams.length === 0 ? (
           <p className="text-sm text-muted">No paid revenue in this period.</p>
         ) : (
-          <div className="scroll-x -mx-2 px-2">
+          <ScrollX label="Finance table" className="-mx-2 px-2">
             <table className="w-full min-w-[520px] text-left font-mono text-sm">
               <caption className="sr-only">Paid revenue by stream and country</caption>
               <thead>
@@ -239,7 +240,7 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
                 ))}
               </tbody>
             </table>
-          </div>
+          </ScrollX>
         )}
       </Card>
 

@@ -9,6 +9,7 @@ import { cx } from "@/components/ui/cx";
 import { fmtShortDate } from "@/lib/format";
 import { PRIORITY_LABEL, PRIORITY_TONE, TASK_STATUSES, TASK_STATUS_LABEL, taskHref, type TaskStatus } from "@/lib/work";
 import type { TaskAction, TaskView } from "./TaskForms";
+import { ScrollX } from "@/components/ui/ScrollX";
 
 export function TaskMeta({ task }: { task: TaskView }) {
   return (
@@ -105,7 +106,7 @@ export function Board({ tasks, query, move }: { tasks: TaskView[]; query: string
   return (
     <div className="flex flex-col gap-3">
       {error && <FormMessage tone="error">{error}</FormMessage>}
-      <div className="scroll-x -mx-1 px-1 pb-1">
+      <ScrollX label="Task board" className="-mx-1 px-1 pb-1">
         <div className="grid min-w-[52rem] grid-cols-4 gap-3">
           {TASK_STATUSES.map((status) => {
             const col = optimistic.filter((t) => t.status === status);
@@ -144,7 +145,7 @@ export function Board({ tasks, query, move }: { tasks: TaskView[]; query: string
             );
           })}
         </div>
-      </div>
+      </ScrollX>
     </div>
   );
 }

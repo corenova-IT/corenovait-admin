@@ -1,5 +1,6 @@
 import "server-only";
-import { and, asc, count, desc, eq, gt, inArray, isNull, lt, ne, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gt, inArray, isNull, like, lt, ne, sql } from "drizzle-orm";
+import { likeTerm } from "@/lib/search";
 import { z } from "zod";
 import { getDb, schema, type Db, type Tx } from "@/lib/db";
 import { can } from "@/lib/permissions";
@@ -169,6 +170,7 @@ const toMessage = (actor: Actor, r: MessageRow): ChatMessage => ({
   createdAt: r.m.createdAt.toISOString(),
   editedAt: r.m.editedAt?.toISOString() ?? null,
   deleted: !!r.m.deletedAt,
+  removedByAdmin: r.m.removedByAdmin,
   mine: r.m.authorId === actor.userId,
 });
 
@@ -281,9 +283,34 @@ export async function deleteMessage(actor: Actor, id: string) {
   await getDb().transaction(async (tx) => {
     const { msg, kind } = await ownMessage(tx, actor, id);
     const now = new Date();
+    // the attachment can't be downloaded any more; the clean-up job (cron) removes it from disk and the database
     await tx.update(messages).set({ body: "", fileId: null, deletedAt: now, updatedAt: now }).where(eq(messages.id, id));
-    if (msg.fileId) await tx.delete(files).where(eq(files.id, msg.fileId));
     await writeAudit(tx, actorRef(actor), { action: "delete", entity: "chat_messages", entityId: id, summary: `Deleted own message in ${kind === "dm" ? "a direct message" : "a channel"}` });
+  });
+}
+
+/**
+ * Admins may remove someone else's message in a channel they are in, never
+ * in a direct message. The text and file go; "Message removed by an admin"
+ * stays. Audited with who wrote it, never what it said.
+ */
+export async function removeMessageAsAdmin(actor: Actor, id: string) {
+  if (!isAdminCaller(actor)) throw new AccessDenied("Only admins can remove other people's messages.");
+  await getDb().transaction(async (tx) => {
+    const [msg] = await tx.select().from(messages).where(eq(messages.id, id)).for("update");
+    const m = msg ? await membership(tx, actor, msg.channelId) : null;
+    // a DM (or a channel the admin isn't in) looks the same as a missing message
+    if (!msg || !m || m.channel.kind !== "channel") throw new AccessDenied("That message doesn't exist, or it's in a direct message, which admins can't moderate.");
+    if (msg.deletedAt) throw new RuleError("That message was already deleted.");
+    const now = new Date();
+    await tx.update(messages).set({ body: "", fileId: null, deletedAt: now, removedByAdmin: true, updatedAt: now }).where(eq(messages.id, id));
+    await writeAudit(tx, actorRef(actor), {
+      action: "delete",
+      entity: "chat_messages",
+      entityId: id,
+      summary: `Removed a message in #${m.channel.name} (moderation)`,
+      before: { authorId: msg.authorId, channel: `#${m.channel.name}`, createdAt: msg.createdAt, hadFile: !!msg.fileId },
+    });
   });
 }
 
@@ -484,6 +511,44 @@ export { isAdminCaller };
  * For Home and My Day: conversations with unread messages (newest first) and
  * a short preview of the latest one. Only the caller's own conversations.
  */
+/**
+ * Top-bar search: messages in conversations the caller is a member of (never
+ * anyone else's DMs), newest first. Removed messages are not searched.
+ */
+export async function searchMessages(actor: Actor, q: string, limit: number) {
+  requirePerm(actor, "chat", "view");
+  const db = getDb();
+  const rows = await db
+    .select({ id: messages.id, body: messages.body, createdAt: messages.createdAt, channelId: channels.id, kind: channels.kind, name: channels.name, authorName: users.fullName, authorEmail: users.email })
+    .from(messages)
+    .innerJoin(members, and(eq(members.channelId, messages.channelId), eq(members.userId, actor.userId)))
+    .innerJoin(channels, eq(channels.id, messages.channelId))
+    .leftJoin(users, eq(users.id, messages.authorId))
+    .where(and(isNull(messages.deletedAt), like(messages.body, likeTerm(q))))
+    .orderBy(desc(messages.createdAt))
+    .limit(limit);
+  // a DM is named after the other person in it
+  const dms = [...new Set(rows.filter((r) => r.kind === "dm").map((r) => r.channelId))];
+  const others = dms.length
+    ? await db
+        .select({ channelId: members.channelId, name: users.fullName, email: users.email })
+        .from(members)
+        .innerJoin(users, eq(users.id, members.userId))
+        .where(and(inArray(members.channelId, dms), ne(members.userId, actor.userId)))
+    : [];
+  return rows.map((r) => {
+    const other = others.find((o) => o.channelId === r.channelId);
+    return {
+      id: r.id,
+      channelId: r.channelId,
+      where: r.kind === "dm" ? `Direct message with ${other ? other.name || other.email : "a former member"}` : `#${r.name}`,
+      author: r.authorName || r.authorEmail || "A former member",
+      body: r.body,
+      createdAt: r.createdAt,
+    };
+  });
+}
+
 export async function unreadChatSummary(actor: Actor, limit = 4) {
   requirePerm(actor, "chat", "view");
   const db = getDb();

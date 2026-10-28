@@ -1,4 +1,5 @@
 import "server-only";
+import { assertRealEmailInProduction } from "@/lib/sample-guard";
 import { and, count, eq, gt, isNull, lt, or } from "drizzle-orm";
 import { getDb, schema, type Tx } from "@/lib/db";
 import { decryptSecret, encryptSecret, randomToken, sha256Hex } from "@/lib/auth/crypto";
@@ -389,6 +390,11 @@ export async function acceptInvite(token: string, password: string, ctx: Ctx, no
 /** npm run seed:admin. Refuses once any active admin exists. */
 export async function bootstrapFirstAdmin(input: { email: string; password: string; fullName: string }) {
   const email = input.email.trim().toLowerCase();
+  try {
+    assertRealEmailInProduction(email);
+  } catch (e) {
+    throw new RuleError((e as Error).message);
+  }
   checkPassword(input.password, email);
   return getDb().transaction(async (tx) => {
     const admins = await tx

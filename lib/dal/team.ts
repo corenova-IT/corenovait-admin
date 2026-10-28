@@ -1,4 +1,5 @@
 import "server-only";
+import { assertRealEmailInProduction } from "@/lib/sample-guard";
 import { asc, eq } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import type { PermMap } from "@/lib/permissions";
@@ -89,6 +90,11 @@ export async function inviteUser(
   requireAdmin(actor);
   const email = input.email.trim().toLowerCase();
   if (input.presetId === "custom") throw new RuleError("Invite with a preset, then customise their permissions.");
+  try {
+    assertRealEmailInProduction(email);
+  } catch (e) {
+    throw new RuleError((e as Error).message);
+  }
   const db = getDb();
   return db.transaction(async (tx) => {
     const [preset] = await tx.select().from(rolePresets).where(eq(rolePresets.id, input.presetId));

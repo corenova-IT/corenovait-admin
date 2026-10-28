@@ -2,6 +2,7 @@ import Link from "next/link";
 import { IconChevronLeft, IconChevronRight } from "@/components/icons";
 import { cx } from "./cx";
 import { EmptyState } from "./States";
+import { ScrollX } from "./ScrollX";
 
 export type Column<T> = {
   key: string;
@@ -39,7 +40,7 @@ export function DataTable<T>({
     return <EmptyState title={empty?.title ?? "Nothing here yet"}>{empty?.body}</EmptyState>;
   }
   return (
-    <div className="scroll-x -mx-2 px-2">
+    <ScrollX label={caption} className="-mx-2 px-2">
       <table className="w-full border-separate border-spacing-0 text-left">
         <caption className="sr-only">{caption}</caption>
         <thead>
@@ -89,7 +90,7 @@ export function DataTable<T>({
           ))}
         </tbody>
       </table>
-    </div>
+    </ScrollX>
   );
 }
 

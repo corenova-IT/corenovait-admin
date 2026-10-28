@@ -1,5 +1,6 @@
 import "server-only";
-import { and, asc, count, desc, eq, gte, isNull, lt, sql, type SQL } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, isNull, like, lt, or, sql, type SQL } from "drizzle-orm";
+import { likeTerm } from "@/lib/search";
 import { z } from "zod";
 import { getDb, schema, type Db, type Tx } from "@/lib/db";
 import { minorToDecimal, toCsv } from "@/lib/csv";
@@ -336,6 +337,21 @@ function activityQuery(db: Db | Tx) {
     .leftJoin(users, eq(users.id, acts.ownerId));
 }
 export type ActivityRow = Awaited<ReturnType<ReturnType<typeof activityQuery>["execute"]>>[number];
+
+/** Top-bar search: logged activity by contact or company, in the caller's scope. */
+export async function searchActivities(actor: Actor, q: string, limit: number) {
+  requirePerm(actor, "marketing", "view");
+  const t = likeTerm(q);
+  const db = getDb();
+  const tz = await companyTimezone(db);
+  const rows = await db
+    .select({ id: acts.id, contactName: acts.contactName, contactCompany: acts.contactCompany, channel: acts.channel, occurredAt: acts.occurredAt })
+    .from(acts)
+    .where(and(activityScope(actor), or(like(acts.contactName, t), like(acts.contactCompany, t))))
+    .orderBy(desc(acts.occurredAt))
+    .limit(limit);
+  return rows.map((r) => ({ ...r, date: localParts(r.occurredAt, tz).date }));
+}
 
 export async function listActivities(actor: Actor, f: MarketingFilters = {}, pageSize = ACTIVITY_PAGE_SIZE) {
   requirePerm(actor, "marketing", "view");

@@ -13,7 +13,7 @@ import {
 import * as auth from "@/lib/dal/auth";
 import { resetEmail, sendMail } from "@/lib/email";
 import { newPasswordSchema } from "@/lib/password";
-import { limiters } from "@/lib/rate-limit";
+import { limiters, slowDown } from "@/lib/rate-limit";
 import { requestContext } from "@/lib/request";
 import { safeNextPath } from "@/lib/safe-redirect";
 
@@ -82,6 +82,8 @@ export async function requestPasswordReset(_prev: FormState, formData: FormData)
 const linkSchema = z.object({ token: z.string().min(20).max(200), password: z.string().max(200), confirm: z.string().max(200) });
 
 export async function resetPassword(_prev: FormState, formData: FormData): Promise<FormState> {
+  const rl = limiters.linkPerIp.hit((await requestContext()).ip);
+  if (!rl.ok) return { error: slowDown("attempts", rl.retryAfterSec) };
   const parsed = linkSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { error: "That link isn't valid. Request a new one." };
   const who = await auth.peekLinkToken(parsed.data.token, "reset");
@@ -98,6 +100,8 @@ export async function resetPassword(_prev: FormState, formData: FormData): Promi
 }
 
 export async function acceptInvite(_prev: FormState, formData: FormData): Promise<FormState> {
+  const rl = limiters.linkPerIp.hit((await requestContext()).ip);
+  if (!rl.ok) return { error: slowDown("attempts", rl.retryAfterSec) };
   const parsed = linkSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { error: "That invite link isn't valid. Ask an admin to send a new one." };
   const who = await auth.peekLinkToken(parsed.data.token, "invite");

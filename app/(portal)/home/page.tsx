@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { BarList } from "@/components/charts/BarList";
 import { Donut } from "@/components/charts/Donut";
-import { TrendChart } from "@/components/charts/TrendChart";
+import { TrendChart } from "@/components/charts/LazyTrendChart";
 import { IconCalendar, IconCard, IconMegaphone, IconTasks } from "@/components/icons";
 import { ChatCard } from "@/components/home/ChatCard";
 import { MeetingList, ProgressList, QuickActions, TaskList, type QuickAction } from "@/components/home/WorkCards";

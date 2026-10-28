@@ -14,7 +14,7 @@
   --text-2: #b9bdc9;
   --muted: #8b93a4;
   --accent: #d63838;
-  --accent-text: #e25555;
+  --accent-text: #ec6b6b; /* 5:1 on --accent-soft over a card */
   --accent-soft: rgba(214, 56, 56, 0.12);
   --accent-line: rgba(214, 56, 56, 0.45);
   --on-accent: #ffffff;
@@ -113,6 +113,17 @@ body {
   outline: 2px solid var(--accent-text);
   outline-offset: 2px;
   border-radius: 10px;
+}
+/* form fields always show where you are typing (Chrome doesn't treat a date field's parts as focus-visible) */
+:is(input:not([type="hidden"]), select, textarea):focus {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 2px;
+}
+/* the calendar button inside a date field takes its own Tab stop in Chrome */
+input::-webkit-calendar-picker-indicator:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 1px;
+  border-radius: 4px;
 }
 
 /* edge fades for .scroll-x: the side that has more content fades out */

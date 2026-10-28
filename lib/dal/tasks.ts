@@ -1,5 +1,5 @@
 import "server-only";
-import { and, asc, count, eq, gte, isNull, lt, lte, ne, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, isNull, lt, lte, ne, or, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 import { getDb, schema, type Db, type Tx } from "@/lib/db";
 import type { ChecklistItem } from "@/lib/db/schema";
@@ -72,7 +72,11 @@ function taskQuery(db: Db | Tx) {
 
 const PRIORITY_ORDER = sql`field(${tasks.priority}, 'urgent', 'high', 'medium', 'low')`;
 
-export async function listTasks(actor: Actor, f: TaskFilters = {}) {
+/** The board shows every open task (up to this many) and only the most recently finished ones; the list view pages through everything. */
+export const BOARD_OPEN_LIMIT = 500;
+export const BOARD_DONE_LIMIT = 50;
+
+export async function listTasks(actor: Actor, f: TaskFilters = {}, opts: { page?: number; pageSize?: number } = {}) {
   requirePerm(actor, "tasks", "view");
   const db = getDb();
   const d = await workDates(db);
@@ -86,15 +90,24 @@ export async function listTasks(actor: Actor, f: TaskFilters = {}) {
   if (f.due === "overdue") conds.push(and(lt(tasks.dueDate, d.today), ne(tasks.status, "done")));
   if (f.due === "week") conds.push(and(gte(tasks.dueDate, d.weekStart), lte(tasks.dueDate, d.weekEnd)));
   if (f.q) conds.push(or(sql`${tasks.title} like ${likeTerm(f.q)}`, sql`${tasks.description} like ${likeTerm(f.q)}`));
-  const rows = await taskQuery(db)
-    .where(and(...conds))
-    // undated tasks last, then by due date, then most urgent
-    .orderBy(sql`${tasks.dueDate} is null`, asc(tasks.dueDate), PRIORITY_ORDER, asc(tasks.createdAt))
-    .limit(500);
-  return {
-    ...d,
-    tasks: rows.map((r) => decorate(actor, r, d.today)),
-  };
+  const where = and(...conds);
+  // undated tasks last, then by due date, then most urgent
+  const soonest = [sql`${tasks.dueDate} is null`, asc(tasks.dueDate), PRIORITY_ORDER, asc(tasks.createdAt), asc(tasks.id)] as const;
+  if (opts.pageSize) {
+    const page = Math.max(1, opts.page ?? 1);
+    const [rows, [agg]] = await Promise.all([
+      taskQuery(db).where(where).orderBy(...soonest).limit(opts.pageSize).offset((page - 1) * opts.pageSize),
+      db.select({ n: count() }).from(tasks).where(where),
+    ]);
+    return { ...d, tasks: rows.map((r) => decorate(actor, r, d.today)), total: agg.n, page, pageSize: opts.pageSize, doneCapped: false };
+  }
+  // the board: every open task (up to a safety cap), and only the most recently finished ones
+  const [open, done] = await Promise.all([
+    f.status === "done" ? [] : taskQuery(db).where(and(where, ne(tasks.status, "done"))).orderBy(...soonest).limit(BOARD_OPEN_LIMIT),
+    f.status && f.status !== "done" ? [] : taskQuery(db).where(and(where, eq(tasks.status, "done"))).orderBy(desc(tasks.completedAt), asc(tasks.id)).limit(BOARD_DONE_LIMIT + 1),
+  ]);
+  const rows = [...open, ...done.slice(0, BOARD_DONE_LIMIT)];
+  return { ...d, tasks: rows.map((r) => decorate(actor, r, d.today)), total: rows.length, page: 1, pageSize: rows.length, doneCapped: done.length > BOARD_DONE_LIMIT };
 }
 
 function decorate<T extends { status: TaskStatus; dueDate: string | null; checklist: ChecklistItem[] | null; labels: string[] | null; createdBy: string; assigneeId: string | null; comments: unknown }>(actor: Actor, r: T, today: string) {

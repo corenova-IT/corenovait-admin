@@ -1,8 +1,8 @@
 import "server-only";
 import { createHash, randomBytes } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray, lt } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { isProduction } from "@/lib/env";
 import { sniffType } from "@/lib/file-types";
@@ -106,4 +106,37 @@ async function chatAttachmentVisible(actor: Actor, messageId: string, fileId: st
     .from(schema.chatMembers)
     .where(and(eq(schema.chatMembers.channelId, msg.channelId), eq(schema.chatMembers.userId, actor.userId)));
   return !!member;
+}
+
+/**
+ * Clean-up (run by the scheduler): chat attachments no message points to any
+ * more, from deleted or admin-removed messages, or an upload whose message
+ * was never saved. Removed from disk and from the database. Uploads younger
+ * than an hour are left alone, in case their message is still being sent.
+ * One audit entry with the count; no file names (they may come from DMs).
+ */
+export async function cleanupOrphanedChatFiles(now = new Date(), graceMinutes = 60): Promise<number> {
+  const db = getDb();
+  const candidates = await db
+    .select({ id: schema.files.id, storageKey: schema.files.storageKey, entityId: schema.files.entityId, linked: schema.chatMessages.fileId })
+    .from(schema.files)
+    .leftJoin(schema.chatMessages, eq(schema.chatMessages.id, schema.files.entityId))
+    .where(and(eq(schema.files.module, "chat"), lt(schema.files.createdAt, new Date(now.getTime() - graceMinutes * 60_000))))
+    .limit(500);
+  const orphans = candidates.filter((c) => c.linked !== c.id);
+  if (!orphans.length) return 0;
+  for (const f of orphans) {
+    if (!KEY.test(f.storageKey)) continue;
+    try {
+      await unlink(path.join(uploadDir(), f.storageKey));
+    } catch (e) {
+      // already gone from disk is fine; anything else, keep the row and try again next run
+      if ((e as NodeJS.ErrnoException).code !== "ENOENT") continue;
+    }
+    await db.delete(schema.files).where(eq(schema.files.id, f.id));
+  }
+  const remaining = await db.select({ id: schema.files.id }).from(schema.files).where(inArray(schema.files.id, orphans.map((o) => o.id)));
+  const removed = orphans.length - remaining.length;
+  if (removed) await writeAudit(db, null, { action: "delete", entity: "files", summary: `Clean-up: removed ${removed} chat attachment${removed === 1 ? "" : "s"} no longer attached to a message` });
+  return removed;
 }

@@ -276,7 +276,7 @@ export const files = mysqlTable(
       .references(() => users.id),
     createdAt: createdAt(),
   },
-  (t) => [uniqueIndex("files_storage_uq").on(t.storageKey), index("files_entity_idx").on(t.entityType, t.entityId)]
+  (t) => [uniqueIndex("files_storage_uq").on(t.storageKey), index("files_entity_idx").on(t.entityType, t.entityId), index("files_module_created_idx").on(t.module, t.createdAt)]
 );
 
 // ---------------------------------------------------------------- finance core
@@ -326,6 +326,8 @@ export const incomeEntries = mysqlTable(
     index("income_created_by_idx").on(t.createdBy),
     index("income_rep_idx").on(t.representativeId),
     index("income_status_idx").on(t.status),
+    index("income_country_date_idx").on(t.countryCode, t.entryDate),
+    index("income_stream_date_idx").on(t.streamId, t.entryDate),
     check("income_commission_chk", sql`${t.commissionRate} is null or (${t.commissionRate} >= 0 and ${t.commissionRate} <= 1)`),
     check("income_amount_chk", sql`${t.amountMinor} > 0`),
     check("income_rate_chk", sql`${t.fxRateToBase} > 0`),
@@ -360,6 +362,7 @@ export const expenses = mysqlTable(
     index("expense_date_idx").on(t.expenseDate),
     index("expense_created_by_idx").on(t.createdBy),
     index("expense_category_idx").on(t.category),
+    index("expense_country_date_idx").on(t.countryCode, t.expenseDate),
     check("expense_amount_chk", sql`${t.amountMinor} > 0`),
     check("expense_rate_chk", sql`${t.fxRateToBase} > 0`),
     check("expense_currency_chk", sql`${t.currency} regexp '^[A-Z]{3}$'`),
@@ -531,8 +534,12 @@ export const events = mysqlTable(
     location: varchar("location", { length: 300 }).notNull().default(""),
     videoUrl: varchar("video_url", { length: 500 }).notNull().default(""),
     description: text("description"),
-    /** remind this many minutes before (sent once notifications arrive); null = no reminder */
+    /** remind this many minutes before; null = no reminder */
     reminderMinutes: smallint("reminder_minutes"),
+    /** repeats from starts_at: every day, week (same weekday) or month (same day, last day in short months) */
+    recurrence: mysqlEnum("recurrence", ["none", "daily", "weekly", "monthly"]).notNull().default("none"),
+    /** last local date an occurrence may start on; null = no end */
+    recurrenceUntil: date("recurrence_until", { mode: "string" }),
     isSample: boolean("is_sample").notNull().default(false),
     createdBy: userRef("created_by")
       .notNull()
@@ -542,6 +549,8 @@ export const events = mysqlTable(
   },
   (t) => [
     index("event_starts_idx").on(t.startsAt),
+    index("event_ends_idx").on(t.endsAt),
+    index("event_recurrence_idx").on(t.recurrence, t.recurrenceUntil),
     index("event_created_by_idx").on(t.createdBy),
     check("event_times_chk", sql`${t.endsAt} >= ${t.startsAt}`),
     check("event_reminder_chk", sql`${t.reminderMinutes} is null or ${t.reminderMinutes} between 0 and 10080`),
@@ -560,6 +569,22 @@ export const eventAttendees = mysqlTable(
       .references(() => users.id),
   },
   (t) => [primaryKey({ columns: [t.eventId, t.userId] }), index("attendee_user_idx").on(t.userId)]
+);
+
+/**
+ * Occurrences of a repeating event that were skipped: deleted on their own,
+ * or edited on their own (the edited copy is a separate one-off event).
+ */
+export const eventExceptions = mysqlTable(
+  "event_exceptions",
+  {
+    eventId: varchar("event_id", { length: 36 })
+      .notNull()
+      .references(() => events.id, { onDelete: "cascade" }),
+    /** the occurrence's local start date */
+    occurrenceDate: date("occurrence_date", { mode: "string" }).notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.eventId, t.occurrenceDate] })]
 );
 
 // ---------------------------------------------------------------- tasks
@@ -590,6 +615,7 @@ export const tasks = mysqlTable(
   (t) => [
     index("task_assignee_idx").on(t.assigneeId, t.status),
     index("task_due_idx").on(t.dueDate),
+    index("task_status_due_idx").on(t.status, t.dueDate),
     index("task_created_by_idx").on(t.createdBy),
   ]
 );
@@ -672,6 +698,8 @@ export const chatMessages = mysqlTable(
     editedAt: datetime("edited_at", { mode: "date", fsp: 3 }),
     /** deleted messages keep their place but lose their text and file */
     deletedAt: datetime("deleted_at", { mode: "date", fsp: 3 }),
+    /** deleted by an admin (channels only, never DMs) rather than by its author */
+    removedByAdmin: boolean("removed_by_admin").notNull().default(false),
     isSample: boolean("is_sample").notNull().default(false),
     createdAt: datetime("created_at", { mode: "date", fsp: 3 }).notNull().$defaultFn(() => new Date()),
     /** bumped on every change, so live updates can send edits and deletes too */

@@ -8,6 +8,7 @@ import { addDays, daysBetween } from "@/lib/dates";
 import { KIND_LABEL, KIND_STYLE, type CalendarItem, type CalendarKind } from "@/lib/work";
 import { WEEKDAYS_SHORT } from "@/lib/zoned";
 import { EventPanel, type CalAction, type EventLookups } from "./EventForms";
+import { ScrollX } from "@/components/ui/ScrollX";
 
 const PREFIX: Partial<Record<CalendarKind, string>> = { task: "Due", payment: "Pay", deadline: "Deadline" };
 
@@ -38,7 +39,7 @@ function Chip({ item, onOpen, draggable, onDragStart, onDragEnd, roomy = false }
       className={cls}
       draggable={draggable}
       onDragStart={(e) => {
-        e.dataTransfer.setData("text/event-id", item.id);
+        e.dataTransfer.setData("text/event-id", item.key);
         e.dataTransfer.effectAllowed = "move";
         // Chrome cancels a drag if the dragged element changes during dragstart, so restyle a frame later
         requestAnimationFrame(onDragStart);
@@ -76,8 +77,8 @@ export function CalendarView({
   canDelete: boolean;
   actions: { save: CalAction; move: CalAction; remove: CalAction };
 }) {
-  const [optimistic, shift] = useOptimistic(items, (list, m: { id: string; to: string }) =>
-    list.map((i) => (i.event && i.id === m.id ? { ...i, date: m.to, endDate: addDays(m.to, daysBetween(i.date, i.endDate)) } : i))
+  const [optimistic, shift] = useOptimistic(items, (list, m: { key: string; to: string }) =>
+    list.map((i) => (i.event && i.key === m.key ? { ...i, date: m.to, endDate: addDays(m.to, daysBetween(i.date, i.endDate)) } : i))
   );
   const [open, setOpen] = useState<CalendarItem | null>(null);
   const [dragging, setDragging] = useState<string | null>(null);
@@ -91,15 +92,17 @@ export function CalendarView({
       .filter((i) => i.date <= d && i.endDate >= d)
       .sort((a, b) => Number(!!a.time) - Number(!!b.time) || (a.time ?? "").localeCompare(b.time ?? "") || a.title.localeCompare(b.title));
 
-  const drop = (to: string, id: string) => {
-    const item = optimistic.find((i) => i.event && i.id === id);
+  const drop = (to: string, key: string) => {
+    const item = optimistic.find((i) => i.event && i.key === key);
     if (!item || !item.editable || item.date === to) return;
     setError(null);
     startTransition(async () => {
-      shift({ id, to });
+      shift({ key, to });
       const fd = new FormData();
-      fd.set("id", id);
+      fd.set("id", item.id);
       fd.set("date", to);
+      // one occurrence of a repeating event moves on its own
+      if (item.event?.occurrenceDate) fd.set("occurrence", item.event.occurrenceDate);
       const r = await actions.move({}, fd);
       if (r.error) setError(r.error);
     });
@@ -119,7 +122,7 @@ export function CalendarView({
     },
   });
   const chip = (i: CalendarItem, roomy = false) => (
-    <Chip key={`${i.key}`} item={i} roomy={roomy} onOpen={setOpen} draggable={!!i.event && i.editable} onDragStart={() => setDragging(i.id)} onDragEnd={() => setDragging(null)} />
+    <Chip key={`${i.key}`} item={i} roomy={roomy} onOpen={setOpen} draggable={!!i.event && i.editable} onDragStart={() => setDragging(i.key)} onDragEnd={() => setDragging(null)} />
   );
 
   return (
@@ -146,7 +149,7 @@ export function CalendarView({
           );
         })()
       ) : (
-        <div className="scroll-x -mx-1 px-1 pb-1">
+        <ScrollX label="Calendar" className="-mx-1 px-1 pb-1">
           <div className={cx("grid min-w-[44rem] grid-cols-7 gap-px overflow-hidden rounded-[14px] border border-line bg-line")}>
             {WEEKDAYS_SHORT.map((w) => (
               <div key={w} className="bg-surface px-2 py-2 text-center">
@@ -176,7 +179,7 @@ export function CalendarView({
               );
             })}
           </div>
-        </div>
+        </ScrollX>
       )}
 
       {open?.event && (

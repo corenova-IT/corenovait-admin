@@ -13,6 +13,7 @@ import { hasSampleData } from "@/lib/dal/finance";
 import { hasPerm } from "@/lib/dal/guard";
 import { countryDetail, periodSchema } from "@/lib/dal/revenue";
 import { formatMoney } from "@/lib/money";
+import { ScrollX } from "@/components/ui/ScrollX";
 
 export const metadata = { title: "Country" };
 
@@ -61,7 +62,7 @@ export default async function CountryPage({ params, searchParams }: { params: Pr
           {d.byCurrency.length === 0 ? (
             <p className="text-sm text-muted">Nothing received for this period.</p>
           ) : (
-            <div className="scroll-x -mx-2 px-2">
+            <ScrollX label="Country table" className="-mx-2 px-2">
               <table className="w-full text-left font-mono text-sm">
                 <caption className="sr-only">Revenue by original currency</caption>
                 <thead>
@@ -81,7 +82,7 @@ export default async function CountryPage({ params, searchParams }: { params: Pr
                   ))}
                 </tbody>
               </table>
-            </div>
+            </ScrollX>
           )}
         </Card>
       </div>

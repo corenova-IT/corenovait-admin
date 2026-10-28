@@ -4,7 +4,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { requirePerm } from "@/lib/auth/session";
 import { channelsForAdmin, chatPeople, isAdminCaller, myConversations, openConversation } from "@/lib/dal/chat";
 import { hasPerm } from "@/lib/dal/guard";
-import { archiveChannel, deleteChatMessage, editChatMessage, loadOlderMessages, pingTyping, saveChannel, sendChatMessage, startDirectMessage } from "./actions";
+import { archiveChannel, deleteChatMessage, editChatMessage, loadOlderMessages, pingTyping, removeChatMessage, saveChannel, sendChatMessage, startDirectMessage } from "./actions";
 
 export const metadata = { title: "Team chat" };
 
@@ -20,7 +20,7 @@ export default async function ChatPage({ searchParams }: { searchParams: Promise
     chatPeople(actor),
     admin ? channelsForAdmin(actor) : Promise.resolve(null),
   ]);
-  const can = { post: hasPerm(actor, "chat", "create"), edit: hasPerm(actor, "chat", "edit"), delete: hasPerm(actor, "chat", "edit") || hasPerm(actor, "chat", "delete") };
+  const can = { post: hasPerm(actor, "chat", "create"), edit: hasPerm(actor, "chat", "edit"), delete: hasPerm(actor, "chat", "edit") || hasPerm(actor, "chat", "delete"), moderate: admin };
   const others = people.filter((p) => p.id !== actor.userId);
 
   return (
@@ -43,6 +43,7 @@ export default async function ChatPage({ searchParams }: { searchParams: Promise
           send: sendChatMessage,
           edit: editChatMessage,
           remove: deleteChatMessage,
+          moderate: removeChatMessage,
           typing: pingTyping,
           startDm: startDirectMessage,
           older: loadOlderMessages,

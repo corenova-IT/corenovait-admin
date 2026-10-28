@@ -20,6 +20,13 @@ const done = (ok: string): CalState => {
   return { ok };
 };
 const MISSING = "That event couldn't be found. Refresh and try again.";
+const dateOnly = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+/** For a repeating event: just this occurrence, or the whole series. */
+const seriesChoice = (fd: FormData): cal.SeriesChoice => {
+  const occurrence = dateOnly.safeParse(fd.get("occurrence"));
+  return { scope: str(fd, "scope") === "all" ? "all" : "one", occurrence: occurrence.success ? occurrence.data : null };
+};
+const RECURRENCES = ["none", "daily", "weekly", "monthly"] as const;
 
 export async function saveEvent(_prev: CalState, fd: FormData): Promise<CalState> {
   const id = str(fd, "id");
@@ -39,9 +46,11 @@ export async function saveEvent(_prev: CalState, fd: FormData): Promise<CalState
     description: str(fd, "description"),
     reminderMinutes: reminder === "" ? null : Number(reminder),
     attendeeIds: fd.getAll("attendeeIds").filter((v): v is string => typeof v === "string" && uuid.safeParse(v).success),
+    recurrence: RECURRENCES.find((r) => r === str(fd, "recurrence")) ?? "none",
+    recurrenceUntil: str(fd, "recurrenceUntil") || null,
   };
   try {
-    if (id) await cal.updateEvent(g.actor, id, input);
+    if (id) await cal.updateEvent(g.actor, id, input, seriesChoice(fd));
     else await cal.createEvent(g.actor, input);
     return done(id ? "Event saved." : "Event added.");
   } catch (e) {
@@ -49,16 +58,16 @@ export async function saveEvent(_prev: CalState, fd: FormData): Promise<CalState
   }
 }
 
-const moveSchema = z.object({ id: uuid, date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) });
+const moveSchema = z.object({ id: uuid, date: dateOnly, occurrence: dateOnly.nullable() });
 
 /** Drag to reschedule. */
 export async function moveEvent(_prev: CalState, fd: FormData): Promise<CalState> {
   const g = await actorWithPerm("calendar", "edit");
   if (!g.actor) return { error: g.error };
-  const v = moveSchema.safeParse({ id: fd.get("id"), date: fd.get("date") });
+  const v = moveSchema.safeParse({ id: fd.get("id"), date: fd.get("date"), occurrence: fd.get("occurrence") || null });
   if (!v.success) return { error: MISSING };
   try {
-    await cal.moveEvent(g.actor, v.data.id, v.data.date);
+    await cal.moveEvent(g.actor, v.data.id, v.data.date, { occurrence: v.data.occurrence });
     return done("Moved.");
   } catch (e) {
     return { error: errorMessage(e) };
@@ -71,8 +80,9 @@ export async function deleteEvent(_prev: CalState, fd: FormData): Promise<CalSta
   const id = uuid.safeParse(fd.get("id"));
   if (!id.success) return { error: MISSING };
   try {
-    await cal.deleteEvent(g.actor, id.data);
-    return done("Event deleted.");
+    const choice = seriesChoice(fd);
+    await cal.deleteEvent(g.actor, id.data, choice);
+    return done(choice.occurrence && choice.scope === "one" ? "That day's event deleted." : "Event deleted.");
   } catch (e) {
     return { error: errorMessage(e) };
   }

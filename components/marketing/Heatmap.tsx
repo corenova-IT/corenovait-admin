@@ -1,5 +1,6 @@
 import { ratePct } from "@/lib/marketing";
 import { WEEKDAYS, WEEKDAYS_SHORT, hourRange } from "@/lib/zoned";
+import { ScrollX } from "@/components/ui/ScrollX";
 
 /** Cells with fewer touches than this aren't coloured: one reply out of one call isn't a 100% hour. */
 export const HEAT_MIN = 3;
@@ -17,7 +18,7 @@ export function Heatmap({ heat, timezone }: { heat: Array<Array<{ touches: numbe
 
   return (
     <figure className="m-0 @container">
-      <div className="scroll-x -mx-1 px-1">
+      <ScrollX label="Response rate by weekday and hour" className="-mx-1 px-1">
         <table className="w-full min-w-[36rem] table-fixed border-separate border-spacing-[3px] font-mono text-[10px]">
           <caption className="sr-only">Response rate by weekday and hour, {timezone} time. Cells with fewer than {HEAT_MIN} touches are marked too few.</caption>
           <colgroup>
@@ -51,7 +52,8 @@ export function Heatmap({ heat, timezone }: { heat: Array<Array<{ touches: numbe
                     c.touches === 0
                       ? "no activity"
                       : `${c.touches} ${c.touches === 1 ? "touch" : "touches"}, ${enough ? `${rate}% got a response` : `too few to rate (${c.responded} got a response)`}`;
-                  const strength = enough ? 0.14 + 0.78 * ((rate ?? 0) / max) : 0;
+                  // capped at 60% so the printed rate keeps 4.5:1 contrast in both themes
+                  const strength = enough ? 0.12 + 0.48 * ((rate ?? 0) / max) : 0;
                   return (
                     <td
                       key={h}
@@ -74,11 +76,11 @@ export function Heatmap({ heat, timezone }: { heat: Array<Array<{ touches: numbe
             ))}
           </tbody>
         </table>
-      </div>
+      </ScrollX>
       <figcaption className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-muted">
         <span className="flex items-center gap-2">
           Lower
-          <span className="h-2.5 w-24 rounded-full" style={{ background: "linear-gradient(to right, color-mix(in oklab, var(--accent) 14%, var(--surface-2)), var(--accent))" }} aria-hidden="true" />
+          <span className="h-2.5 w-24 rounded-full" style={{ background: "linear-gradient(to right, color-mix(in oklab, var(--accent) 12%, var(--surface-2)), color-mix(in oklab, var(--accent) 60%, var(--surface-2)))" }} aria-hidden="true" />
           Higher response rate
         </span>
         <span className="flex items-center gap-2">

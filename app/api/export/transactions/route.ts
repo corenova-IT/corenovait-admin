@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSessionState } from "@/lib/auth/session";
+import { limiters, slowDown } from "@/lib/rate-limit";
 import { toCsv } from "@/lib/csv";
 import { AccessDenied } from "@/lib/dal/guard";
 import { EXPENSE_CSV_HEADER, INCOME_CSV_HEADER, expenseFilters, exportExpensesCsv, exportIncomeCsv, incomeFilters } from "@/lib/dal/finance";
@@ -13,6 +14,8 @@ import { EXPENSE_CSV_HEADER, INCOME_CSV_HEADER, expenseFilters, exportExpensesCs
 export async function GET(request: Request) {
   const s = await getSessionState();
   if (s.status !== "ok") return NextResponse.json({ error: "Sign in required" }, { status: 401 });
+  const rl = limiters.exportPerUser.hit(s.actor.userId);
+  if (!rl.ok) return NextResponse.json({ error: slowDown("downloads", rl.retryAfterSec) }, { status: 429, headers: { "Retry-After": String(rl.retryAfterSec) } });
   const params = Object.fromEntries(new URL(request.url).searchParams);
   const tab = params.tab === "expenses" ? "expenses" : "income";
 

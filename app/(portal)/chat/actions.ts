@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { actorForAction, actorWithPerm, errorMessage } from "@/lib/auth/session";
 import * as chat from "@/lib/dal/chat";
+import { limiters, slowDown } from "@/lib/rate-limit";
 
 /** Team chat. Permission first, then the form, then the data-access layer (which checks membership). */
 export type ChatState = { ok?: string; error?: string; message?: chat.ChatMessage; channelId?: string; messages?: chat.ChatMessage[]; hasOlder?: boolean };
@@ -20,7 +21,13 @@ export async function sendChatMessage(_prev: ChatState, fd: FormData): Promise<C
   if (!g.actor) return { error: g.error };
   const channelId = uuid.safeParse(fd.get("channelId"));
   if (!channelId.success) return { error: NOT_FOUND };
+  const rl = limiters.chatPerUser.hit(g.actor.userId);
+  if (!rl.ok) return { error: slowDown("messages", rl.retryAfterSec) };
   const file = fd.get("file");
+  if (file instanceof File && file.size > 0) {
+    const up = limiters.uploadPerUser.hit(g.actor.userId);
+    if (!up.ok) return { error: slowDown("uploads", up.retryAfterSec) };
+  }
   const attachment = file instanceof File && file.size > 0 ? { name: file.name, bytes: Buffer.from(await file.arrayBuffer()) } : undefined;
   try {
     const message = await chat.sendMessage(g.actor, channelId.data, str(fd, "body"), attachment);
@@ -102,6 +109,20 @@ async function adminGuard() {
   if (!a.actor) return a;
   if (!chat.isAdminCaller(a.actor)) return { error: "Only admins can manage channels." };
   return a;
+}
+
+/** Admins: remove someone else's message in a channel (never a DM). */
+export async function removeChatMessage(_prev: ChatState, fd: FormData): Promise<ChatState> {
+  const g = await adminGuard();
+  if (!g.actor) return { error: g.error };
+  const id = uuid.safeParse(fd.get("id"));
+  if (!id.success) return { error: "That message couldn't be found." };
+  try {
+    await chat.removeMessageAsAdmin(g.actor, id.data);
+    return { ok: "Removed." };
+  } catch (e) {
+    return { error: errorMessage(e) };
+  }
 }
 
 export async function saveChannel(_prev: ChatState, fd: FormData): Promise<ChatState> {

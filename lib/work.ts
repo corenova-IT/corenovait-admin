@@ -74,6 +74,10 @@ export type EventDetail = {
   attendees: Array<{ id: string; name: string }>;
   createdByName: string;
   mine: boolean;
+  /** repeating events: the rule, its last date, and which occurrence this is (its local start date) */
+  recurrence: "none" | "daily" | "weekly" | "monthly";
+  recurrenceUntil: string | null;
+  occurrenceDate: string | null;
 };
 
 /** Link to open a task's panel on the Tasks page, keeping the page's filters. */

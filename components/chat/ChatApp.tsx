@@ -15,7 +15,7 @@ import { useChatFeed } from "./useChatFeed";
 
 type State = { ok?: string; error?: string; message?: ChatMessage; channelId?: string; messages?: ChatMessage[]; hasOlder?: boolean };
 type Action = (prev: State, fd: FormData) => Promise<State>;
-export type ChatActions = { send: Action; edit: Action; remove: Action; typing: Action; startDm: Action; older: Action; saveChannel: Action; archive: Action };
+export type ChatActions = { send: Action; edit: Action; remove: Action; moderate: Action; typing: Action; startDm: Action; older: Action; saveChannel: Action; archive: Action };
 
 export type OpenConversation = {
   channel: { id: string; kind: "channel" | "dm"; name: string; topic: string; archived: boolean; isDefault: boolean };
@@ -65,7 +65,7 @@ function Attachment({ file }: { file: NonNullable<ChatMessage["file"]> }) {
   );
 }
 
-function Message({ m, showHeader, canEdit, canDelete, actions, onChange }: { m: ChatMessage; showHeader: boolean; canEdit: boolean; canDelete: boolean; actions: ChatActions; onChange: (m: ChatMessage) => void }) {
+function Message({ m, showHeader, canEdit, canDelete, canModerate, actions, onChange }: { m: ChatMessage; showHeader: boolean; canEdit: boolean; canDelete: boolean; canModerate: boolean; actions: ChatActions; onChange: (m: ChatMessage) => void }) {
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState(m.body);
   const [error, setError] = useState<string | null>(null);
@@ -95,7 +95,7 @@ function Message({ m, showHeader, canEdit, canDelete, actions, onChange }: { m: 
           </p>
         )}
         {m.deleted ? (
-          <p className="text-sm italic text-muted">Message deleted</p>
+          <p className="text-sm italic text-muted">{m.removedByAdmin ? "Message removed by an admin" : "Message deleted"}</p>
         ) : editing ? (
           <form
             className="mt-1 flex flex-col gap-2"
@@ -129,6 +129,21 @@ function Message({ m, showHeader, canEdit, canDelete, actions, onChange }: { m: 
         )}
         {error && <p className="mt-1 text-xs text-accent-text">{error}</p>}
       </div>
+      {!m.mine && !m.deleted && canModerate && (
+        <span className="flex shrink-0 items-start opacity-60 group-hover:opacity-100 group-focus-within:opacity-100">
+          <button
+            type="button"
+            className="rounded-md px-1.5 py-0.5 text-xs text-ink-2 hover:bg-surface-2 hover:text-accent-text"
+            disabled={pending}
+            onClick={() => {
+              if (window.confirm(`Remove ${m.authorName}'s message? It will show as "removed by an admin". This is recorded in the audit log.`))
+                run(actions.moderate, { id: m.id }, () => onChange({ ...m, deleted: true, removedByAdmin: true, body: "", file: null }));
+            }}
+          >
+            Remove<span className="sr-only"> message from {m.authorName} at {time(m.createdAt)}</span>
+          </button>
+        </span>
+      )}
       {m.mine && !m.deleted && !editing && (canEdit || canDelete) && (
         <span className="flex shrink-0 items-start gap-1 opacity-60 group-hover:opacity-100 group-focus-within:opacity-100">
           {canEdit && (
@@ -247,7 +262,7 @@ export function ChatApp({
   current: OpenConversation | null;
   people: Array<{ id: string; name: string }>;
   serverNow: string;
-  can: { post: boolean; edit: boolean; delete: boolean };
+  can: { post: boolean; edit: boolean; delete: boolean; moderate: boolean };
   admin: { channels: AdminChannel[]; people: Array<{ id: string; name: string }> } | null;
   actions: ChatActions;
 }) {
@@ -371,6 +386,9 @@ export function ChatApp({
             stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
           }}
           className="h-[min(62dvh,40rem)] overflow-y-auto px-[calc(var(--space-card)-0.5rem)] py-3"
+          tabIndex={0}
+          role="log"
+          aria-label="Messages"
         >
           {hasOlder && (
             <div className="mb-2 text-center">
@@ -423,7 +441,15 @@ export function ChatApp({
                     </p>
                   )}
                   <ul>
-                    <Message m={m} showHeader={showHeader} canEdit={can.edit && !ch.archived} canDelete={can.delete && !ch.archived} actions={actions} onChange={(x) => upsert([x])} />
+                    <Message
+                      m={m}
+                      showHeader={showHeader}
+                      canEdit={can.edit && !ch.archived}
+                      canDelete={can.delete && !ch.archived}
+                      canModerate={can.moderate && ch.kind === "channel"}
+                      actions={actions}
+                      onChange={(x) => upsert([x])}
+                    />
                   </ul>
                 </li>
               );

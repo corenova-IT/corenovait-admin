@@ -1,5 +1,6 @@
 import "server-only";
-import { and, asc, eq, type SQL } from "drizzle-orm";
+import { and, asc, eq, like, or, type SQL } from "drizzle-orm";
+import { likeTerm } from "@/lib/search";
 import { z } from "zod";
 import { getDb, schema, type Db, type Tx } from "@/lib/db";
 import { addDays, daysBetween, dueDatesUntil, nextCycleDate, todayIn, type CycleName } from "@/lib/dates";
@@ -134,6 +135,18 @@ export function timeline(rows: SubscriptionRow[], today: string, days: number): 
 }
 
 const sumOf = (xs: Occurrence[]) => xs.reduce((a, o) => a + o.amountBaseMinor, 0);
+
+/** Top-bar search: subscriptions by vendor, category or description, in the caller's scope. */
+export async function searchSubscriptions(actor: Actor, q: string, limit: number) {
+  requirePerm(actor, "payments", "view");
+  const t = likeTerm(q);
+  return getDb()
+    .select({ id: subscriptions.id, vendor: subscriptions.vendor, category: subscriptions.category, nextDueDate: subscriptions.nextDueDate, status: subscriptions.status })
+    .from(subscriptions)
+    .where(and(subScope(actor), or(like(subscriptions.vendor, t), like(subscriptions.category, t), like(subscriptions.description, t))))
+    .orderBy(asc(subscriptions.vendor))
+    .limit(limit);
+}
 
 /** Everything the Payments page and the Home "upcoming payments" card need. */
 export async function paymentsOverview(actor: Actor, opts: { country?: string } = {}) {

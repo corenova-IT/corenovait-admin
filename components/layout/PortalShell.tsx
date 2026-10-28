@@ -31,7 +31,7 @@ export function PortalShell({
           <Topbar name={user.name} email={user.email} theme={theme} badges={badges} />
         </header>
         {/* @container: page grids size their columns to the space next to the sidebar, not the window */}
-        <main id="main" className="@container px-4 pb-16 pt-7 sm:px-8 lg:px-10">
+        <main id="main" tabIndex={-1} className="@container px-4 pb-16 pt-7 focus:outline-none sm:px-8 lg:px-10">
           {children}
         </main>
       </div>

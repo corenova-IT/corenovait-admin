@@ -2,6 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { RuleError } from "@/lib/dal/guard";
+import { limiters, slowDown } from "@/lib/rate-limit";
 import { actorWithPerm, errorMessage } from "@/lib/auth/session";
 import * as fin from "@/lib/dal/finance";
 
@@ -18,9 +20,11 @@ const str = (fd: FormData, k: string) => {
   return typeof v === "string" ? v : "";
 };
 
-async function attachmentFrom(fd: FormData): Promise<fin.Attachment | undefined> {
+async function attachmentFrom(fd: FormData, userId: string): Promise<fin.Attachment | undefined> {
   const f = fd.get("attachment");
   if (!f || typeof f === "string" || f.size === 0) return undefined;
+  const rl = limiters.uploadPerUser.hit(userId);
+  if (!rl.ok) throw new RuleError(slowDown("uploads", rl.retryAfterSec));
   return { name: f.name, bytes: Buffer.from(await f.arrayBuffer()) };
 }
 
@@ -51,7 +55,7 @@ export async function saveIncome(_prev: LedgerState, fd: FormData): Promise<Ledg
     notes: str(fd, "notes"),
   };
   try {
-    const attachment = await attachmentFrom(fd);
+    const attachment = await attachmentFrom(fd, g.actor.userId);
     if (id) await fin.updateIncome(g.actor, id, input, attachment);
     else await fin.createIncome(g.actor, input, attachment);
     return done(id ? "Income entry saved." : "Income entry added.");
@@ -92,7 +96,7 @@ export async function saveExpense(_prev: LedgerState, fd: FormData): Promise<Led
     notes: str(fd, "notes"),
   };
   try {
-    const attachment = await attachmentFrom(fd);
+    const attachment = await attachmentFrom(fd, g.actor.userId);
     if (id) await fin.updateExpense(g.actor, id, input, attachment);
     else await fin.createExpense(g.actor, input, attachment);
     return done(id ? "Expense saved." : "Expense added.");
@@ -121,6 +125,8 @@ export async function importCsv(_prev: LedgerState, fd: FormData): Promise<Ledge
   const kind = str(fd, "kind") === "expenses" ? "expenses" : "income";
   const file = fd.get("file");
   if (!file || typeof file === "string" || file.size === 0) return { error: "Choose a CSV file to import." };
+  const rl = limiters.uploadPerUser.hit(g.actor.userId);
+  if (!rl.ok) return { error: slowDown("uploads", rl.retryAfterSec) };
   if (file.size > fin.IMPORT_MAX_BYTES) return { error: "That file is over 1 MB. Split it into smaller files." };
   try {
     const text = await file.text();

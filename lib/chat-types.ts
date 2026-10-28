@@ -24,6 +24,8 @@ export type ChatMessage = {
   createdAt: string;
   editedAt: string | null;
   deleted: boolean;
+  /** deleted by an admin (channels only) rather than by its author */
+  removedByAdmin: boolean;
   mine: boolean;
 };
 

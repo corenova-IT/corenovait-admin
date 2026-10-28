@@ -7,7 +7,28 @@ import { Button } from "@/components/ui/Button";
 import { Drawer, Modal } from "@/components/ui/Dialog";
 import { Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { useKeepValues } from "@/components/ui/useKeepValues";
+import { RECURRENCE_LABEL, type Recurrence } from "@/lib/recurrence";
 import { EVENT_TYPES, EVENT_TYPE_LABEL, REMINDERS, type EventDetail } from "@/lib/work";
+
+const REPEATS: Recurrence[] = ["none", "daily", "weekly", "monthly"];
+
+/** For one occurrence of a repeating event: change just that day, or the whole series. */
+function SeriesScope({ event, verb, scope, onChange }: { event: EventDetail; verb: string; scope: "one" | "all"; onChange: (s: "one" | "all") => void }) {
+  if (event.recurrence === "none" || !event.occurrenceDate) return null;
+  const day = new Date(`${event.occurrenceDate}T00:00:00Z`).toLocaleDateString("en-AU", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
+  return (
+    <fieldset className="flex flex-col gap-2 rounded-[14px] border border-line p-3">
+      <legend className="px-1 text-sm font-medium text-ink">This event repeats</legend>
+      <input type="hidden" name="occurrence" value={event.occurrenceDate} />
+      {(["one", "all"] as const).map((s) => (
+        <label key={s} className="flex items-center gap-2 text-sm text-ink">
+          <input type="radio" name="scope" value={s} checked={scope === s} onChange={() => onChange(s)} className="size-4 accent-[var(--accent)]" />
+          {s === "one" ? `${verb} only this one (${day})` : `${verb} every one in the series`}
+        </label>
+      ))}
+    </fieldset>
+  );
+}
 
 export type CalState = { ok?: string; error?: string };
 export type CalAction = (prev: CalState, fd: FormData) => Promise<CalState>;
@@ -18,6 +39,10 @@ export function EventForm({ event, lookups, action, onSaved, date }: { event?: E
   const submit = useKeepValues(formAction);
   const p = useId();
   const [allDay, setAllDay] = useState(event?.allDay ?? false);
+  const [scope, setScope] = useState<"one" | "all">("one");
+  const [repeat, setRepeat] = useState<Recurrence>(event?.recurrence ?? "none");
+  // changing one occurrence makes it a normal event, so the repeat settings only apply to the series
+  const oneOfSeries = !!event && event.recurrence !== "none" && !!event.occurrenceDate && scope === "one";
   useEffect(() => {
     if (state.ok && onSaved) onSaved();
   }, [state, onSaved]);
@@ -29,6 +54,7 @@ export function EventForm({ event, lookups, action, onSaved, date }: { event?: E
     <form action={formAction} onSubmit={submit} className="flex flex-col gap-5">
       <Msg state={state} />
       {event && <input type="hidden" name="id" value={event.id} />}
+      {event && <SeriesScope event={event} verb="Change" scope={scope} onChange={setScope} />}
       <div className="grid gap-4 sm:grid-cols-[2fr_1fr]">
         <Field label="Title" htmlFor={`${p}-title`}>
           <Input id={`${p}-title`} name="title" required maxLength={200} defaultValue={event?.title} placeholder="e.g. Call with Example Dental" />
@@ -66,6 +92,24 @@ export function EventForm({ event, lookups, action, onSaved, date }: { event?: E
           </Field>
         </div>
       )}
+      {!oneOfSeries && (
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Repeats" htmlFor={`${p}-rep`}>
+            <Select id={`${p}-rep`} name="recurrence" value={repeat} onChange={(e) => setRepeat(e.target.value as Recurrence)}>
+              {REPEATS.map((r) => (
+                <option key={r} value={r}>
+                  {RECURRENCE_LABEL[r]}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          {repeat !== "none" && (
+            <Field label="Until" htmlFor={`${p}-until`} hint="Optional: the last date it repeats on">
+              <Input id={`${p}-until`} name="recurrenceUntil" type="date" defaultValue={event?.recurrenceUntil ?? ""} />
+            </Field>
+          )}
+        </div>
+      )}
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Where" htmlFor={`${p}-loc`} hint="Optional">
           <Input id={`${p}-loc`} name="location" maxLength={300} defaultValue={event?.location} placeholder="Office, address or phone" />
@@ -74,7 +118,7 @@ export function EventForm({ event, lookups, action, onSaved, date }: { event?: E
           <Input id={`${p}-video`} name="videoUrl" type="url" maxLength={500} defaultValue={event?.videoUrl} placeholder="https://meet.google.com/…" />
         </Field>
       </div>
-      <Field label="Reminder" htmlFor={`${p}-rem`} hint="Sent once notifications arrive (Phase 5); saved now">
+      <Field label="Reminder" htmlFor={`${p}-rem`} hint="For you and everyone invited">
         <Select id={`${p}-rem`} name="reminderMinutes" defaultValue={event?.reminderMinutes == null ? (event ? "" : "10") : String(event.reminderMinutes)}>
           {REMINDERS.map((r) => (
             <option key={r.label} value={r.minutes ?? ""}>
@@ -133,6 +177,7 @@ const fmtWhen = (e: EventDetail, tz: string) => {
 export function EventPanel({ event, editable, canDelete, lookups, save, remove, onClose }: { event: EventDetail; editable: boolean; canDelete: boolean; lookups: EventLookups; save: CalAction; remove: CalAction; onClose: () => void }) {
   const [editing, setEditing] = useState(false);
   const [confirm, setConfirm] = useState(false);
+  const [delScope, setDelScope] = useState<"one" | "all">("one");
   const [delState, delAction, deleting] = useActionState(remove, {});
   useEffect(() => {
     if (delState.ok) onClose();
@@ -161,6 +206,15 @@ export function EventPanel({ event, editable, canDelete, lookups, save, remove, 
                     Join the call
                   </a>
                   <span className="ml-2 font-mono text-xs text-muted">{event.videoUrl}</span>
+                </dd>
+              </>
+            )}
+            {event.recurrence !== "none" && (
+              <>
+                <dt className="label-mono">Repeats</dt>
+                <dd className="text-ink">
+                  {RECURRENCE_LABEL[event.recurrence]}
+                  {event.recurrenceUntil ? `, until ${new Date(`${event.recurrenceUntil}T00:00:00Z`).toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" })}` : ""}
                 </dd>
               </>
             )}
@@ -194,6 +248,7 @@ export function EventPanel({ event, editable, canDelete, lookups, save, remove, 
         <form action={delAction} className="flex flex-col gap-4">
           <Msg state={delState} />
           <input type="hidden" name="id" value={event.id} />
+          <SeriesScope event={event} verb="Delete" scope={delScope} onChange={setDelScope} />
           <div className="flex justify-end gap-3">
             <Button variant="ghost" onClick={() => setConfirm(false)}>
               Keep it

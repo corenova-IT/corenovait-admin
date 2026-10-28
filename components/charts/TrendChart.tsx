@@ -3,6 +3,7 @@
 import { useId, useState } from "react";
 import { fmtMonth } from "@/lib/format";
 import { formatCompact, formatMoney } from "@/lib/money";
+import { ScrollX } from "@/components/ui/ScrollX";
 
 export type TrendPoint = { month: string; revenue: number; expenses: number; profit: number };
 
@@ -58,11 +59,11 @@ export function TrendChart({ data, currency, label, partialLast = false }: { dat
           <span className="w-5 border-t-2 border-dashed border-muted" /> Expenses
         </span>
       </div>
-      <div className="scroll-x">
+      <ScrollX label={label}>
         <div className="relative min-w-[34rem]">
           <svg
             viewBox={`0 0 ${W} ${H}`}
-            className="h-auto w-full overflow-visible outline-none"
+            className="h-auto w-full overflow-visible"
             role="img"
             aria-label={`${label}. Use left and right arrow keys to read each month.`}
             tabIndex={0}
@@ -143,7 +144,7 @@ export function TrendChart({ data, currency, label, partialLast = false }: { dat
             </p>
           </div>
         </div>
-      </div>
+      </ScrollX>
       {/* a table ignores width:1px and overflow, so the screen-reader copy sits in a hidden div */}
       <div className="sr-only">
         <table>

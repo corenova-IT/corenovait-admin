@@ -313,3 +313,50 @@ describe("file downloads", () => {
     expect(Buffer.from(await res.arrayBuffer()).toString()).toContain("fake invoice");
   });
 });
+
+describe("rate limits (security review)", () => {
+  it("whole-list downloads: 20 per person per 10 minutes, then 429 with Retry-After", async () => {
+    const { SESSION_COOKIE } = await import("@/lib/auth/session");
+    const { limiters } = await import("@/lib/rate-limit");
+    jar.set(SESSION_COOKIE, await sessionFor(t, ids.admin, { mfaVerified: true }));
+    limiters.exportPerUser.reset(ids.admin);
+    const get = async () => (await import("@/app/api/export/transactions/route")).GET(new Request("http://localhost/api/export/transactions?tab=income"));
+    for (let i = 0; i < 20; i++) expect((await get()).status).toBe(200);
+    const res = await get();
+    expect(res.status).toBe(429);
+    expect(res.headers.get("retry-after")).toMatch(/^\d+$/);
+    limiters.exportPerUser.reset(ids.admin);
+  });
+
+  it("chat: 30 messages a minute per person", async () => {
+    const chatDal = await import("@/lib/dal/chat");
+    const { sendChatMessage } = await import("@/app/(portal)/chat/actions");
+    const { limiters } = await import("@/lib/rate-limit");
+    limiters.chatPerUser.reset(ids.staff);
+    const general = (await chatDal.myConversations(await actorFor(t, ids.staff))).find((c) => c.label === "#general")!.id;
+    const send = (n: number) => {
+      const fd = new FormData();
+      fd.set("channelId", general);
+      fd.set("body", `message ${n}`);
+      return sendChatMessage({}, fd);
+    };
+    for (let i = 0; i < 30; i++) expect(await send(i)).toMatchObject({ ok: "Sent." });
+    expect((await send(31)).error).toMatch(/Too many messages/);
+    limiters.chatPerUser.reset(ids.staff);
+  });
+
+  it("invite and reset links: 10 tries per address per 15 minutes", async () => {
+    const { acceptInvite, resetPassword } = await import("@/app/(auth)/actions");
+    const { limiters } = await import("@/lib/rate-limit");
+    limiters.linkPerIp.reset("198.51.100.7");
+    const fd = new FormData();
+    fd.set("token", "x".repeat(43));
+    fd.set("password", "a long enough passphrase 1");
+    fd.set("confirm", "a long enough passphrase 1");
+    for (let i = 0; i < 5; i++) expect((await acceptInvite({}, fd)).error).not.toMatch(/Too many/);
+    for (let i = 0; i < 5; i++) expect((await resetPassword({}, fd)).error).not.toMatch(/Too many/);
+    expect((await acceptInvite({}, fd)).error).toMatch(/Too many attempts/);
+    expect((await resetPassword({}, fd)).error).toMatch(/Too many attempts/);
+    limiters.linkPerIp.reset("198.51.100.7");
+  });
+});

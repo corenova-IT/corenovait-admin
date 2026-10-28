@@ -16,6 +16,7 @@ import readline from "node:readline";
 import { hashPassword } from "../lib/auth/hash";
 import { passwordProblems } from "../lib/password";
 import { buildFirstAdminSql } from "./lib/first-admin-sql";
+import { isSampleEmail } from "../lib/sample-guard";
 
 function ask(question: string, hidden = false): Promise<string> {
   return new Promise((resolve) => {
@@ -45,6 +46,11 @@ async function main() {
   const email = (await ask("Admin email: ")).trim().toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) {
     console.error("That doesn't look like an email address.");
+    process.exit(1);
+  }
+  // the SQL is for the live portal: never a sample or test address
+  if (isSampleEmail(email)) {
+    console.error("That looks like a sample or test address (example.test and similar). Use the admin's real email.");
     process.exit(1);
   }
   const fullName = ((await ask("Full name: ")).trim() || email.split("@")[0]).slice(0, 120);

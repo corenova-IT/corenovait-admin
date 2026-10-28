@@ -1,11 +1,12 @@
 import "server-only";
-import { and, asc, count, desc, eq, gte, inArray, isNotNull, isNull, lte, ne, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, inArray, isNotNull, isNull, lte, ne, or, sql } from "drizzle-orm";
 import { getDb, schema, type Db, type Tx } from "@/lib/db";
 import { addDays } from "@/lib/dates";
 import { notificationEmail, sendMail } from "@/lib/email";
 import { mailConfig } from "@/lib/env";
 import { can, type AppModule } from "@/lib/permissions";
-import { localParts } from "@/lib/zoned";
+import { occurrenceDates } from "@/lib/recurrence";
+import { localParts, zonedToUtc } from "@/lib/zoned";
 import { actorRef, writeAudit } from "./audit";
 import { assertCaller, type Actor } from "./guard";
 import { loadUserPerms } from "./internal";
@@ -24,7 +25,7 @@ import { companyTimezone } from "./marketing";
  * twice (or two runs at once) never creates or emails the same thing twice.
  * People only ever see their own notifications.
  */
-const { notifications, users, tasks, events, eventAttendees, subscriptions } = schema;
+const { notifications, users, tasks, events, eventAttendees, eventExceptions, subscriptions } = schema;
 
 export type NewNotification = {
   userId: string;
@@ -141,14 +142,33 @@ export async function runScheduler(now = new Date()): Promise<SchedulerResult> {
     if (await notify(db, { userId: t.assigneeId!, type: "task_due", title: `Due ${when}: ${t.title}`, body: "A task assigned to you is due soon.", href: `/tasks?task=${t.id}`, dedupeKey: `task_due:${t.id}:${t.dueDate}` })) out.taskDue++;
   }
 
-  // meetings whose reminder time has come and that haven't started yet
-  const upcoming = await db
+  // meetings whose reminder time has come and that haven't started yet (each occurrence of a repeating one)
+  const weekAhead = new Date(now.getTime() + 7 * 86_400_000);
+  const rows = await db
     .select()
     .from(events)
-    .where(and(isNotNull(events.reminderMinutes), gte(events.startsAt, now), lte(events.startsAt, new Date(now.getTime() + 7 * 86_400_000))));
+    .where(
+      and(
+        isNotNull(events.reminderMinutes),
+        lte(events.startsAt, weekAhead),
+        or(and(eq(events.recurrence, "none"), gte(events.startsAt, now)), and(ne(events.recurrence, "none"), or(isNull(events.recurrenceUntil), gte(events.recurrenceUntil, addDays(today, -1)))))
+      )
+    );
+  const skipped = rows.some((e) => e.recurrence !== "none")
+    ? await db.select().from(eventExceptions).where(inArray(eventExceptions.eventId, rows.filter((e) => e.recurrence !== "none").map((e) => e.id)))
+    : [];
+  const upcoming = rows.flatMap((e) => {
+    if (e.recurrence === "none") return [e];
+    const first = localParts(e.startsAt, tz).date;
+    const lp = localParts(e.startsAt, tz);
+    const time = e.allDay ? "" : `T${String(lp.hour).padStart(2, "0")}:${String(lp.minute).padStart(2, "0")}`;
+    return occurrenceDates(first, e.recurrence, { from: today, to: addDays(today, 8) }, { until: e.recurrenceUntil, exceptions: skipped.filter((x) => x.eventId === e.id).map((x) => x.occurrenceDate) })
+      .map((d) => ({ ...e, startsAt: zonedToUtc(`${d}${time}`, tz) }))
+      .filter((o) => o.startsAt >= now && o.startsAt <= weekAhead);
+  });
   const dueNow = upcoming.filter((e) => e.startsAt.getTime() - (e.reminderMinutes ?? 0) * 60_000 <= now.getTime());
   if (dueNow.length) {
-    const att = await db.select().from(eventAttendees).where(inArray(eventAttendees.eventId, dueNow.map((e) => e.id)));
+    const att = await db.select().from(eventAttendees).where(inArray(eventAttendees.eventId, [...new Set(dueNow.map((e) => e.id))]));
     const meetingPeople = await peopleWhoCan(db, [...att.map((a) => a.userId), ...dueNow.map((e) => e.createdBy)], "calendar");
     for (const e of dueNow) {
       const who = new Set([e.createdBy, ...att.filter((a) => a.eventId === e.id).map((a) => a.userId)]);
@@ -160,15 +180,32 @@ export async function runScheduler(now = new Date()): Promise<SchedulerResult> {
     }
   }
 
-  // payments inside their reminder window (or overdue), for the person looking after them
+  // payments inside their reminder window (or overdue): the person responsible, plus everyone with payments access
   const subs = await db.select().from(subscriptions).where(and(eq(subscriptions.status, "active"), lte(subscriptions.nextDueDate, addDays(today, 90))));
   const windowed = subs.filter((s) => s.nextDueDate <= addDays(today, s.reminderDays));
-  const payPeople = await peopleWhoCan(db, windowed.map((s) => s.responsibleUserId ?? s.createdBy), "payments");
-  for (const s of windowed) {
-    const userId = s.responsibleUserId ?? s.createdBy;
-    if (!payPeople.has(userId)) continue;
-    const when = s.nextDueDate < today ? "Overdue" : s.nextDueDate === today ? "Due today" : `Due ${s.nextDueDate}`;
-    if (await notify(db, { userId, type: "payment_due", title: `${when}: ${s.vendor}`, body: "A payment you look after is coming up. Mark it paid on the Payments page once it's done.", href: "/payments", dedupeKey: `payment:${s.id}:${s.nextDueDate}` })) out.payments++;
+  if (windowed.length) {
+    const active = (await db.select({ id: users.id }).from(users).where(eq(users.status, "active"))).map((u) => u.id);
+    const payPeople = await peopleWhoCan(db, active, "payments");
+    for (const s of windowed) {
+      const responsible = s.responsibleUserId ?? s.createdBy;
+      const when = s.nextDueDate < today ? "Overdue" : s.nextDueDate === today ? "Due today" : `Due ${s.nextDueDate}`;
+      // everyone who can see payments; the responsible person too, if they can (a reminder shows payment details)
+      for (const userId of payPeople) {
+        const mine = userId === responsible;
+        if (
+          await notify(db, {
+            userId,
+            type: "payment_due",
+            title: `${when}: ${s.vendor}`,
+            body: mine ? "A payment you look after is coming up. Mark it paid on the Payments page once it's done." : "A company payment is coming up.",
+            href: "/payments",
+            // the responsible person's key is unchanged from Phase 5, so nobody gets a repeat after the update
+            dedupeKey: mine ? `payment:${s.id}:${s.nextDueDate}` : `payment:${s.id}:${s.nextDueDate}:${userId}`,
+          })
+        )
+          out.payments++;
+      }
+    }
   }
 
   // emails: each one claimed first, so overlapping runs can't send it twice

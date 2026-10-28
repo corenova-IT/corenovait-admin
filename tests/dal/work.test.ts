@@ -143,6 +143,90 @@ describe(".ics", () => {
   });
 });
 
+describe("repeating events", () => {
+  // every Monday 09:30 Sydney, March to April 2027: the clocks go back on 4 April
+  const series = (over: Record<string, unknown> = {}) => ev({ title: "Weekly stand-up", start: "2027-03-01T09:30", end: "2027-03-01T10:00", recurrence: "weekly", recurrenceUntil: "2027-04-26", reminderMinutes: 10, attendeeIds: [ids.a], ...over });
+  const inSpring = async (id: string) => (await cal.calendarItems(await as(id), "2027-03-01", "2027-04-30")).items.filter((i) => i.event);
+  let id: string;
+
+  beforeAll(async () => {
+    id = await cal.createEvent(await as(ids.manager), series());
+  });
+
+  it("shows one item per occurrence, at the same local time through the daylight-saving change, only to people who may see it", async () => {
+    const mine = (await inSpring(ids.a)).filter((i) => i.id === id);
+    expect(mine.map((i) => i.date)).toEqual(["2027-03-01", "2027-03-08", "2027-03-15", "2027-03-22", "2027-03-29", "2027-04-05", "2027-04-12", "2027-04-19", "2027-04-26"]);
+    expect(new Set(mine.map((i) => i.time))).toEqual(new Set(["09:30"]));
+    expect(new Set(mine.map((i) => i.key)).size).toBe(9);
+    expect(mine[0].event).toMatchObject({ recurrence: "weekly", recurrenceUntil: "2027-04-26", occurrenceDate: "2027-03-01" });
+    expect((await inSpring(ids.b)).filter((i) => i.id === id)).toEqual([]);
+  });
+
+  it("changing just one occurrence makes it a separate event; the series skips that day; both are audited", async () => {
+    const mgr = await as(ids.manager);
+    await cal.updateEvent(mgr, id, series({ title: "Stand-up (moved)", start: "2027-03-16T11:00", end: "2027-03-16T11:30", recurrence: "weekly" }), { scope: "one", occurrence: "2027-03-15" });
+    const items = await inSpring(ids.a);
+    expect(items.filter((i) => i.id === id).map((i) => i.date)).not.toContain("2027-03-15");
+    const copy = items.find((i) => i.title === "Stand-up (moved)")!;
+    expect(copy).toMatchObject({ date: "2027-03-16", time: "11:00" });
+    expect(copy.event).toMatchObject({ recurrence: "none", occurrenceDate: null });
+    const logs = await t.db.select().from(t.schema.auditLog).where(eq(t.schema.auditLog.entityId, id));
+    expect(logs.some((l) => /Changed one occurrence \(2027-03-15\)/.test(l.summary ?? ""))).toBe(true);
+  });
+
+  it("dragging one occurrence moves only that one; deleting one skips it", async () => {
+    const mgr = await as(ids.manager);
+    await cal.moveEvent(mgr, id, "2027-03-23", { occurrence: "2027-03-22" });
+    await cal.deleteEvent(mgr, id, { scope: "one", occurrence: "2027-03-29" });
+    const items = await inSpring(ids.a);
+    expect(items.filter((i) => i.id === id).map((i) => i.date)).toEqual(["2027-03-01", "2027-03-08", "2027-04-05", "2027-04-12", "2027-04-19", "2027-04-26"]);
+    expect(items.find((i) => i.id !== id && i.date === "2027-03-23")).toMatchObject({ title: "Weekly stand-up", time: "09:30", endTime: "10:00" });
+  });
+
+  it("editing the whole series from a later occurrence keeps its first date and skipped days", async () => {
+    const mgr = await as(ids.manager);
+    await cal.updateEvent(mgr, id, series({ start: "2027-04-12T11:00", end: "2027-04-12T12:00" }), { scope: "all", occurrence: "2027-04-12" });
+    const mine = (await inSpring(ids.a)).filter((i) => i.id === id);
+    expect(mine.map((i) => i.date)).toEqual(["2027-03-01", "2027-03-08", "2027-04-05", "2027-04-12", "2027-04-19", "2027-04-26"]);
+    expect(new Set(mine.map((i) => `${i.time}-${i.endTime}`))).toEqual(new Set(["11:00-12:00"]));
+  });
+
+  it("refuses an occurrence that isn't in the series, a daily event longer than a day, an end date before the start, and other people", async () => {
+    const mgr = await as(ids.manager);
+    await expect(cal.deleteEvent(mgr, id, { scope: "one", occurrence: "2027-03-02" })).rejects.toThrow(/no longer exists/);
+    await expect(cal.deleteEvent(mgr, id, { scope: "one", occurrence: "2027-03-29" })).rejects.toThrow(/no longer exists/);
+    await expect(cal.createEvent(mgr, series({ recurrence: "daily", end: "2027-03-02T10:00" }))).rejects.toThrow(/every day can't last longer than a day/);
+    await expect(cal.createEvent(mgr, series({ recurrenceUntil: "2027-02-01" }))).rejects.toThrow(/before the first date/);
+    const before = await countRows(t, "event_exceptions");
+    await expect(cal.deleteEvent(await as(ids.a), id, { scope: "one", occurrence: "2027-04-05" })).rejects.toThrow(DENIED);
+    await expect(cal.moveEvent(await as(ids.b), id, "2027-04-06", { occurrence: "2027-04-05" })).rejects.toThrow(DENIED);
+    expect(await countRows(t, "event_exceptions")).toBe(before);
+  });
+
+  it("the .ics carries the repeat rule and the skipped days", async () => {
+    const one = await cal.eventIcs(await as(ids.a), id);
+    expect(one?.ics).toContain("RRULE:FREQ=WEEKLY;UNTIL=20270426T135959Z"); // end of 26 April in Sydney (+10)
+    // the series now starts at 11:00; 15, 22 and 29 March at 11:00 Sydney (+11) are skipped
+    for (const d of ["15", "22", "29"]) expect(one?.ics).toContain(`EXDATE:202703${d}T000000Z`);
+  });
+
+  it("meeting reminders go out for each occurrence", async () => {
+    const { runScheduler } = await import("@/lib/dal/notifications");
+    const at = (iso: string) => runScheduler(new Date(iso));
+    // 19 April 11:00 Sydney (+10) = 01:00Z; reminder 10 minutes before
+    expect((await at("2027-04-19T00:52:00Z")).meetings).toBe(2); // the manager and Alex
+    expect((await at("2027-04-19T00:55:00Z")).meetings).toBe(0); // already sent
+    expect((await at("2027-04-25T00:52:00Z")).meetings).toBe(0); // no occurrence on Sunday
+  });
+
+  it("deleting the whole series leaves the occurrences that became separate events", async () => {
+    await cal.deleteEvent(await as(ids.manager), id, { scope: "all", occurrence: "2027-04-05" });
+    const items = await inSpring(ids.a);
+    expect(items.filter((i) => i.id === id)).toEqual([]);
+    expect(items.map((i) => i.title).sort()).toEqual(["Stand-up (moved)", "Weekly stand-up"]);
+  });
+});
+
 // ---------------------------------------------------------------- tasks
 describe("tasks scope", () => {
   let adminsTask: string;

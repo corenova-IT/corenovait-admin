@@ -82,7 +82,8 @@ export function Topbar({ name, email, theme, badges: initial }: { name: string; 
   const placeholder = (wide && NAV.find((n) => pathname.startsWith(n.href))?.search) || "Search";
   return (
     <div className="flex items-center gap-3">
-      <form role="search" className="relative min-w-0 flex-1" action="#" onSubmit={(e) => e.preventDefault()}>
+      {/* a plain GET form: works without JavaScript, and the results page searches only what this person can see */}
+      <form role="search" className="relative min-w-0 flex-1" action="/search" method="get">
         <label htmlFor="global-search" className="sr-only">
           Search
         </label>
@@ -92,6 +93,11 @@ export function Topbar({ name, email, theme, badges: initial }: { name: string; 
         <input
           id="global-search"
           type="search"
+          name="q"
+          required
+          minLength={2}
+          maxLength={100}
+          enterKeyHint="search"
           placeholder={placeholder}
           className="h-12 w-full rounded-[14px] border border-line bg-surface pl-11 pr-4 text-[15px] text-ink placeholder:text-muted focus-visible:border-accent-line"
         />

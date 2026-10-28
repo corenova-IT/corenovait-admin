@@ -1,5 +1,5 @@
 /**
- * Small fixed-window limiter for login, password-reset and 2FA attempts.
+ * Small fixed-window limiter for sign-in, links, 2FA, chat, uploads and exports.
  * Hostinger runs this app as one Node process, so in-memory state is enough.
  * Each account also locks for 15 minutes after 5 wrong passwords (in the database).
  */
@@ -46,5 +46,14 @@ g.__cnLimiters ??= {
   mfaPerUser: new RateLimiter(6, 10 * 60_000),
   // the scheduler: a cron job calls it every few minutes; this leaves room for manual runs
   cron: new RateLimiter(6, 60_000),
+  // invite and reset links: guessing a token is hopeless, but don't let anyone try for long
+  linkPerIp: new RateLimiter(10, 15 * 60_000),
+  // chat messages, file uploads (receipts, chat attachments, CSV imports) and downloads of whole lists
+  chatPerUser: new RateLimiter(30, 60_000),
+  uploadPerUser: new RateLimiter(30, 10 * 60_000),
+  exportPerUser: new RateLimiter(20, 10 * 60_000),
 };
-export const limiters = g.__cnLimiters;
+export const limiters = g.__cnLimiters as Record<"loginPerAccount" | "loginPerIp" | "resetPerIp" | "mfaPerUser" | "cron" | "linkPerIp" | "chatPerUser" | "uploadPerUser" | "exportPerUser", RateLimiter>;
+
+/** The message shown when a limit is reached. */
+export const slowDown = (what: string, retryAfterSec: number) => `Too many ${what}. Try again in ${retryAfterSec < 90 ? `${retryAfterSec} seconds` : `${Math.ceil(retryAfterSec / 60)} minutes`}.`;

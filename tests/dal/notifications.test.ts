@@ -106,17 +106,21 @@ describe("the scheduler", () => {
     void soon;
   });
 
-  it("reminds the person looking after a payment, inside its reminder window, if they can see payments", async () => {
+  it("reminds the person responsible and everyone with payments access, inside the reminder window", async () => {
     const pay = await import("@/lib/dal/payments");
     const admin = await as(ids.admin);
+    const manager = (await createPerson(t, { email: "manager@example.test", preset: "manager", totp: true })).id;
     await pay.saveSubscription(admin, null, { vendor: "Hosting soon", category: "Hosting", amount: "10", currency: "AUD", nextDueDate: addDays(today, 2), reminderDays: "3", responsibleUserId: ids.admin });
     await pay.saveSubscription(admin, null, { vendor: "Hosting later", category: "Hosting", amount: "10", currency: "AUD", nextDueDate: addDays(today, 20), reminderDays: "3", responsibleUserId: ids.admin });
-    // Ann looks after one but can't see payments: no reminder for her
+    // Ann is responsible for one but can't see payments: she gets nothing; people with payments access do
     await pay.saveSubscription(admin, null, { vendor: "Ann's", category: "Hosting", amount: "10", currency: "AUD", nextDueDate: today, reminderDays: "3", responsibleUserId: ids.a });
     const r = await n.runScheduler();
-    expect(r.payments).toBe(1);
-    expect((await notesFor(ids.admin)).filter((x) => x.type === "payment_due").map((x) => x.title)).toEqual([`Due ${addDays(today, 2)}: Hosting soon`]);
-    expect((await notesFor(ids.a)).filter((x) => x.type === "payment_due")).toEqual([]);
+    expect(r.payments).toBe(4); // two payments in the window x (admin, manager)
+    const titles = async (id: string) => (await notesFor(id)).filter((x) => x.type === "payment_due").map((x) => x.title).sort();
+    expect(await titles(ids.admin)).toEqual([`Due ${addDays(today, 2)}: Hosting soon`, "Due today: Ann's"]);
+    expect(await titles(manager)).toEqual([`Due ${addDays(today, 2)}: Hosting soon`, "Due today: Ann's"]);
+    expect(await titles(ids.a)).toEqual([]);
+    expect((await n.runScheduler()).payments).toBe(0);
   });
 
   it("emails each notification once, only to people with email on", async () => {

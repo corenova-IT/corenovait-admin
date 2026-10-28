@@ -17,6 +17,9 @@ export type IcsEvent = {
   videoUrl?: string;
   reminderMinutes?: number | null;
   updatedAt?: Date;
+  /** a repeating event: an RRULE line and EXDATE lines for skipped occurrences */
+  rrule?: string;
+  exdates?: string[];
 };
 
 const utc = (d: Date) => d.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
@@ -56,6 +59,7 @@ export function buildIcs(events: IcsEvent[], opts: { calendarName: string; now?:
     lines.push("BEGIN:VEVENT", `UID:${e.id}@corenovait`, `DTSTAMP:${stamp}`);
     if (e.allDay && e.startDate && e.endDateExclusive) lines.push(`DTSTART;VALUE=DATE:${dateOnly(e.startDate)}`, `DTEND;VALUE=DATE:${dateOnly(e.endDateExclusive)}`);
     else lines.push(`DTSTART:${utc(e.startsAt)}`, `DTEND:${utc(e.endsAt)}`);
+    if (e.rrule) lines.push(e.rrule, ...(e.exdates ?? []));
     lines.push(`SUMMARY:${icsText(e.title)}`);
     if (e.location) lines.push(`LOCATION:${icsText(e.location)}`);
     if (description) lines.push(`DESCRIPTION:${icsText(description)}`);

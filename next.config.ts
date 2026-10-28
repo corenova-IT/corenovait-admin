@@ -1,23 +1,5 @@
 import type { NextConfig } from "next";
 
-const isDev = process.env.NODE_ENV !== "production";
-
-const csp = [
-  "default-src 'self'",
-  // Next injects inline bootstrap scripts; dev also needs eval for fast refresh
-  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
-  "style-src 'self' 'unsafe-inline'",
-  // the two-factor QR code is a data: SVG
-  "img-src 'self' data: blob:",
-  "font-src 'self'",
-  // chat (Phase 5) uses Server-Sent Events and polling on the same origin
-  "connect-src 'self'",
-  "frame-ancestors 'none'",
-  "base-uri 'self'",
-  "form-action 'self'",
-  "object-src 'none'",
-].join("; ");
-
 const nextConfig: NextConfig = {
   poweredByHeader: false,
   // native argon2 binary and the MySQL driver run as normal Node modules, not bundled
@@ -32,7 +14,7 @@ const nextConfig: NextConfig = {
       {
         source: "/:path*",
         headers: [
-          { key: "Content-Security-Policy", value: csp },
+          // the Content Security Policy is set per request (with a nonce) in proxy.ts
           { key: "X-Frame-Options", value: "DENY" },
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },

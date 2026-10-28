@@ -9,8 +9,8 @@ It is a separate app from the public website, with its own database.
 - Permissions are enforced on the server by one data-access layer (`lib/dal`).
   Nothing else may query the database; a test fails the build if anything tries.
 
-**Phase 1 (this build):** design system, sign-in, two-factor, roles and permissions,
-the data-access layer, Team page, audit log. Later modules show a "coming in Phase N" page.
+**Going live:** follow [DEPLOY.md](DEPLOY.md) (Hostinger, step by step, with a go-live checklist).
+The security review is in [SECURITY.md](SECURITY.md).
 
 ---
 
@@ -80,6 +80,9 @@ All are server-only. See `.env.example` for comments.
 | `SITE_URL` | yes | e.g. `https://admin.corenovait.com.au`. Used in email links. |
 | `RESEND_API_KEY`, `MAIL_FROM` | production | Resend key and a sender on your verified domain. |
 | `UPLOAD_DIR` | production | Absolute path **outside** the app folder and `public_html`. |
+| `NODE_ENV` | production | `production` on the server. |
+| `BACKUP_DIR` | production | Absolute path outside the app for the automatic backup taken before each database update. Default `~/corenovait-backups`. |
+| `TRUST_PROXY_HOPS` | no | Default 1. How many proxies are in front of the app, so rate limits see the visitor's real address (DEPLOY.md, go-live checklist). |
 | `CRON_SECRET` | production | At least 32 random characters (`npm run gen:key`). Protects the scheduler endpoint the cron job calls (section 9). Without it, reminders and notification emails don't run. |
 | `SESSION_IDLE_MINUTES` | no | Default 30. |
 | `SESSION_MAX_HOURS` | no | Default 12. Sessions end after this even if active. |
@@ -99,7 +102,11 @@ All are server-only. See `.env.example` for comments.
   Review the SQL, commit it, and never edit a migration that has been deployed.
 - `npm run db:migrate` applies new migrations to `DATABASE_URL`. It is safe to repeat
   (applied ones are recorded in `__drizzle_migrations`).
-- **`npm start` runs `db:migrate` first**, so every deploy upgrades the schema before serving.
+- **`npm start` (`server.mjs`) runs `db:migrate` first**, so every deploy upgrades the schema before
+  serving. When there is anything to apply to a database that has data, it first writes a full backup
+  to `BACKUP_DIR` (`pre-migration-<time>.sql.gz`, last 20 kept). If the backup fails, nothing is
+  migrated and the app doesn't start.
+- `npm run db:backup` writes the same kind of backup on demand (`manual-<time>.sql.gz`).
 - `0000_core_schema.sql` creates the tables; `0001_seed_reference_data.sql` adds the role
   presets, the 5 revenue streams and the 3 countries.
 
@@ -390,6 +397,50 @@ app's environment variable and the cron command. To test locally:
 curl -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" http://localhost:3000/api/cron/notifications
 ```
 
+### Phase 6: repeating events, search, accessibility, performance, security
+
+- **Repeating events:** daily, weekly or monthly, with an optional last date. A weekly 09:30 meeting
+  stays at 09:30 through daylight saving. Monthly on the 29th to 31st falls on the last day of shorter
+  months. Opening one occurrence lets you change or delete **only this one** (it becomes a separate
+  event and the series skips that day) or **the whole series**. Dragging one occurrence moves only that
+  one. Reminders go out for each occurrence. The .ics file carries the repeat rule and skipped days, so
+  Google, Outlook and Apple show the same series.
+- **Search:** the top-bar search opens `/search` with results grouped by page: income, expenses,
+  payments, streams, countries, representatives, marketing activity, calendar, tasks, chat, people and
+  the audit log. Each page is searched only for people who can open it, through that page's own data
+  functions, so scope is the same as on the page. Chat only searches conversations you're in.
+- **Chat moderation:** admins can remove a message in a channel (never a DM). It shows as "Message removed
+  by an admin", and the audit entry doesn't keep the text. Attachments of deleted messages are removed by
+  the cron job after an hour.
+- **Payment reminders** go to the person responsible and everyone with payments access.
+- **Accessibility:** everything works from the keyboard (skip link, visible focus on every control,
+  sideways-scrolling tables and the calendar reachable with Tab and arrow keys, dialogs that keep and
+  return focus). Text meets 4.5:1 contrast in both themes. Charts have text labels and data tables for
+  screen readers. Animations stop with "reduce motion". Checked automatically by axe in the browser tests.
+- **Performance:** indexes for the slow paths (ledgers by country and date, tasks by status and due
+  date, calendar ranges, files), pagination on every long list (the task list pages by 100; the board
+  shows open tasks and the last 50 finished), and the interactive chart loads in its own bundle.
+- **Security:** see [SECURITY.md](SECURITY.md). Nonce-based CSP, HSTS, rate limits on sign-in, links,
+  chat, uploads and downloads, and a production guard that stops sample data and sample accounts.
+
+Page weight (first visit, empty cache, compressed; from `tests/e2e/weight.spec.ts`):
+
+| Page | Signed in as | Total | JavaScript | CSS | HTML | Requests |
+|---|---|---:|---:|---:|---:|---:|
+| /login | nobody | 244 KB | 137 KB | 101 KB | 4 KB | 14 |
+| /home | admin | 293 KB | 147 KB | 111 KB | 17 KB | 40 |
+| /home | staff | 274 KB | 144 KB | 111 KB | 9 KB | 28 |
+| /analytics | admin | 298 KB | 152 KB | 111 KB | 18 KB | 41 |
+| /transactions | admin | 298 KB | 148 KB | 111 KB | 21 KB | 40 |
+| /payments | admin | 289 KB | 149 KB | 111 KB | 12 KB | 40 |
+| /marketing | admin | 297 KB | 151 KB | 111 KB | 35 KB | 15 |
+| /calendar | admin | 293 KB | 151 KB | 111 KB | 13 KB | 40 |
+| /tasks | admin | 294 KB | 151 KB | 111 KB | 15 KB | 40 |
+| /chat | staff | 278 KB | 149 KB | 111 KB | 9 KB | 25 |
+
+About half is the shared React and Next.js runtime, cached after the first page. The budget in the test is
+450 KB per page and 380 KB of JavaScript.
+
 ## 7. Uploads
 
 Files are stored in `UPLOAD_DIR` under random names, never in `public/`. Only PDF, PNG, JPG and WebP
@@ -430,6 +481,14 @@ a fresh database with the real migrations. Nothing touches your local or product
   who may see them, the scheduler run twice or in parallel creates nothing extra, emails sent once and only
   with the setting on, your own notifications only, and the cron endpoint (503 without a secret, 401 with a
   wrong one, rate limit).
+- `tests/dal/search.test.ts`: search shows staff only the pages and rows they can see; nobody finds
+  someone else's direct messages; `%` and `_` are plain text.
+- `tests/dal/backup.test.ts`: a backup restores every row exactly; the start-up backup runs before a
+  migration, and a failed backup blocks it.
+- `tests/dal/production-guard.test.ts`, `tests/unit/sample-guard.test.ts`: sample data and sample accounts
+  can't be created in production.
+- `tests/unit/security-review.test.ts`, `tests/unit/no-secrets-in-logs.test.ts`: the fixes in SECURITY.md
+  (CSP nonce, spoofed addresses, the cron route, redirects, nothing secret in the logs).
 - `tests/dal/boundaries.test.ts`: nothing outside `lib/dal` imports the database.
 - `tests/unit/`: TOTP against the RFC test vectors, encryption, upload type checks, money, passwords,
   date labels.
@@ -451,6 +510,10 @@ between two people (typing indicator, the message and an edit arriving without a
 notification, and a third person unable to open their DM), each checked again after a reload. For a quicker run, limit it, e.g.
 `E2E_WIDTHS=1366,390 E2E_THEMES=dark npx playwright test` (after `npx next build --webpack`).
 
+The same command also runs `tests/e2e/a11y.spec.ts` (axe on every page in both themes, at 1280 and
+390 px, and with the main dialogs open; keyboard-only checks; reduced motion) and
+`tests/e2e/weight.spec.ts` (page weight against a budget, written to `.e2e/page-weight.md`).
+
 The shared sizes live in `app/globals.css`: `--space-card` / `--space-gap` (fluid padding and gaps),
 `.kpi-number` (big figures, sized to their card), `.title-card`, `.clamp-2` (names wrap to two lines
 instead of being cut off) and `.scroll-x` (wide tables on small screens, with an edge fade). Page grids
@@ -459,51 +522,20 @@ space beside the sidebar rather than the window width.
 
 ## 9. Deploy to Hostinger (Node.js)
 
-**Create the database (hPanel → Databases → MySQL Databases):**
+The full, step-by-step guide is **[DEPLOY.md](DEPLOY.md)**. In short:
 
-1. Create a database (e.g. `u123_corenovait`) and a user with a long random password.
-2. Leave **Remote MySQL** off. The app connects as `localhost` from the same server; your PC never
-   connects to the production database.
-3. `DATABASE_URL=mysql://u123_user:PASSWORD@localhost:3306/u123_corenovait` (URL-encode special
-   characters in the password).
-
-> **Back up the database before any deploy that changes the schema.** `npm start` applies new
-> migrations automatically as soon as the deploy starts, and they can't be undone with a click.
-> A deploy changes the schema whenever it adds a file to `/drizzle` (check the commit or pull
-> request). Before pushing it: hPanel → Databases → phpMyAdmin → Export (or `mysqldump`, section 10),
-> and download the file. If the migration goes wrong, restore that export and redeploy the previous commit.
-
-**Create the app:**
-
-1. Push this repo to GitHub (`corenova-IT/corenovait-admin`).
-2. hPanel → **Websites → Add website → Node.js app**, connect the GitHub repo, branch `main`, auto-deploy on.
-3. Build settings: Node 20 or 22 · install `npm ci` · build `npm run build` · start `npm start`
-   (which migrates, then starts).
-4. Environment variables: everything in section 2 except `SEED_ADMIN_*` and `TEST_DATABASE_URL`.
-   Set `SITE_URL=https://admin.corenovait.com.au` and `UPLOAD_DIR` to a folder in your home
-   directory outside the app, e.g. `/home/u123/corenovait-uploads`.
-5. Domain: attach `admin.corenovait.com.au` and turn on SSL.
-6. Create the first admin once: over SSH (hPanel → Advanced → SSH access), from the app folder,
-   `SEED_ADMIN_EMAIL=... SEED_ADMIN_PASSWORD=... npm run seed:admin`, then clear your shell
-   history (`history -c`). No SSH: use `npm run admin:sql` and phpMyAdmin (section 4).
-7. Sign in at the live URL, set up two-factor, and check **Audit log** shows the sign-in.
-
-**Email:** in Resend, verify `corenovait.com.au` (the public site may already have done this), create an
-API key, and set `RESEND_API_KEY` and `MAIL_FROM`.
+- **Database:** MySQL on Hostinger, Remote MySQL off; the app connects as `localhost`.
+- **App:** a Node.js web app from GitHub (`corenova-IT/corenovait-admin`, branch `main`, auto-deploy):
+  application type **Other**, Node 22, build `npm run build`, entry file **`server.mjs`**. Hostinger's
+  "Next.js" preset would start the app without the backup-then-migrate step.
+- **Environment variables:** section 2, set in hPanel.
+- **First admin:** `npm run admin:sql` and phpMyAdmin (section 4).
+- **Cron:** the scheduler job (section 6, "Notifications and the cron job").
+- **Email:** Resend.
 
 ## 10. Backups
 
-- **Hostinger:** hPanel → Files → Backups keeps automatic daily backups of files and databases
-  (retention depends on your plan). Restore a database from there in a few clicks.
-- **Before every deploy that adds a file to `/drizzle`** (a schema change): take a copy first, as below.
-  Migrations run automatically on start, so this is your undo button.
-- **Your own copy (monthly, and before schema changes):** over SSH on the server:
-  ```bash
-  mysqldump --single-transaction --routines --no-tablespaces -u u123_user -p u123_corenovait | gzip > ~/backups/corenovait-$(date +%F).sql.gz
-  ```
-  Download it via the File Manager and store it encrypted (not in this repo). hPanel →
-  Databases → phpMyAdmin → Export does the same thing from the browser.
-- **Uploads:** back up `UPLOAD_DIR` too (`tar czf ~/backups/uploads-$(date +%F).tgz /home/u123/corenovait-uploads`).
-- **Keys:** keep `APP_ENCRYPTION_KEY` in your password manager. A database backup without it
-  can't verify two-factor codes.
-- **Restore:** `gunzip < corenovait-YYYY-MM-DD.sql.gz | mysql -u u123_user -p u123_corenovait`.
+See [DEPLOY.md, section 13](DEPLOY.md#13-backups-and-how-to-restore): Hostinger's daily backups,
+the automatic backup before every database update, monthly phpMyAdmin exports, the uploads folder,
+and how to restore. Keep `APP_ENCRYPTION_KEY` in your password manager: a database backup without it
+can't check two-factor codes.

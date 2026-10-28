@@ -1,6 +1,5 @@
-import { readFileSync } from "node:fs";
-import path from "node:path";
 import { expect, test, type BrowserContext, type Page } from "@playwright/test";
+import { BASE, PAGES, contextFor, tokens, type Who } from "./pages";
 
 /**
  * Visits every page at every target width, in both themes, and fails if
@@ -12,56 +11,6 @@ import { expect, test, type BrowserContext, type Page } from "@playwright/test";
  */
 const WIDTHS = process.env.E2E_WIDTHS ? process.env.E2E_WIDTHS.split(",").map(Number) : [1920, 1536, 1440, 1366, 1280, 1152, 1024, 768, 390];
 const THEMES = (process.env.E2E_THEMES ? process.env.E2E_THEMES.split(",") : ["dark", "light"]) as Array<"dark" | "light">;
-const BASE = "http://localhost:3210";
-const COOKIE = "__Host-cn_session";
-
-type Who = "none" | "admin" | "staff" | "mfaPending" | "marketing";
-const tokens = () => JSON.parse(readFileSync(path.resolve(".e2e/sessions.json"), "utf8")) as Record<Exclude<Who, "none">, string> & { repId: string; dmAlexCasey: string };
-
-const PAGES: Array<{ path: string | ((t: ReturnType<typeof tokens>) => string); as: Who }> = [
-  { path: "/login", as: "none" },
-  { path: "/forgot-password", as: "none" },
-  { path: "/mfa", as: "mfaPending" },
-  { path: "/home", as: "admin" },
-  { path: "/home?country=GB", as: "admin" },
-  { path: "/home", as: "staff" },
-  { path: "/analytics", as: "admin" },
-  { path: "/analytics?country=AU", as: "admin" },
-  { path: "/payments", as: "admin" },
-  { path: "/payments?window=90", as: "admin" },
-  { path: "/transactions", as: "admin" },
-  { path: "/transactions?tab=expenses", as: "admin" },
-  { path: "/streams", as: "admin" },
-  { path: "/streams/1", as: "admin" },
-  { path: "/streams/countries", as: "admin" },
-  { path: "/streams/countries/GB", as: "admin" },
-  { path: "/streams/representatives", as: "admin" },
-  { path: (t) => `/streams/representatives/${t.repId}`, as: "admin" },
-  { path: "/settings", as: "admin" },
-  { path: "/team", as: "admin" },
-  { path: "/audit", as: "admin" },
-  { path: "/account", as: "admin" },
-  { path: "/no-access?module=team", as: "staff" },
-  { path: "/marketing", as: "admin" },
-  { path: "/marketing?channel=cold_call&page=2", as: "admin" },
-  { path: "/marketing?channel=individual_referral&campaign=none", as: "admin" },
-  { path: "/marketing", as: "marketing" },
-  { path: "/home", as: "marketing" },
-  { path: "/calendar", as: "admin" },
-  { path: "/calendar?view=week", as: "admin" },
-  { path: "/calendar?view=agenda", as: "admin" },
-  { path: "/calendar", as: "staff" },
-  { path: "/tasks", as: "admin" },
-  { path: "/tasks?view=list", as: "admin" },
-  { path: "/tasks?assignee=me&view=list", as: "staff" },
-  { path: "/tasks", as: "staff" },
-  { path: "/chat", as: "admin" },
-  { path: "/chat", as: "staff" },
-  { path: (t) => `/chat?c=${t.dmAlexCasey}`, as: "staff" },
-  { path: "/notifications", as: "admin" },
-  { path: "/notifications", as: "staff" },
-];
-
 /** Runs in the page: returns a list of human-readable layout problems. */
 function findLayoutProblems(checkTableScroll: boolean): string[] {
   const out: string[] = [];
@@ -153,15 +102,6 @@ function findLayoutProblems(checkTableScroll: boolean): string[] {
     }
   }
   return [...new Set(out)];
-}
-
-async function contextFor(browser: import("@playwright/test").Browser, who: Who, theme: "dark" | "light", width: number): Promise<BrowserContext> {
-  const ctx = await browser.newContext({ viewport: { width, height: 900 } });
-  const cookies = [{ name: "cn_theme", value: theme, url: BASE }];
-  // Chrome only plants a Secure cookie when given an https URL; it then sends it to http://localhost too
-  if (who !== "none") cookies.push({ name: COOKIE, value: tokens()[who], url: BASE.replace("http:", "https:"), secure: true, httpOnly: true } as never);
-  await ctx.addCookies(cookies as never);
-  return ctx;
 }
 
 for (const theme of THEMES) {

@@ -25,10 +25,9 @@ const PEOPLE = [
 const CLIENTS = ["Northwind Sample Co", "Example Retail Pty", "Placeholder Labs", "Demo Dental Group", "Fictional Freight Ltd", "Sample Studio"];
 
 async function main() {
-  if (process.env.NODE_ENV === "production") throw new Error("seed:dev never runs in production.");
-  const url = process.env.DATABASE_URL ?? "";
-  const host = /^mysql:\/\/(?:[^@/]*@)?([^:/]+)/.exec(url)?.[1];
-  if (host !== "127.0.0.1" && host !== "localhost") throw new Error("seed:dev only runs against a database on this PC (127.0.0.1 or localhost).");
+  // never in production, never against a database that isn't on this computer, never for a real SITE_URL
+  const { assertSampleSeedAllowed } = await import("../lib/sample-guard");
+  assertSampleSeedAllowed();
 
   const { getDb, schema, closeDb } = await import("../lib/db");
   const { copyPresetToUser } = await import("../lib/dal/internal");

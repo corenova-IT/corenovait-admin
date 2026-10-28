@@ -204,3 +204,58 @@ describe("messages", () => {
     await expect(chat.sendMessage(a, general, "x".repeat(chat.MAX_MESSAGE + 1))).rejects.toThrow(/under/);
   });
 });
+
+describe("admins removing messages (channels only)", () => {
+  it("an admin in a channel can remove someone else's message; it shows as removed, audited without the text", async () => {
+    const admin = await as(ids.admin);
+    const general = (await chat.myConversations(admin)).find((c) => c.label === "#general")!.id;
+    const m = await chat.sendMessage(await as(ids.a), general, "Something to moderate");
+    await chat.removeMessageAsAdmin(admin, m.id);
+    const seen = (await chat.openConversation(await as(ids.b), general)).messages.find((x) => x.id === m.id)!;
+    expect(seen).toMatchObject({ deleted: true, removedByAdmin: true, body: "" });
+    const [log] = await t.db.select().from(t.schema.auditLog).where(eq(t.schema.auditLog.entityId, m.id));
+    expect(log).toMatchObject({ action: "delete", summary: "Removed a message in #general (moderation)" });
+    expect(JSON.stringify(log)).not.toContain("Something to moderate");
+  });
+
+  it("never in a direct message, and not by staff", async () => {
+    const dm = await chat.openDirectMessage(await as(ids.a), ids.admin);
+    const m = await chat.sendMessage(await as(ids.a), dm, "DM text");
+    // even though the admin is in this DM, admins can't moderate DMs
+    await expect(chat.removeMessageAsAdmin(await as(ids.admin), m.id)).rejects.toThrow(/direct message/);
+    const general = (await chat.myConversations(await as(ids.a))).find((c) => c.label === "#general")!.id;
+    const other = await chat.sendMessage(await as(ids.b), general, "Bob's");
+    await expect(chat.removeMessageAsAdmin(await as(ids.a), other.id)).rejects.toThrow(/Only admins/);
+    expect((await chat.openConversation(await as(ids.a), dm)).messages.find((x) => x.id === m.id)?.deleted).toBe(false);
+  });
+});
+
+describe("attachment clean-up (run by the cron job)", () => {
+  it("removes files no message uses any more, from disk and the database, and leaves files in use alone", async () => {
+    const { existsSync } = await import("node:fs");
+    const path = await import("node:path");
+    const { cleanupOrphanedChatFiles, uploadDir } = await import("@/lib/dal/files");
+    const a = await as(ids.a);
+    const general = (await chat.myConversations(a)).find((c) => c.label === "#general")!.id;
+    const kept = await chat.sendMessage(a, general, "keep", { name: "keep.png", bytes: PNG });
+    const gone = await chat.sendMessage(a, general, "gone", { name: "gone.png", bytes: PNG });
+    await chat.deleteMessage(a, gone.id);
+    const fileRow = async (id: string) => (await t.db.select().from(t.schema.files).where(eq(t.schema.files.id, id)))[0];
+    const goneFile = await fileRow(gone.file!.id);
+    const onDisk = (key: string) => existsSync(path.join(uploadDir(), key));
+    expect(onDisk(goneFile.storageKey)).toBe(true);
+
+    // within the hour's grace nothing goes
+    expect(await cleanupOrphanedChatFiles(new Date())).toBe(0);
+    // later, the deleted message's file goes; the one still attached stays
+    const removed = await cleanupOrphanedChatFiles(new Date(Date.now() + 2 * 3600_000));
+    expect(removed).toBeGreaterThanOrEqual(1);
+    expect(await fileRow(gone.file!.id)).toBeUndefined();
+    expect(onDisk(goneFile.storageKey)).toBe(false);
+    const keptFile = await fileRow(kept.file!.id);
+    expect(keptFile).toBeDefined();
+    expect(onDisk(keptFile.storageKey)).toBe(true);
+    // running it again is harmless
+    expect(await cleanupOrphanedChatFiles(new Date(Date.now() + 2 * 3600_000))).toBe(0);
+  });
+});

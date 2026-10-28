@@ -6,6 +6,7 @@ import { Avatar } from "@/components/ui/Avatar";
 import { Badge } from "@/components/ui/Badge";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
+import { Pagination } from "@/components/ui/DataTable";
 import { Field, FormMessage, Input, Select } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PillSwitch } from "@/components/ui/Pill";
@@ -13,7 +14,7 @@ import { EmptyState } from "@/components/ui/States";
 import { requirePerm } from "@/lib/auth/session";
 import { hasSampleData } from "@/lib/dal/finance";
 import { hasPerm } from "@/lib/dal/guard";
-import { assignees, getTask, listTasks, taskFilters, taskLabels, teamProgress } from "@/lib/dal/tasks";
+import { BOARD_DONE_LIMIT, assignees, getTask, listTasks, taskFilters, taskLabels, teamProgress } from "@/lib/dal/tasks";
 import { toTaskView } from "@/lib/task-view";
 import { fmtShortDate, hrefWith } from "@/lib/format";
 import { PRIORITY_LABEL, TASK_PRIORITIES, TASK_STATUS_LABEL, taskHref } from "@/lib/work";
@@ -22,6 +23,7 @@ import { addComment, deleteComment, deleteTask, saveTask, setTaskStatus, toggleC
 export const metadata = { title: "Tasks" };
 
 const PATH = "/tasks";
+const PAGE_SIZE = 100;
 
 const view = toTaskView;
 
@@ -50,9 +52,10 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
   const sp = await searchParams;
   const f = taskFilters.parse(sp);
   const mode = sp.view === "list" ? "list" : "board";
+  const pageNo = Math.min(10_000, Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1));
   const scope = actor.perms.tasks.scope;
   const [data, people, labels, progress, sample, selected] = await Promise.all([
-    listTasks(actor, f),
+    listTasks(actor, f, mode === "list" ? { page: pageNo, pageSize: PAGE_SIZE } : {}),
     assignees(actor),
     taskLabels(actor),
     scope === "all" ? teamProgress(actor) : Promise.resolve(null),
@@ -221,6 +224,11 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
         <Card>
           <CardHeader title="Board" subtitle={can.edit ? "Drag a card to another column to move it, or open it to change its status." : "Open a card to see the details."} />
           <Board tasks={tasks} query={query} move={setTaskStatus} />
+          {data.doneCapped && (
+            <p className="mt-4 text-sm text-muted">
+              Done shows the last {BOARD_DONE_LIMIT} finished. <Link href={hrefWith(PATH, { ...keep, view: "list", status: "done" }, {})} className="font-semibold text-accent-text hover:underline">See them all</Link>
+            </p>
+          )}
         </Card>
       ) : groups ? (
         <div className="grid-fill [--min:22rem]">
@@ -233,10 +241,11 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
         </div>
       ) : (
         <Card>
-          <CardHeader title={f.assignee === "me" ? "My tasks" : "List"} subtitle={`${tasks.length} ${tasks.length === 1 ? "task" : "tasks"} · soonest due first`} />
+          <CardHeader title={f.assignee === "me" ? "My tasks" : "List"} subtitle={`${data.total} ${data.total === 1 ? "task" : "tasks"} · soonest due first`} />
           <TaskRows tasks={tasks} query={query} />
         </Card>
       )}
+      {mode === "list" && <Pagination page={data.page} pageSize={PAGE_SIZE} total={data.total} hrefFor={(p) => hrefWith(PATH, keep, { page: String(p) })} />}
 
       {detail && <TaskPanel task={detail} lookups={lookups} actions={actions} closeHref={hrefWith(PATH, keep, {})} />}
     </>
