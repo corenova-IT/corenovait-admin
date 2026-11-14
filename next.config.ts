@@ -2,6 +2,10 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  // Hostinger's CDN compresses responses itself. When Next.js gzips them too, the CDN passes the
+  // stream through and sometimes cuts it off at a 16 KiB boundary, so big script files arrive
+  // incomplete and the page never starts. Sending plain responses lets the CDN do the compressing.
+  compress: false,
   // native argon2 binary and the MySQL driver run as normal Node modules, not bundled
   serverExternalPackages: ["@node-rs/argon2", "mysql2", "sharp"],
   experimental: {
