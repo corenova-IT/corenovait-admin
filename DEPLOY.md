@@ -114,7 +114,9 @@ would be lost.
 
    > **Why "Other" and not "Next.js"?** Hostinger's Next.js preset starts the app its own way,
    > which would skip the portal's start-up step: it backs up the database, applies any database
-   > updates, and only then starts the site. `server.mjs` does those steps in that order.
+   > updates, and only then serves the site. `server.mjs` does that, and it starts listening
+   > straight away (Hostinger stops an app that doesn't within about 3 seconds), showing a
+   > "starting up" page until it's ready.
 
 4. **Before clicking Deploy**, add the environment variables from step 5 (there's an
    **Environment variables** section on the same screen). If you deploy first, it will fail
@@ -162,12 +164,15 @@ browser; the portal has none and needs none.
 3. Open **Runtime logs**. On the first start you should see:
 
    ```
+   CoreNovaIT portal: listening on port ..., starting up…
    Applied 11 migrations. Database is up to date.
    Image processing ready (sharp ..., libvips ...).
-   CoreNovaIT portal listening on port ...
+   Ready: serving requests.
    ```
 
    This first time there's nothing to back up (the database is empty), so no backup is made.
+   Until "Ready" appears, the site shows a "CoreNovaIT is starting up" page that refreshes by
+   itself. That takes a few seconds, or longer when there's a backup to make.
 4. Open the temporary address Hostinger gives the app. You should see the sign-in page.
 
 ## 7. Domain and SSL
@@ -338,6 +343,7 @@ Try a restore once before you depend on it: restore a backup into a second, empt
 | --- | --- | --- |
 | Build fails | A problem in the pushed code | Read the build log under **Deployments**. The previous version keeps running. |
 | **The app doesn't start after a deploy** | A missing environment variable, the database step failed, or the backup couldn't be written | Read **Runtime logs**. "is not set" names the missing variable. "The backup before migrating failed" means `BACKUP_DIR` is wrong or the disk is full. "Migration failed" means restore the pre-migration backup (section 13) and revert the commit. |
+| The site keeps showing "CoreNovaIT is starting up", or the log says "Startup failed in the database step" | The database step failed, so the app stopped on purpose instead of serving a half-upgraded database | Read the lines just above it in **Runtime logs**: they name the problem (for example access denied, or can't connect to the database). Fix `DATABASE_URL` or `BACKUP_DIR`, then redeploy. |
 | "Image processing is NOT available" in the log | The server's Linux is older than `sharp` supports (it needs glibc 2.28 or newer) | The site still works, but profile pictures can't be uploaded. Ask Hostinger support which Linux the Node.js app runs on, and tell the developer. |
 | "Set UPLOAD_DIR…" in the log | `UPLOAD_DIR` missing or not an absolute path | Set it as in step 5. |
 | Invites and resets don't arrive | Resend key missing, or the domain isn't verified | Check `RESEND_API_KEY` and `MAIL_FROM`, Resend's **Logs** page and your spam folder. |
@@ -360,7 +366,7 @@ Tick each one before you tell the team the portal is open.
 **Site**
 
 - [ ] `https://` works with a valid certificate, and `SITE_URL` matches it exactly.
-- [ ] The runtime log shows "Database is up to date", "Image processing ready" and "listening".
+- [ ] The runtime log shows "Database is up to date", "Image processing ready" and "Ready: serving requests".
 
 **People and email**
 

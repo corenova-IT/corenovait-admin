@@ -23,7 +23,31 @@ if (!url) {
   console.error("DATABASE_URL is not set. Add it to .env.local (local) or the hosting panel (production).");
   process.exit(1);
 }
-const connection = await mysql.createConnection({ uri: url, timezone: "Z", multipleStatements: false });
+
+/** Why the first connection failed, in plain words and without any of DATABASE_URL's values. */
+function whyNoConnection(err) {
+  const code = typeof err?.code === "string" ? err.code : "ERROR";
+  const hint =
+    {
+      ECONNREFUSED: "the database server isn't reachable at that host and port (on Hostinger use 127.0.0.1)",
+      ENOTFOUND: "the host name in DATABASE_URL wasn't found",
+      ETIMEDOUT: "the database server didn't answer in time",
+      EHOSTUNREACH: "the database server isn't reachable at that host",
+      ER_ACCESS_DENIED_ERROR: "the database user or password was refused",
+      ER_DBACCESS_DENIED_ERROR: "that database user isn't allowed to use that database",
+      ER_BAD_DB_ERROR: "that database name doesn't exist",
+      ERR_INVALID_URL: "DATABASE_URL isn't a valid address (special characters in the password must be URL-encoded)",
+    }[code] ?? "check DATABASE_URL (user, password, host, port and database name)";
+  return `Could not connect to the database (${code}): ${hint}.`;
+}
+
+let connection;
+try {
+  connection = await mysql.createConnection({ uri: url, timezone: "Z", multipleStatements: false });
+} catch (err) {
+  console.error(whyNoConnection(err));
+  process.exit(1);
+}
 try {
   const { pending, empty } = await pendingMigrations(connection, FOLDER);
   let ok = true;

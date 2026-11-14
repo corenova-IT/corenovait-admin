@@ -102,10 +102,13 @@ All are server-only. See `.env.example` for comments.
   Review the SQL, commit it, and never edit a migration that has been deployed.
 - `npm run db:migrate` applies new migrations to `DATABASE_URL`. It is safe to repeat
   (applied ones are recorded in `__drizzle_migrations`).
-- **`npm start` (`server.mjs`) runs `db:migrate` first**, so every deploy upgrades the schema before
-  serving. When there is anything to apply to a database that has data, it first writes a full backup
-  to `BACKUP_DIR` (`pre-migration-<time>.sql.gz`, last 20 kept). If the backup fails, nothing is
-  migrated and the app doesn't start.
+- **`npm start` (`server.mjs`) upgrades the schema before serving.** It starts listening straight away
+  (Hostinger stops an app that doesn't within about 3 seconds) and answers every request with a plain
+  503 "starting up" page (`Retry-After: 5`) while it runs `db:migrate`, checks that `sharp` loads, and
+  prepares Next.js. When there is anything to apply to a database that has data, it first writes a full
+  backup to `BACKUP_DIR` (`pre-migration-<time>.sql.gz`, last 20 kept). If the backup, a migration or
+  Next.js fails, it logs one plain line (the step and an error code, no values) and exits, so the site
+  never serves against a half-upgraded database.
 - `npm run db:backup` writes the same kind of backup on demand (`manual-<time>.sql.gz`).
 - `0000_core_schema.sql` creates the tables; `0001_seed_reference_data.sql` adds the role
   presets, the 5 revenue streams and the 3 countries.
