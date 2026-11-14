@@ -5,6 +5,10 @@
  * - icon-32.png: the tab icon. Transparent, so it suits light and dark browsers.
  * - apple-touch-icon.png (180) and icon-512.png: on white with some room
  *   around the atom, because phones put these on any wallpaper.
+ * - logo-128.png and logo-light-lines-128.png: the small copies the sidebar and
+ *   sign-in pages show (served directly as plain files; the full-size logos are
+ *   about 130 KB each, far more than a 40-56 px logo needs, and they are still
+ *   used in emails).
  */
 import path from "node:path";
 import sharp from "sharp";
@@ -21,4 +25,10 @@ for (const [name, size] of [["apple-touch-icon.png", 180], ["icon-512.png", 512]
     .png()
     .toFile(path.join(dir, name));
 }
-console.log("Wrote icon-32.png, apple-touch-icon.png and icon-512.png in public/brand.");
+for (const [from, to] of [["corenova-logo.png", "logo-128.png"], ["corenova-logo-light-lines.png", "logo-light-lines-128.png"]]) {
+  await sharp(path.join(dir, from))
+    .resize(128, 128, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } })
+    .png({ compressionLevel: 9 })
+    .toFile(path.join(dir, to));
+}
+console.log("Wrote icon-32.png, apple-touch-icon.png, icon-512.png, logo-128.png and logo-light-lines-128.png in public/brand.");

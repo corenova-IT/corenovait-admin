@@ -470,6 +470,7 @@ sidebar). Everyone can edit their own, and nobody else's:
 | --- | --- |
 | `corenova-logo.png` | Light theme (dark orbit lines), and the header of every email, loaded from `SITE_URL` |
 | `corenova-logo-light-lines.png` | Dark theme (light orbit lines) |
+| `logo-128.png`, `logo-light-lines-128.png` | Small copies of the two logos that the sidebar and sign-in pages actually show (plain files, not through Next's image optimiser) |
 | `icon-32.png` | Browser tab icon |
 | `apple-touch-icon.png` (180 px), `icon-512.png` | Phone home screens and app icons, on white |
 
@@ -485,7 +486,8 @@ To change the logo, replace the two PNGs in `public/brand` (same names), then re
 npm run brand:icons
 ```
 
-Commit the files it writes (`icon-32.png`, `apple-touch-icon.png`, `icon-512.png`).
+Commit the files it writes (`icon-32.png`, `apple-touch-icon.png`, `icon-512.png`, `logo-128.png`,
+`logo-light-lines-128.png`).
 
 ## 7. Uploads
 
