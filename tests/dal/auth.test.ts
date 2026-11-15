@@ -92,7 +92,13 @@ describe("two-factor", () => {
     expect(pending.startsWith("v1.")).toBe(true);
     expect(pending).not.toContain(secret);
 
-    await expect(auth.confirmTotpSetup(r.token, "000000")).rejects.toThrow(/didn't work/);
+    // a code that matches none of the steps around now (so the answer can't depend on luck)
+    const near = new Set(Array.from({ length: 51 }, (_, i) => totp.totpAt(secret, Date.now() + (i - 25) * 30_000)));
+    const wrong = ["000000", "111111", "222222"].find((c) => !near.has(c))!;
+    await expect(auth.confirmTotpSetup(r.token, wrong)).rejects.toThrow(/didn't work.*doesn't match this QR code/);
+    // a code from 90 seconds ago is refused, and the message says the phone clock looks behind
+    await expect(auth.confirmTotpSetup(r.token, totp.totpAt(secret, Date.now() - 90_000))).rejects.toThrow(/didn't work.*seconds ago.*behind/);
+    expect((await userRow(t, p.id)).totpEnabledAt).toBeNull();
     const codes = await auth.confirmTotpSetup(r.token, totp.totpAt(secret, Date.now()));
     expect(codes).toHaveLength(10);
     const stored = await t.db.select().from(t.schema.recoveryCodes).where(eq(t.schema.recoveryCodes.userId, p.id));

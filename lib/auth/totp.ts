@@ -81,6 +81,32 @@ export function verifyTotp(
   return null;
 }
 
+/**
+ * For a wrong code while setting up two-factor only: how many 30-second steps
+ * from now the code was valid (negative = in the past, positive = in the
+ * future), looking up to `range` steps either way; null when it matches no step
+ * at all. Used to tell the person why it failed. It never accepts a code.
+ */
+export function codeOffset(secret: string, code: string, now: number, range = 20): number | null {
+  if (!/^\d{6}$/.test(code)) return null;
+  const key = base32Decode(secret);
+  const current = stepAt(now);
+  for (let d = 0; d <= range; d++) {
+    for (const s of d === 0 ? [0] : [-d, d]) if (hotp(key, current + s) === code) return s;
+  }
+  return null;
+}
+
+/** The plain-words reason shown under the code box when a setup code is wrong. */
+export function whyWrongSetupCode(offset: number | null): string {
+  if (offset === null)
+    return "That code didn't work. It doesn't match this QR code, so it's probably from an older entry in your authenticator app. Delete every CoreNovaIT entry in the app, press \"Show my QR code\" once more, scan the new one, and use the number that new entry shows.";
+  const secs = Math.abs(offset) * STEP_SECONDS;
+  if (offset < 0)
+    return `That code didn't work. It was right about ${secs} seconds ago, so it either expired before you pressed the button, or your phone's clock is about that far behind. Turn on automatic date and time on your phone, then use the newest code.`;
+  return `That code didn't work. It belongs to about ${secs} seconds from now, so your phone's clock is about that far ahead. Turn on automatic date and time on your phone, then use the newest code.`;
+}
+
 export function otpauthUri(secret: string, account: string, issuer = "CoreNovaIT Portal"): string {
   const label = encodeURIComponent(`${issuer}:${account}`);
   const params = new URLSearchParams({ secret, issuer, algorithm: "SHA1", digits: String(DIGITS), period: String(STEP_SECONDS) });

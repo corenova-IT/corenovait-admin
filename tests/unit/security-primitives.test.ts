@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { decryptSecret, encryptSecret } from "@/lib/auth/crypto";
-import { base32Decode, base32Encode, hotp, normaliseRecoveryCode, generateRecoveryCodes, otpauthUri, totpAt, verifyTotp } from "@/lib/auth/totp";
+import { base32Decode, base32Encode, codeOffset, hotp, normaliseRecoveryCode, generateRecoveryCodes, otpauthUri, totpAt, verifyTotp, whyWrongSetupCode } from "@/lib/auth/totp";
 import { sniffType } from "@/lib/file-types";
 
 // RFC 6238 appendix B uses the ASCII secret "12345678901234567890" (SHA-1)
@@ -18,6 +18,25 @@ describe("TOTP", () => {
   it("matches RFC 4226 HOTP vectors", () => {
     const key = Buffer.from("12345678901234567890");
     expect([0, 1, 2, 9].map((c) => hotp(key, c))).toEqual(["755224", "287082", "359152", "520489"]);
+  });
+
+  it("explains a wrong setup code: how far off it was, or that it matches nothing", () => {
+    // 15 seconds into a 30-second step, so "70 s ago" is two steps back and "100 s ahead" is three steps on
+    const now = 1_700_000_025_000;
+    // right two steps ago (a minute and a bit): too far to accept, close enough to explain
+    expect(codeOffset(RFC_SECRET, totpAt(RFC_SECRET, now - 70_000), now)).toBe(-2);
+    expect(codeOffset(RFC_SECRET, totpAt(RFC_SECRET, now + 100_000), now)).toBe(3);
+    expect(codeOffset(RFC_SECRET, totpAt(RFC_SECRET, now), now)).toBe(0);
+    // another secret's code, a code from far away, and things that aren't codes match nothing
+    const other = base32Encode(Buffer.from("another-secret-key-20"));
+    expect(codeOffset(RFC_SECRET, totpAt(other, now), now)).toBeNull();
+    expect(codeOffset(RFC_SECRET, totpAt(RFC_SECRET, now - 40 * 30_000), now)).toBeNull();
+    expect(codeOffset(RFC_SECRET, "12345", now)).toBeNull();
+    // it only explains: a code two steps off is still refused
+    expect(verifyTotp(RFC_SECRET, totpAt(RFC_SECRET, now - 70_000), { now })).toBeNull();
+    expect(whyWrongSetupCode(-2)).toMatch(/^That code didn't work\..*about 60 seconds ago.*behind.*automatic date and time/);
+    expect(whyWrongSetupCode(3)).toMatch(/about 90 seconds from now.*ahead/);
+    expect(whyWrongSetupCode(null)).toMatch(/^That code didn't work\..*doesn't match this QR code.*Delete every CoreNovaIT entry/);
   });
 
   it("accepts one step of clock drift, refuses two, and refuses replays", () => {

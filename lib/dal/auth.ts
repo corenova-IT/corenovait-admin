@@ -5,11 +5,13 @@ import { getDb, schema, type Tx } from "@/lib/db";
 import { decryptSecret, encryptSecret, randomToken, sha256Hex } from "@/lib/auth/crypto";
 import { hashPassword, verifyPassword } from "@/lib/auth/hash";
 import {
+  codeOffset,
   generateRecoveryCodes,
   generateTotpSecret,
   normaliseRecoveryCode,
   otpauthUri,
   verifyTotp,
+  whyWrongSetupCode,
 } from "@/lib/auth/totp";
 import { SESSION_IDLE_MINUTES, SESSION_MAX_HOURS } from "@/lib/env";
 import { passwordProblems } from "@/lib/password";
@@ -230,7 +232,7 @@ export async function confirmTotpSetup(token: string, code: string, now = new Da
     if (!u.totpPendingEnc) throw new RuleError("Setup timed out. Start again to get a new QR code.");
     const secret = decryptSecret(u.totpPendingEnc);
     const step = verifyTotp(secret, code, { now: now.getTime() });
-    if (step === null) throw new RuleError("That code didn't work. Check the time on your phone and use the newest code.");
+    if (step === null) throw new RuleError(whyWrongSetupCode(codeOffset(secret, code, now.getTime())));
     await tx
       .update(users)
       .set({ totpSecretEnc: u.totpPendingEnc, totpPendingEnc: null, totpEnabledAt: now, totpLastStep: step })
