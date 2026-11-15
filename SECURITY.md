@@ -113,6 +113,22 @@ connects to it from a PC; `npm run admin:sql` writes an SQL file instead.
 **XSS.** React escapes everything rendered, and nothing uses `dangerouslySetInnerHTML` with
 user data. Video links must be `https://`. Chat and notes are plain text.
 
+## Dependencies
+
+Hostinger scans the app's packages (Websites -> your app -> "Fix vulnerabilities") and `npm audit`
+reports the same list. On 16 November 2026 `next` 16.3.4 had three critical flaws (unauthenticated
+remote code execution through the image optimiser and `use cache`, and in `next/og`), a high one
+(denial of service through Server Actions) and several moderate ones. Next.js 16.4.1 and later fix
+them all; the app is on 16.4.6 and `npm audit` no longer lists `next`.
+
+What `npm audit` still shows is `esbuild`, pulled in by `drizzle-kit`. It is a command-line tool used
+only on a developer's PC to generate migrations. It isn't part of what runs on the server, and the
+"fix" npm offers is to downgrade `drizzle-kit` to a much older release, so it stays as it is.
+
+**Keep Next.js up to date.** Check Hostinger's list (or run `npm audit`) every month and after any
+security announcement from Next.js, and upgrade with `npm install next@latest`, a build, and a look at
+the live site.
+
 ## Accepted risks
 
 - **Rate limits live in memory.** Hostinger runs one Node process, so this is enough. The
