@@ -1,5 +1,5 @@
 import "server-only";
-import { and, asc, count, desc, eq, gte, inArray, isNull, like, lte, or, sql, sum, type SQL } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, inArray, isNull, like, lte, notExists, or, sql, sum, type SQL } from "drizzle-orm";
 import { z } from "zod";
 import { getDb, schema, type Db, type Tx } from "@/lib/db";
 import { minorToDecimal, parseCsv, toCsv } from "@/lib/csv";
@@ -8,6 +8,7 @@ import { actorRef, writeAudit, writeAuditMany } from "./audit";
 import { AccessDenied, RuleError, assertCaller, hasPerm, requirePerm, rowAllowed, scopeWhere, type Actor } from "./guard";
 import { saveUpload } from "./files";
 import { rateToDecimal, toSafeNumber } from "./internal";
+import { incomeVisible, projectHiddenFromActor } from "./visibility";
 
 /**
  * Income and expenses (module "transactions").
@@ -17,19 +18,24 @@ import { rateToDecimal, toSafeNumber } from "./internal";
  * row before and after. Money is integer minor units; exchange rates are
  * exact decimals; MySQL computes the base-currency amount.
  */
-const { incomeEntries, expenses, representatives, streams, countries, settings, expenseCategories } = schema;
+const { incomeEntries, expenses, representatives, streams, countries, settings, expenseCategories, projects, projectHiddenFrom } = schema;
 
 const repIdsFor = (db: Db | Tx, userId: string) =>
   db.select({ id: representatives.id }).from(representatives).where(eq(representatives.userId, userId));
 
+/** The usual data scope, then the Owner's hidden projects taken out on top (see visibility.ts). */
 function incomeScope(db: Db | Tx, actor: Actor): SQL | undefined {
-  return scopeWhere(actor, "transactions", {
-    owner: incomeEntries.createdBy,
-    assignedTo: (uid) => inArray(incomeEntries.representativeId, repIdsFor(db, uid)),
-  });
+  return and(
+    scopeWhere(actor, "transactions", {
+      owner: incomeEntries.createdBy,
+      assignedTo: (uid) => inArray(incomeEntries.representativeId, repIdsFor(db, uid)),
+    }),
+    incomeVisible(db, actor)
+  );
 }
 
-async function incomeRowAllowed(db: Db | Tx, actor: Actor, row: { createdBy: string; representativeId: string | null }) {
+async function incomeRowAllowed(db: Db | Tx, actor: Actor, row: { createdBy: string; representativeId: string | null; projectId?: string | null }) {
+  if (await projectHiddenFromActor(db, actor, row.projectId)) return false;
   let assigneeId: string | null = null;
   if (row.representativeId) {
     const [rep] = await db.select({ userId: representatives.userId }).from(representatives).where(eq(representatives.id, row.representativeId));
@@ -63,6 +69,20 @@ export async function baseCurrency(db: Db | Tx = getDb()): Promise<string> {
   return s?.c ?? "AUD";
 }
 
+/** Projects for pickers: everything for the Owner, otherwise everything not hidden from this person. */
+export async function visibleProjects(db: Db | Tx, actor: Actor) {
+  const rows = await db
+    .select({ id: projects.id, name: projects.name, streamId: projects.streamId, active: projects.active })
+    .from(projects)
+    .where(
+      actor.isOwner
+        ? undefined
+        : notExists(db.select({ one: sql`1` }).from(projectHiddenFrom).where(and(eq(projectHiddenFrom.projectId, projects.id), eq(projectHiddenFrom.userId, actor.userId))))
+    )
+    .orderBy(asc(projects.name));
+  return rows;
+}
+
 // ---------------------------------------------------------------- lookups for forms and filters
 const FINANCE_MODULES = ["transactions", "streams", "countries", "representatives", "finances", "payments"] as const;
 
@@ -70,7 +90,7 @@ export async function financeLookups(actor: Actor) {
   assertCaller(actor);
   if (!FINANCE_MODULES.some((m) => hasPerm(actor, m, "view"))) throw new AccessDenied();
   const db = getDb();
-  const [s, c, r, cats, base] = await Promise.all([
+  const [s, c, r, cats, base, projs] = await Promise.all([
     db.select().from(streams).orderBy(asc(streams.sort), asc(streams.name)),
     db.select().from(countries).orderBy(asc(countries.sort)),
     db
@@ -79,9 +99,12 @@ export async function financeLookups(actor: Actor) {
       .orderBy(asc(representatives.name)),
     db.select().from(expenseCategories).orderBy(asc(expenseCategories.sort), asc(expenseCategories.name)),
     baseCurrency(db),
+    visibleProjects(db, actor),
   ]);
   return {
     streams: s.map((x) => ({ id: x.id, name: x.name, active: x.active })),
+    /** projects this person may see (a project hidden from them isn't listed, not even by name) */
+    projects: projs,
     countries: c.map((x) => ({ code: x.code, name: x.name })),
     representatives: r,
     /** active categories, for new entries */
@@ -184,6 +207,8 @@ const incomeSelect = {
   status: incomeEntries.status,
   representativeId: incomeEntries.representativeId,
   representativeName: representatives.name,
+  projectId: incomeEntries.projectId,
+  projectName: projects.name,
   commissionRate: incomeEntries.commissionRate,
   invoiceFileId: incomeEntries.invoiceFileId,
   notes: incomeEntries.notes,
@@ -207,6 +232,8 @@ export type IncomeRow = {
   status: "pending" | "paid" | "overdue";
   representativeId: string | null;
   representativeName: string | null;
+  projectId: string | null;
+  projectName: string | null;
   commissionRate: string | null;
   invoiceFileId: string | null;
   notes: string | null;
@@ -220,7 +247,8 @@ function incomeQuery(db: Db | Tx) {
     .from(incomeEntries)
     .innerJoin(streams, eq(streams.id, incomeEntries.streamId))
     .innerJoin(countries, eq(countries.code, incomeEntries.countryCode))
-    .leftJoin(representatives, eq(representatives.id, incomeEntries.representativeId));
+    .leftJoin(representatives, eq(representatives.id, incomeEntries.representativeId))
+    .leftJoin(projects, eq(projects.id, incomeEntries.projectId));
 }
 
 export type ExpenseRow = typeof expenses.$inferSelect;
@@ -289,23 +317,44 @@ export const incomeInput = z.object({
   invoiceRef: z.string().trim().max(80).optional(),
   status: z.enum(["pending", "paid", "overdue"]).default("pending"),
   representativeId: z.string().uuid().nullable().optional(),
+  /** blank = no project */
+  projectId: z.string().uuid().nullable().optional(),
   notes: z.string().trim().max(5000).optional(),
 });
 export type IncomeInput = z.input<typeof incomeInput>;
 
 export type Attachment = { name: string; bytes: Buffer };
 
-async function checkRefs(db: Db | Tx, v: { streamId: number; countryCode: string; representativeId?: string | null }) {
-  const [[s], [c], rep] = await Promise.all([
+/**
+ * Checks the stream, country, representative and project exist, and that the
+ * project belongs to the chosen stream and isn't hidden from the caller (they
+ * can't file income under a project they're not allowed to see). A project
+ * that's been switched off can still stay on an entry that already has it.
+ */
+async function checkRefs(
+  db: Db | Tx,
+  actor: Actor,
+  v: { streamId: number; countryCode: string; representativeId?: string | null; projectId?: string | null },
+  keepProjectId: string | null = null
+) {
+  const [[s], [c], rep, proj] = await Promise.all([
     db.select({ id: streams.id }).from(streams).where(eq(streams.id, v.streamId)),
     db.select({ code: countries.code }).from(countries).where(eq(countries.code, v.countryCode)),
     v.representativeId
       ? db.select({ rate: representatives.commissionRate }).from(representatives).where(eq(representatives.id, v.representativeId))
       : Promise.resolve([]),
+    v.projectId ? db.select({ id: projects.id, streamId: projects.streamId, active: projects.active }).from(projects).where(eq(projects.id, v.projectId)) : Promise.resolve([]),
   ]);
   if (!s) throw new RuleError("Choose a revenue stream from the list.");
   if (!c) throw new RuleError("Choose a country from the list.");
   if (v.representativeId && !rep[0]) throw new RuleError("That representative no longer exists.");
+  if (v.projectId) {
+    const p = proj[0];
+    // a hidden project looks exactly like one that doesn't exist
+    if (!p || (await projectHiddenFromActor(db, actor, p.id))) throw new RuleError("Choose a project from the list.");
+    if (p.streamId !== v.streamId) throw new RuleError("That project belongs to a different revenue stream.");
+    if (!p.active && p.id !== keepProjectId) throw new RuleError("That project is switched off. Choose another, or ask the owner to switch it back on.");
+  }
   return rep[0]?.rate ?? null;
 }
 
@@ -323,6 +372,7 @@ function incomeValues(input: IncomeInput) {
     invoiceRef: v.invoiceRef || null,
     status: v.status,
     representativeId: v.representativeId ?? null,
+    projectId: v.projectId ?? null,
     notes: v.notes || null,
   };
 }
@@ -331,7 +381,7 @@ export async function createIncome(actor: Actor, input: IncomeInput, attachment?
   requirePerm(actor, "transactions", "create");
   const values = incomeValues(input);
   const db = getDb();
-  const commissionRate = await checkRefs(db, values);
+  const commissionRate = await checkRefs(db, actor, values);
   const id = crypto.randomUUID();
   const file = attachment ? await saveUpload(actor, { module: "transactions", entityType: "income_entries", entityId: id, ...attachment }) : null;
   await db.transaction(async (tx) => {
@@ -346,9 +396,9 @@ export async function updateIncome(actor: Actor, id: string, input: IncomeInput,
   requirePerm(actor, "transactions", "edit");
   const values = incomeValues(input);
   const db = getDb();
-  const repRate = await checkRefs(db, values);
   const [current] = await db.select().from(incomeEntries).where(eq(incomeEntries.id, id));
   if (!current || !(await incomeRowAllowed(db, actor, current))) throw new AccessDenied("That entry doesn't exist or isn't yours to change.");
+  const repRate = await checkRefs(db, actor, values, current.projectId);
   const file = attachment ? await saveUpload(actor, { module: "transactions", entityType: "income_entries", entityId: id, ...attachment }) : null;
   await db.transaction(async (tx) => {
     const [before] = await tx.select().from(incomeEntries).where(eq(incomeEntries.id, id)).for("update");
@@ -655,6 +705,17 @@ export async function importExpensesCsv(actor: Actor, text: string): Promise<Imp
 }
 
 // ---------------------------------------------------------------- file access + dev badge
+/**
+ * True when an invoice file belongs to an income entry in a project hidden from
+ * this person. The download check treats that as final: no "all scope" or
+ * "you uploaded it" fallback can bring such a file back.
+ */
+export async function incomeRecordHidden(actor: Actor, entityId: string): Promise<boolean> {
+  const db = getDb();
+  const [row] = await db.select({ projectId: incomeEntries.projectId }).from(incomeEntries).where(eq(incomeEntries.id, entityId));
+  return !!row && (await projectHiddenFromActor(db, actor, row.projectId));
+}
+
 /** Used by the file download check: may this person see the record a receipt belongs to? */
 export async function financeRecordVisible(actor: Actor, entityType: string, entityId: string): Promise<boolean> {
   const db = getDb();

@@ -21,6 +21,32 @@ To report a problem, email the admins privately. Don't open a public GitHub issu
 | 7 | A deploy applied migrations with no backup unless someone remembered to take one | A bad migration with no way back | `npm start` writes a full SQL backup before applying any migration to a database with data. If the backup fails, nothing is migrated and the app doesn't start | `tests/dal/backup.test.ts` (restores every row; a failed backup blocks the migration) |
 | 8 | Deleting a chat message left its attachment on disk | Files a person deleted could still be there | The cron job removes attachments no message uses (after a one-hour grace period) | `tests/dal/chat.test.ts` (attachment clean-up) |
 
+## Hiding a project's money from people (Owner)
+
+The Owner can hide a project's income from named people. The rule lives in the data layer
+(`lib/dal/visibility.ts`), is applied **on top of** role, scope and permissions (so it can only remove
+rows), and is checked on every request, never cached. `tests/dal/revenue-privacy.test.ts` proves a hidden
+project is invisible on every path it found, against a real database, for admins, finance viewers,
+"own" and "assigned" scopes alike:
+
+| Path | How it's closed |
+| --- | --- |
+| Ledger, single entries, edit, delete, export, CSV | `incomeScope` and `incomeRowAllowed` in `finance.ts`; a hidden entry fails exactly like a missing one |
+| Home, Analytics, streams, countries, top clients | `incomeScopeFor` in `revenue.ts` |
+| Representatives (deals, revenue, commission, payout "owed") | the same filter in the representative queries |
+| Search | it calls the same functions |
+| Invoice downloads | `getFileForDownload` refuses a hidden entry's file before any "all scope" or "you uploaded it" fallback |
+| Form lists | hidden projects aren't sent to the browser, not even by name |
+| Filing income under a hidden project | refused with the same message as a project that doesn't exist |
+| Audit log | income history (including entries since moved or deleted), invoice file names and who-sees-what changes are filtered; project changes are Owner-only |
+
+Only the Owner can create projects or change who sees what (checked before the form is read). Other admins
+can't deactivate, demote, reset or rename the Owner, and the Owner can't demote themselves. The test that
+found the invoice file name in the audit log is why file-upload rows are filtered too.
+
+Known limits: expenses and subscriptions aren't tied to projects yet (the hiding covers income), and a
+payout "owed" figure for a person who can't see some deals reflects only the deals they can see.
+
 ## What was checked and found sound
 
 **Every server action.** `tests/dal/routes.test.ts` finds every `"use server"` module by itself

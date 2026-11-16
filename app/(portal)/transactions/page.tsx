@@ -50,6 +50,7 @@ const incomeView = (r: IncomeRow): IncomeView => ({
   invoiceRef: r.invoiceRef,
   status: r.status,
   representativeId: r.representativeId,
+  projectId: r.projectId,
   invoiceFileId: r.invoiceFileId,
   notes: r.notes,
 });
@@ -137,6 +138,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
           <p className="clamp-2 leading-snug text-ink-2">{r.streamName}</p>
           <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-muted">
             <span className="font-mono">{r.countryCode}</span>
+            {r.projectName && <span>project: {r.projectName}</span>}
             {r.representativeName && <span>via {r.representativeName}</span>}
           </p>
         </div>

@@ -10,6 +10,8 @@ export type Member = {
   /** profile picture, or null for initials */
   avatarUrl: string | null;
   presetId: string;
+  /** the one main admin, who sees all revenue (see Projects under Revenue streams) */
+  isOwner: boolean;
   status: MemberStatus;
   mfaRequired: boolean;
   mfaEnabled: boolean;

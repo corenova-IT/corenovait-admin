@@ -3,6 +3,8 @@ export type Lookups = {
   streams: Array<{ id: number; name: string; active: boolean }>;
   countries: Array<{ code: string; name: string }>;
   representatives: Array<{ id: string; name: string; commissionRate: string; active: boolean }>;
+  /** projects this person may see (a project hidden from them isn't sent at all) */
+  projects: Array<{ id: string; name: string; streamId: number; active: boolean }>;
   /** active categories for new entries */
   categories: string[];
   /** every category, for filters and older entries */
@@ -23,6 +25,7 @@ export type IncomeView = {
   invoiceRef: string | null;
   status: "pending" | "paid" | "overdue";
   representativeId: string | null;
+  projectId: string | null;
   invoiceFileId: string | null;
   notes: string | null;
 };

@@ -105,6 +105,12 @@ export const users = mysqlTable(
     passwordChangedAt: datetime("password_changed_at", { mode: "date", fsp: 3 }),
     /** true for admins and anyone with finance, transactions, team, settings or audit access */
     mfaRequired: boolean("mfa_required").notNull().default(false),
+    /**
+     * The one main admin: sees all revenue (including projects hidden from others)
+     * and is the only person who can hide a project's money. Set when the first
+     * admin is created; there is no screen that grants it.
+     */
+    isOwner: boolean("is_owner").notNull().default(false),
     /** AES-256-GCM encrypted TOTP secret (see lib/auth/crypto.ts) */
     totpSecretEnc: varchar("totp_secret_enc", { length: 255 }),
     /** secret shown during setup, not yet confirmed with a code */
@@ -284,6 +290,47 @@ export const files = mysqlTable(
   (t) => [uniqueIndex("files_storage_uq").on(t.storageKey), index("files_entity_idx").on(t.entityType, t.entityId), index("files_module_created_idx").on(t.module, t.createdAt)]
 );
 
+// ---------------------------------------------------------------- projects
+/**
+ * A project sits under one revenue stream and income entries can belong to it.
+ * The Owner can hide a project's money from named people (project_hidden_from):
+ * those people never see its income in totals, charts, lists, exports, search,
+ * invoice downloads or the audit log.
+ */
+export const projects = mysqlTable(
+  "projects",
+  {
+    id: id(),
+    streamId: int("stream_id")
+      .notNull()
+      .references(() => streams.id),
+    name: varchar("name", { length: 120 }).notNull(),
+    active: boolean("active").notNull().default(true),
+    createdBy: userRef("created_by")
+      .notNull()
+      .references(() => users.id),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [uniqueIndex("projects_stream_name_uq").on(t.streamId, t.name)]
+);
+
+/** One row per (project, person): that person never sees that project's money. */
+export const projectHiddenFrom = mysqlTable(
+  "project_hidden_from",
+  {
+    projectId: varchar("project_id", { length: 36 })
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    userId: userRef("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    hiddenBy: userRef("hidden_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [primaryKey({ columns: [t.projectId, t.userId] }), index("project_hidden_user_idx").on(t.userId)]
+);
+
 // ---------------------------------------------------------------- finance core
 const money = {
   amountMinor: bigint("amount_minor", { mode: "number" }).notNull(),
@@ -315,6 +362,8 @@ export const incomeEntries = mysqlTable(
     representativeId: varchar("representative_id", { length: 36 }).references(() => representatives.id, {
       onDelete: "set null",
     }),
+    /** the project this income belongs to (null = none); hiding a project hides its entries */
+    projectId: varchar("project_id", { length: 36 }).references(() => projects.id),
     /** the representative's rate when the entry was credited, so later rate changes don't rewrite history */
     commissionRate: decimal("commission_rate", { precision: 5, scale: 4 }),
     invoiceFileId: varchar("invoice_file_id", { length: 36 }).references(() => files.id, { onDelete: "set null" }),
@@ -330,6 +379,7 @@ export const incomeEntries = mysqlTable(
     index("income_date_idx").on(t.entryDate),
     index("income_created_by_idx").on(t.createdBy),
     index("income_rep_idx").on(t.representativeId),
+    index("income_project_idx").on(t.projectId),
     index("income_status_idx").on(t.status),
     index("income_country_date_idx").on(t.countryCode, t.entryDate),
     index("income_stream_date_idx").on(t.streamId, t.entryDate),

@@ -323,7 +323,16 @@ export function TeamView({
       ),
     },
     { key: "title", header: "Job title", hideBelow: "lg", cell: (m) => <span className="text-ink-2">{m.jobTitle || "—"}</span> },
-    { key: "role", header: "Role", cell: (m) => <Badge tone={m.presetId === "admin" ? "red" : "neutral"}>{presetName(m.presetId)}</Badge> },
+    {
+      key: "role",
+      header: "Role",
+      cell: (m) => (
+        <span className="flex flex-wrap items-center gap-1.5">
+          <Badge tone={m.presetId === "admin" ? "red" : "neutral"}>{presetName(m.presetId)}</Badge>
+          {m.isOwner && <Badge tone="amber">Owner</Badge>}
+        </span>
+      ),
+    },
     { key: "status", header: "Status", hideBelow: "sm", cell: statusBadge },
     { key: "mfa", header: "Two-factor", hideBelow: "md", cell: mfaBadge },
     {

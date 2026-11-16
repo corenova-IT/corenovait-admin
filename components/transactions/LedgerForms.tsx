@@ -109,6 +109,9 @@ export function IncomeForm({ row, lookups, action, onSaved }: { row?: IncomeView
   }, [state, onSaved]);
   const streams = lookups.streams.filter((s) => s.active || s.id === row?.streamId);
   const reps = lookups.representatives.filter((r) => r.active || r.id === row?.representativeId);
+  const [streamId, setStreamId] = useState(String(row?.streamId ?? streams[0]?.id ?? ""));
+  // only the projects of the chosen stream; a switched-off one stays selectable on an entry that already has it
+  const projects = lookups.projects.filter((x) => x.streamId === Number(streamId) && (x.active || x.id === row?.projectId));
   return (
     <form action={formAction} onSubmit={submit} className="flex flex-col gap-5">
       <Msg state={state} />
@@ -125,7 +128,7 @@ export function IncomeForm({ row, lookups, action, onSaved }: { row?: IncomeView
           </Select>
         </Field>
         <Field label="Revenue stream" htmlFor={`${p}-stream`}>
-          <Select id={`${p}-stream`} name="streamId" required defaultValue={row?.streamId ?? streams[0]?.id}>
+          <Select id={`${p}-stream`} name="streamId" required value={streamId} onChange={(e) => setStreamId(e.target.value)}>
             {streams.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.name}
@@ -133,6 +136,19 @@ export function IncomeForm({ row, lookups, action, onSaved }: { row?: IncomeView
             ))}
           </Select>
         </Field>
+        {projects.length > 0 && (
+          <Field label="Project" htmlFor={`${p}-project`} hint="Optional. The project this income belongs to.">
+            <Select key={streamId} id={`${p}-project`} name="projectId" defaultValue={projects.some((x) => x.id === row?.projectId) ? row?.projectId ?? "" : ""}>
+              <option value="">No project</option>
+              {projects.map((x) => (
+                <option key={x.id} value={x.id}>
+                  {x.name}
+                  {x.active ? "" : " (switched off)"}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        )}
         <Field label="Country" htmlFor={`${p}-country`}>
           <Select id={`${p}-country`} name="countryCode" required defaultValue={row?.countryCode ?? lookups.countries[0]?.code}>
             {lookups.countries.map((c) => (

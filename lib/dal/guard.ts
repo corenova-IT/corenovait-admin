@@ -18,6 +18,8 @@ export type Actor = Readonly<{
   presetId: string;
   presetName: string;
   isAdmin: boolean;
+  /** the one main admin: sees all revenue and alone decides who sees which project's money */
+  isOwner: boolean;
   mfaRequired: boolean;
   mfaEnabled: boolean;
   /** this session passed the TOTP / recovery-code step */
@@ -75,6 +77,13 @@ export function hasPerm(actor: Actor, module: AppModule, action: AppAction): boo
 export function requireAdmin(actor: Actor): void {
   requirePerm(actor, "team", "edit");
   if (!actor.isAdmin) throw new AccessDenied("Only admins can do that.");
+  if (!actor.mfaVerified) throw new AccessDenied("Verify your two-factor code, then try again.");
+}
+
+/** Owner-only operations (hiding a project's money from people): the Owner, signed in with two-factor done. */
+export function requireOwner(actor: Actor): void {
+  assertCaller(actor);
+  if (!actor.isOwner) throw new AccessDenied("Only the owner can do that.");
   if (!actor.mfaVerified) throw new AccessDenied("Verify your two-factor code, then try again.");
 }
 

@@ -52,6 +52,7 @@ export async function saveIncome(_prev: LedgerState, fd: FormData): Promise<Ledg
     invoiceRef: str(fd, "invoiceRef"),
     status: (str(fd, "status") || "pending") as "pending",
     representativeId: str(fd, "representativeId") || null,
+    projectId: str(fd, "projectId") || null,
     notes: str(fd, "notes"),
   };
   try {

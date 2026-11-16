@@ -107,6 +107,7 @@ export async function resolveSession(token: string | null | undefined, now = new
       presetId: u.presetId,
       presetName: row.presetName,
       isAdmin: u.presetId === "admin",
+      isOwner: u.isOwner && u.presetId === "admin",
       mfaRequired: u.mfaRequired,
       mfaEnabled,
       mfaVerified: s.mfaVerifiedAt != null,
@@ -407,6 +408,7 @@ export async function bootstrapFirstAdmin(input: { email: string; password: stri
       status: "active",
       passwordHash: await hashPassword(input.password),
       passwordChangedAt: new Date(),
+      isOwner: true,
     });
     await copyPresetToUser(tx, id, "admin");
     await writeAudit(tx, null, { action: "create", entity: "users", entityId: id, summary: `First admin ${email} created by the seed script` });

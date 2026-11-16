@@ -444,6 +444,31 @@ Page weight (first visit, empty cache, compressed; from `tests/e2e/weight.spec.t
 About half is the shared React and Next.js runtime, cached after the first page. The budget in the test is
 450 KB per page and 380 KB of JavaScript.
 
+### Projects and hiding revenue from people (the Owner)
+
+Each revenue stream can have **projects**, and income entries can be filed under one. The **Owner** (the
+one main admin) can then choose, project by project, which people must **not** see that project's money.
+
+- **Who is the Owner.** The first admin created (by `npm run seed:admin` or the `admin:sql` file) is the Owner.
+  On an existing portal, the migration makes the oldest active admin the Owner. Nobody can grant it from a
+  screen, and other admins can't deactivate, demote, reset or rename the Owner. The Team list shows an
+  **Owner** badge. The Owner sees everything and can't be hidden from anything.
+- **Where it's managed.** Revenue streams → **Projects** (visible to the Owner only). Add projects, rename,
+  switch off (stops new income going under it) or delete an empty one, and tick the people who can't see each.
+  Project and visibility changes are in the audit log, where only the Owner can see them.
+- **Filing income.** The income form has a **Project** field (only the chosen stream's projects, and never
+  one that's hidden from the person filling it in).
+- **What "hidden" means.** For a hidden person the project's income is gone from the ledger and its totals,
+  exports, Home and Analytics, the streams, countries and representatives pages (including a representative's
+  deals and commission), search, invoice downloads (a 404), and the audit log (income history and invoice file
+  names). It applies on top of their role, scope and permissions, so it can only remove things. It takes
+  effect on their next request, and a hidden project doesn't even appear by name in the project list.
+- **Tests.** `tests/dal/revenue-privacy.test.ts` walks every one of those paths against a real database.
+
+Not yet built (Phases 2 and 3 of this feature): partners attached to projects with their share, a Partner
+sign-in that shows each partner only their own share, and the Owner overview with a "what would this person
+see?" check. Expenses aren't tied to projects yet.
+
 ### Your profile and the logo
 
 **Your profile** (`/account`, from the menu under your picture in the top bar, or the card at the bottom of the

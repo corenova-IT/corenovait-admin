@@ -30,6 +30,8 @@ export type TeamMember = {
   jobTitle: string;
   avatarUrl: string | null;
   presetId: string;
+  /** the one main admin (see lib/dal/visibility.ts) */
+  isOwner: boolean;
   status: "active" | "invited" | "deactivated";
   mfaRequired: boolean;
   mfaEnabled: boolean;
@@ -41,6 +43,17 @@ export type TeamMember = {
 export type TeamPreset = { id: string; name: string; description: string; perms: PermMap; editable: boolean; memberCount: number };
 
 const LOCKED_PRESETS = new Set(["admin", "custom"]);
+
+/**
+ * The owner's account is out of reach of every other admin (they could otherwise
+ * lock the owner out or strip the owner's view of the revenue), and the owner
+ * can't demote or deactivate themselves: an owner who isn't an admin is no owner.
+ */
+function guardOwner(actor: Actor, target: { id: string; isOwner: boolean }, change: "role" | "other") {
+  if (!target.isOwner) return;
+  if (actor.userId !== target.id) throw new RuleError("Only the owner can change the owner's account.");
+  if (change === "role") throw new RuleError("The owner has to stay an admin.");
+}
 
 export async function listTeam(actor: Actor): Promise<{ members: TeamMember[]; presets: TeamPreset[] }> {
   requirePerm(actor, "team", "view");
@@ -58,6 +71,7 @@ export async function listTeam(actor: Actor): Promise<{ members: TeamMember[]; p
     jobTitle: u.jobTitle,
     avatarUrl: avatarUrl(u.id, u.avatarKey ? u.avatarUpdatedAt : null),
     presetId: u.presetId,
+    isOwner: u.isOwner,
     status: u.status,
     mfaRequired: u.mfaRequired,
     mfaEnabled: u.totpEnabledAt != null,
@@ -133,6 +147,7 @@ export async function resendInvite(actor: Actor, userId: string) {
 export async function setDetails(actor: Actor, input: { userId: string; fullName: string; jobTitle: string }) {
   requireAdmin(actor);
   const u = await loadTarget(input.userId);
+  guardOwner(actor, u, "other");
   await getDb().transaction(async (tx) => {
     await tx.update(users).set({ fullName: input.fullName, jobTitle: input.jobTitle }).where(eq(users.id, u.id));
     await writeAudit(tx, actorRef(actor), {
@@ -149,6 +164,7 @@ export async function applyPreset(actor: Actor, input: { userId: string; presetI
   requireAdmin(actor);
   if (input.presetId === "custom") throw new RuleError("Edit the permission grid to make a custom role.");
   const u = await loadTarget(input.userId);
+  guardOwner(actor, u, "role");
   await getDb().transaction(async (tx) => {
     const [preset] = await tx.select().from(rolePresets).where(eq(rolePresets.id, input.presetId));
     if (!preset) throw new RuleError("Choose a role.");
@@ -169,6 +185,7 @@ export async function applyPreset(actor: Actor, input: { userId: string; presetI
 export async function setPermissions(actor: Actor, input: { userId: string; perms: PermMap }) {
   requireAdmin(actor);
   const u = await loadTarget(input.userId);
+  guardOwner(actor, u, "role");
   await getDb().transaction(async (tx) => {
     if (u.presetId === "admin") await assertNotLastAdmin(tx, u.id);
     const before = permSnapshot(await loadUserPerms(tx, u.id));
@@ -190,6 +207,7 @@ export async function setActive(actor: Actor, input: { userId: string; active: b
   requireAdmin(actor);
   if (!input.active && input.userId === actor.userId) throw new RuleError("You can't deactivate your own account.");
   const u = await loadTarget(input.userId);
+  guardOwner(actor, u, input.active ? "other" : "role");
   await getDb().transaction(async (tx) => {
     if (!input.active) {
       if (u.presetId === "admin") await assertNotLastAdmin(tx, u.id);
@@ -215,6 +233,7 @@ export async function setActive(actor: Actor, input: { userId: string; active: b
 export async function resetSessions(actor: Actor, userId: string) {
   requireAdmin(actor);
   const u = await loadTarget(userId);
+  guardOwner(actor, u, "other");
   await getDb().transaction(async (tx) => {
     await deleteSessions(tx, u.id);
     await writeAudit(tx, actorRef(actor), { action: "sessions_reset", entity: "users", entityId: u.id, summary: `Ended every session for ${u.email}` });
@@ -226,6 +245,7 @@ export async function resetTwoFactor(actor: Actor, userId: string) {
   requireAdmin(actor);
   if (userId === actor.userId) throw new RuleError("Use the Security page to move two-factor to a new phone.");
   const u = await loadTarget(userId);
+  guardOwner(actor, u, "other");
   await getDb().transaction(async (tx) => {
     await tx.update(users).set({ totpSecretEnc: null, totpPendingEnc: null, totpEnabledAt: null, totpLastStep: null }).where(eq(users.id, u.id));
     await tx.delete(recoveryCodes).where(eq(recoveryCodes.userId, u.id));

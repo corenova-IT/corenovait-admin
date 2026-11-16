@@ -153,7 +153,7 @@ describe("every server action, called by a staff user", () => {
           result = e instanceof Redirect ? { redirect: e.url } : { threw: String(e) };
         }
         expect(result, key).not.toHaveProperty("ok");
-        expect(result, key).toMatchObject({ error: expect.stringMatching(/permission|admins|two-factor|session/i) });
+        expect(result, key).toMatchObject({ error: expect.stringMatching(/permission|admins|owner|two-factor|session/i) });
         expect(await snapshot(t), `${key} changed the database`).toEqual(before);
       }
     });
@@ -182,6 +182,7 @@ describe("guarded pages, opened by a staff user", () => {
     ["/streams/countries", () => import("@/app/(portal)/streams/countries/page"), { searchParams: Promise.resolve({}) }],
     ["/streams/countries/GB", () => import("@/app/(portal)/streams/countries/[code]/page"), { params: Promise.resolve({ code: "GB" }), searchParams: Promise.resolve({}) }],
     ["/streams/representatives", () => import("@/app/(portal)/streams/representatives/page"), {}],
+    ["/streams/projects (owner only)", () => import("@/app/(portal)/streams/projects/page"), {}],
     [
       "/streams/representatives/[id]",
       () => import("@/app/(portal)/streams/representatives/[id]/page"),

@@ -9,7 +9,7 @@ import { sniffType } from "@/lib/file-types";
 import type { AppModule } from "@/lib/permissions";
 import { actorRef, writeAudit } from "./audit";
 import { RuleError, hasPerm, requirePerm, rowAllowed, type Actor } from "./guard";
-import { financeRecordVisible } from "./finance";
+import { financeRecordVisible, incomeRecordHidden } from "./finance";
 
 /**
  * Uploads live in UPLOAD_DIR, outside the app folder and the public web root,
@@ -89,6 +89,8 @@ export async function getFileForDownload(actor: Actor, id: string) {
     if (!KEY.test(f.storageKey)) return null;
     return { name: f.originalName, mimeType: f.mimeType, bytes: await readFile(path.join(uploadDir(), f.storageKey)) };
   }
+  // an invoice in a project hidden from this person is gone for them, whatever else would let them have it
+  if (f.module === "transactions" && f.entityType === "income_entries" && f.entityId && (await incomeRecordHidden(actor, f.entityId))) return null;
   const linkedOk = f.entityType && f.entityId && f.module === "transactions" ? await financeRecordVisible(actor, f.entityType, f.entityId) : false;
   if (!linkedOk && !rowAllowed(actor, f.module, { ownerId: f.uploadedBy })) return null;
   if (!KEY.test(f.storageKey)) return null;

@@ -20,9 +20,9 @@ START TRANSACTION;
 
 INSERT INTO \`users\`
   (\`id\`, \`email\`, \`full_name\`, \`job_title\`, \`preset_id\`, \`status\`, \`password_hash\`, \`password_changed_at\`,
-   \`mfa_required\`, \`failed_logins\`, \`created_at\`, \`updated_at\`)
+   \`mfa_required\`, \`is_owner\`, \`failed_logins\`, \`created_at\`, \`updated_at\`)
 SELECT ${id}, ${q(input.email)}, ${q(input.fullName)}, '', 'admin', 'active', ${q(input.passwordHash)}, ${ts},
-   1, 0, ${ts}, ${ts}
+   1, 1, 0, ${ts}, ${ts}
 FROM DUAL
 WHERE NOT EXISTS (SELECT 1 FROM \`users\` WHERE \`preset_id\` = 'admin' AND \`status\` = 'active');
 

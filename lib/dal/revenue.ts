@@ -7,6 +7,7 @@ import type { AppModule } from "@/lib/permissions";
 import { actorRef, writeAudit } from "./audit";
 import { baseCurrency, moneyFields, moneyValues } from "./finance";
 import { AccessDenied, RuleError, hasPerm, requirePerm, rowAllowed, scopeWhere, type Actor } from "./guard";
+import { incomeVisible } from "./visibility";
 
 /**
  * Revenue by stream, by country and by representative, plus representative
@@ -52,12 +53,19 @@ export function divRound(total: number, n: number): number {
 const repIdsFor = (db: Db | Tx, userId: string) =>
   db.select({ id: representatives.id }).from(representatives).where(eq(representatives.userId, userId));
 
-/** Which income rows a module's reports may include, by that module's scope. */
+/**
+ * Which income rows a module's reports may include: that module's data scope,
+ * with the Owner's hidden projects taken out on top (see visibility.ts). Every
+ * report (home, analytics, streams, countries) gets its income through here.
+ */
 export function incomeScopeFor(db: Db | Tx, actor: Actor, module: AppModule): SQL | undefined {
-  return scopeWhere(actor, module, {
-    owner: incomeEntries.createdBy,
-    assignedTo: (uid) => inArray(incomeEntries.representativeId, repIdsFor(db, uid)),
-  });
+  return and(
+    scopeWhere(actor, module, {
+      owner: incomeEntries.createdBy,
+      assignedTo: (uid) => inArray(incomeEntries.representativeId, repIdsFor(db, uid)),
+    }),
+    incomeVisible(db, actor)
+  );
 }
 
 const n = (v: unknown) => Number(v ?? 0);
@@ -265,13 +273,14 @@ function repScope(actor: Actor): SQL | undefined {
  */
 const earnedExpr = sql<string>`coalesce(sum(case when ${incomeEntries.status} = 'paid' then round(${incomeEntries.amountBaseMinor} * coalesce(${incomeEntries.commissionRate}, ${representatives.commissionRate})) else 0 end), 0)`;
 
-async function repStats(db: Db | Tx, repIds: string[]) {
+async function repStats(db: Db | Tx, actor: Actor, repIds: string[]) {
   if (!repIds.length) return new Map<string, { deals: number; revenue: number; outstanding: number; earned: number; paid: number }>();
   const [deals, payouts] = await Promise.all([
     db
       .select({ id: representatives.id, deals: count(incomeEntries.id), revenue: paidSum, outstanding: outstandingSum, earned: earnedExpr })
       .from(representatives)
-      .leftJoin(incomeEntries, eq(incomeEntries.representativeId, representatives.id))
+      // deals in a project hidden from the caller don't exist as far as they can tell
+      .leftJoin(incomeEntries, and(eq(incomeEntries.representativeId, representatives.id), incomeVisible(db, actor)))
       .where(inArray(representatives.id, repIds))
       .groupBy(representatives.id),
     db
@@ -322,7 +331,7 @@ export async function repSummaries(actor: Actor): Promise<{ rows: RepSummary[]; 
       .orderBy(desc(representatives.active), asc(representatives.name)),
     baseCurrency(db),
   ]);
-  const stats = await repStats(db, list.map((x) => x.r.id));
+  const stats = await repStats(db, actor, list.map((x) => x.r.id));
   return {
     baseCurrency: base,
     rows: list.map(({ r, userName }) => {
@@ -357,7 +366,7 @@ export async function repDetail(actor: Actor, id: string) {
     .where(and(eq(representatives.id, id), repScope(actor)));
   if (!row) return null;
   const [stats, deals, payouts, base] = await Promise.all([
-    repStats(db, [id]),
+    repStats(db, actor, [id]),
     db
       .select({
         id: incomeEntries.id,
@@ -374,7 +383,7 @@ export async function repDetail(actor: Actor, id: string) {
       .from(incomeEntries)
       .innerJoin(streams, eq(streams.id, incomeEntries.streamId))
       .innerJoin(representatives, eq(representatives.id, incomeEntries.representativeId))
-      .where(eq(incomeEntries.representativeId, id))
+      .where(and(eq(incomeEntries.representativeId, id), incomeVisible(db, actor)))
       .orderBy(desc(incomeEntries.entryDate))
       .limit(100),
     db.select().from(repPayouts).where(eq(repPayouts.representativeId, id)).orderBy(desc(repPayouts.paidDate), desc(repPayouts.createdAt)),
@@ -504,7 +513,7 @@ export async function recordPayout(actor: Actor, input: PayoutInput, opts: { con
   await db.transaction(async (tx) => {
     // lock the rep so two payouts can't both slip under the owed amount
     await tx.select({ id: representatives.id }).from(representatives).where(eq(representatives.id, v.representativeId)).for("update");
-    const owed = (await repStats(tx, [v.representativeId])).get(v.representativeId)!;
+    const owed = (await repStats(tx, actor, [v.representativeId])).get(v.representativeId)!;
     const owedBase = owed.earned - owed.paid;
     const over = amountBase > owedBase;
     if (over && !opts.confirmOverpayment) throw new OverpaymentNeedsConfirmation(owedBase, amountBase);

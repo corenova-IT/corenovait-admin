@@ -4,6 +4,7 @@ import { z } from "zod";
 import { getDb, schema, type Db, type Tx } from "@/lib/db";
 import type { AppModule } from "@/lib/permissions";
 import { requirePerm, type Actor } from "./guard";
+import { auditVisible } from "./visibility";
 
 const { auditLog } = schema;
 
@@ -123,6 +124,8 @@ export async function listAudit(actor: Actor, f: AuditFilters, pageSize = 50): P
     const term = `%${f.q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
     conds.push(or(like(auditLog.actorEmail, term), like(auditLog.summary, term), like(auditLog.entityId, term))!);
   }
+  // income history in projects hidden from this person (and who-sees-what changes) never shows
+  conds.push(...[auditVisible(db, actor)].filter((c): c is SQL => !!c));
   const where = conds.length ? and(...conds) : undefined;
   const page = f.page ?? 1;
   const [rows, [{ n }]] = await Promise.all([
