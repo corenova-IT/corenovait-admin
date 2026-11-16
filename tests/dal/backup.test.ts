@@ -129,5 +129,6 @@ describe("database backups", () => {
     expect((await migrateWith(dir)).out).toMatch(/Database is up to date/);
     expect(readdirSync(dir)).toHaveLength(1);
     await c.end();
-  });
+    // runs three real migration processes: about 20 s alone, far more when the whole suite is running at once
+  }, 180_000);
 });

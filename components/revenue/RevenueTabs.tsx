@@ -4,16 +4,17 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cx } from "@/components/ui/cx";
 
-type TabKey = "streams" | "countries" | "representatives" | "projects";
+type TabKey = "streams" | "countries" | "representatives" | "projects" | "overview";
 
 const TABS: ReadonlyArray<{ href: string; label: string; key: TabKey }> = [
   { href: "/streams", label: "Streams", key: "streams" },
   { href: "/streams/countries", label: "Countries", key: "countries" },
   { href: "/streams/representatives", label: "Representatives", key: "representatives" },
   { href: "/streams/projects", label: "Projects", key: "projects" },
+  { href: "/streams/overview", label: "Owner overview", key: "overview" },
 ];
 
-/** Pill tabs for the revenue views; only the ones the person can open are shown (Projects is the owner's). */
+/** Pill tabs for the revenue views; only the ones the person can open are shown (Projects and Owner overview are the owner's). */
 export function RevenueTabs({ visible }: { visible: TabKey[] }) {
   const pathname = usePathname();
   const active: TabKey = pathname.startsWith("/streams/countries")
@@ -22,7 +23,9 @@ export function RevenueTabs({ visible }: { visible: TabKey[] }) {
       ? "representatives"
       : pathname.startsWith("/streams/projects")
         ? "projects"
-        : "streams";
+        : pathname.startsWith("/streams/overview")
+          ? "overview"
+          : "streams";
   const tabs = TABS.filter((t) => visible.includes(t.key));
   if (tabs.length < 2) return null;
   return (

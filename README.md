@@ -484,8 +484,22 @@ to partners).
   project's total or the company's share. A project hidden from them is left out like everything else. They
   can't open any other page (no search, ledger, reports, team or audit log).
 
-Not yet built (Phase 3): the Owner overview across all streams, projects and partners, with a "what would this
-person see?" check. Expenses aren't tied to projects yet.
+**Owner overview** (Revenue streams → **Owner overview**, visible to the Owner only). One page for the whole
+picture, for the last 12 months, this year or all time:
+
+- Totals: revenue (paid), outstanding, **partner shares** earned, and what the **company keeps** (paid revenue
+  less partner shares and representatives' commission).
+- A table by stream and project: paid, outstanding, partner shares and the company's part of each, with a
+  "No project" line per stream so the rows always add up to the total.
+- A table of partners: earned and still to come in the period, paid out and owed (all time).
+- **What would this person see?** Pick anyone and see their sidebar pages, the money they'd see next to the
+  total you see (for example "A$300 of A$1,600"), which projects are hidden from them and how much paid money
+  that is, plus plain-language notes (their scope, a partner's limits, an invite not yet accepted). It runs the
+  same data functions their own pages use, with their permissions and hidden projects, so it can't disagree with
+  what they really get. It only returns summaries (no client names or entries), changes nothing, and doesn't
+  sign you in as them. Use it before and after hiding a project from someone.
+
+Expenses aren't tied to projects yet, so the overview and the hiding cover income only.
 
 ### Your profile and the logo
 

@@ -17,7 +17,7 @@ import { SESSION_IDLE_MINUTES, SESSION_MAX_HOURS } from "@/lib/env";
 import { passwordProblems } from "@/lib/password";
 import { avatarUrl } from "@/lib/avatar";
 import { actorRef, writeAudit } from "./audit";
-import { AccessDenied, RuleError, assertCaller, issueActor, type Actor } from "./guard";
+import { AccessDenied, RuleError, assertCaller, issueActor, requireOwner, type Actor } from "./guard";
 import { copyPresetToUser, deleteSessions, loadUserPerms } from "./internal";
 
 /**
@@ -430,5 +430,45 @@ export async function operatorResetTwoFactor(emailRaw: string) {
     await tx.delete(recoveryCodes).where(eq(recoveryCodes.userId, u.id));
     await deleteSessions(tx, u.id);
     await writeAudit(tx, null, { action: "mfa_reset", entity: "users", entityId: u.id, summary: `Two-factor reset for ${email} from the server command line` });
+  });
+}
+
+// ------------------------------------------------------------------ owner preview
+/**
+ * The Actor a person would have, so the Owner can see what that person can see
+ * ("What would this person see?", lib/dal/preview.ts). It runs the real access
+ * rules for them, so the preview can't drift from what they actually get.
+ *
+ * Owner only (it takes the Owner's own Actor as proof). It is never attached to a
+ * session or a cookie: the caller uses it for read-only summaries within one
+ * request and then drops it. It carries no sign-in, no password and no two-factor.
+ */
+export async function previewActorFor(owner: Actor, userId: string): Promise<Actor | null> {
+  requireOwner(owner);
+  const db = getDb();
+  const [row] = await db
+    .select({ u: users, presetName: rolePresets.name })
+    .from(users)
+    .innerJoin(rolePresets, eq(rolePresets.id, users.presetId))
+    .where(eq(users.id, userId))
+    .limit(1);
+  if (!row) return null;
+  const u = row.u;
+  const perms = await loadUserPerms(db, u.id);
+  return issueActor({
+    userId: u.id,
+    email: u.email,
+    fullName: u.fullName,
+    jobTitle: u.jobTitle,
+    avatarUrl: null,
+    presetId: u.presetId,
+    presetName: row.presetName,
+    isAdmin: u.presetId === "admin",
+    isOwner: u.isOwner && u.presetId === "admin",
+    mfaRequired: u.mfaRequired,
+    mfaEnabled: false,
+    mfaVerified: true,
+    sessionId: "preview",
+    perms,
   });
 }

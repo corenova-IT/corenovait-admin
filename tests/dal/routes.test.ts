@@ -184,6 +184,7 @@ describe("guarded pages, opened by a staff user", () => {
     ["/streams/representatives", () => import("@/app/(portal)/streams/representatives/page"), {}],
     ["/streams/projects (owner only)", () => import("@/app/(portal)/streams/projects/page"), {}],
     ["/partner (partners only)", () => import("@/app/(portal)/partner/page"), {}],
+    ["/streams/overview (owner only)", () => import("@/app/(portal)/streams/overview/page"), { searchParams: Promise.resolve({}) }],
     [
       "/streams/representatives/[id]",
       () => import("@/app/(portal)/streams/representatives/[id]/page"),

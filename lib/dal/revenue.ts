@@ -271,7 +271,7 @@ function repScope(actor: Actor): SQL | undefined {
  * (the rep's rate when the deal was credited), rounded per entry to whole
  * cents half away from zero. Owed = earned - paid out. All in base currency.
  */
-const earnedExpr = sql<string>`coalesce(sum(case when ${incomeEntries.status} = 'paid' then round(${incomeEntries.amountBaseMinor} * coalesce(${incomeEntries.commissionRate}, ${representatives.commissionRate})) else 0 end), 0)`;
+export const earnedExpr = sql<string>`coalesce(sum(case when ${incomeEntries.status} = 'paid' then round(${incomeEntries.amountBaseMinor} * coalesce(${incomeEntries.commissionRate}, ${representatives.commissionRate})) else 0 end), 0)`;
 
 /**
  * A partner's share of a PAID entry: the share rate copied onto the entry when it

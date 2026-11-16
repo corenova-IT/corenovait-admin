@@ -61,6 +61,16 @@ Shares are copied onto each entry when it's filed, so a later change can't silen
 Owner chooses whether to apply a change to existing entries, and who the partners are is Owner-only and
 audited (those audit rows are Owner-only too).
 
+### Owner overview and "What would this person see?"
+
+Both are Owner-only (`requireOwner`, checked before anything is read; the page refuses everyone else). The
+preview builds the person's access with `previewActorFor` in `lib/dal/auth.ts`, which takes the Owner's own
+Actor as proof, is never tied to a session or cookie, and is used only inside `previewAccess`
+(`lib/dal/preview.ts`) for read-only summaries within one request. It returns totals and project names only,
+never rows, client names or other people's money. `tests/dal/overview.test.ts` checks that its figures equal
+what the person's own functions return, that non-owners (admins included) are refused, that an unknown person
+is a plain message, and that running it changes nothing in the database.
+
 Known limits: expenses and subscriptions aren't tied to projects yet (the hiding covers income), and a
 payout "owed" figure for a person who can't see some deals reflects only the deals they can see.
 
