@@ -278,7 +278,7 @@ describe("payouts above what's owed", () => {
     await rev.recordPayout(a, payout("100")); // exactly owed: fine
     await rev.recordPayout(a, payout("50"), { confirmOverpayment: true });
     const d = (await rev.repDetail(a, repId))!;
-    expect(d.commissionOwedBaseMinor).toBe(-5000);
+    expect(d.owedBaseMinor).toBe(-5000);
     const audit = await import("@/lib/dal/audit");
     const rows = (await audit.listAudit(a, { entity: "rep_payouts" })).rows;
     const confirmed = rows.find((r) => r.summary?.includes("confirmed by admin@example.test"));

@@ -4,6 +4,8 @@ import { z } from "zod";
 import { getDb, schema } from "@/lib/db";
 import { actorRef, writeAudit } from "./audit";
 import { RuleError, requireOwner, type Actor } from "./guard";
+import { percentToRate } from "./revenue";
+import { resnapshotProject } from "./shares";
 
 /**
  * Projects and who can't see their money. Everything here is owner-only:
@@ -11,7 +13,7 @@ import { RuleError, requireOwner, type Actor } from "./guard";
  * named people. Changes are audited (and those audit rows are owner-only too,
  * see auditVisible in visibility.ts).
  */
-const { projects, projectHiddenFrom, incomeEntries, streams, users } = schema;
+const { projects, projectHiddenFrom, projectPartners, incomeEntries, representatives, streams, users } = schema;
 
 const nameSchema = z.string().trim().min(1, "Give the project a name.").max(120, "Keep the name under 120 characters.");
 
@@ -25,14 +27,22 @@ export type OwnerProject = {
   /** paid income in the base currency, whole cents */
   paidBaseMinor: number;
   hiddenFrom: string[];
+  /** the partners on it and each one's share, as a percentage string ("30", "12.5") */
+  partners: Array<{ representativeId: string; percent: string }>;
 };
 export type HideCandidate = { id: string; name: string; email: string; status: "invited" | "active" | "deactivated" };
+export type PartnerChoice = { id: string; name: string; active: boolean };
 
-/** The owner's project screen: every project with its totals and who it's hidden from, and the people it could be hidden from. */
-export async function ownerProjects(actor: Actor): Promise<{ projects: OwnerProject[]; people: HideCandidate[]; streams: Array<{ id: number; name: string }> }> {
+/** "0.3000" -> "30", "0.1250" -> "12.5" */
+const rateToPercentString = (rate: string) => String(Math.round(Number(rate) * 10_000) / 100);
+
+/** The owner's project screen: every project with its totals, partners and who it's hidden from, and the people it could be hidden from. */
+export async function ownerProjects(
+  actor: Actor
+): Promise<{ projects: OwnerProject[]; people: HideCandidate[]; streams: Array<{ id: number; name: string }>; partnerChoices: PartnerChoice[] }> {
   requireOwner(actor);
   const db = getDb();
-  const [list, totals, hidden, people, streamRows] = await Promise.all([
+  const [list, totals, hidden, people, streamRows, partnerRows, reps] = await Promise.all([
     db
       .select({ id: projects.id, name: projects.name, streamId: projects.streamId, streamName: streams.name, active: projects.active })
       .from(projects)
@@ -52,12 +62,21 @@ export async function ownerProjects(actor: Actor): Promise<{ projects: OwnerProj
       .from(users)
       .orderBy(asc(users.fullName), asc(users.email)),
     db.select({ id: streams.id, name: streams.name }).from(streams).where(eq(streams.active, true)).orderBy(asc(streams.sort), asc(streams.name)),
+    db.select().from(projectPartners),
+    db.select({ id: representatives.id, name: representatives.name, active: representatives.active }).from(representatives).orderBy(asc(representatives.name)),
   ]);
   return {
     streams: streamRows,
+    partnerChoices: reps,
     projects: list.map((p) => {
       const t = totals.find((x) => x.projectId === p.id);
-      return { ...p, entries: Number(t?.n ?? 0), paidBaseMinor: Number(t?.paid ?? 0), hiddenFrom: hidden.filter((h) => h.projectId === p.id).map((h) => h.userId) };
+      return {
+        ...p,
+        entries: Number(t?.n ?? 0),
+        paidBaseMinor: Number(t?.paid ?? 0),
+        hiddenFrom: hidden.filter((h) => h.projectId === p.id).map((h) => h.userId),
+        partners: partnerRows.filter((r) => r.projectId === p.id).map((r) => ({ representativeId: r.representativeId, percent: rateToPercentString(r.shareRate) })),
+      };
     }),
     // the owner can't be hidden from anything, so isn't offered
     people: people.filter((u) => !u.isOwner).map((u) => ({ id: u.id, name: u.name, email: u.email, status: u.status })),
@@ -193,5 +212,61 @@ export async function setProjectHidden(actor: Actor, input: { projectId: string;
       before: { hidden: !input.hidden },
       after: { hidden: input.hidden, userId: u.id },
     });
+  });
+}
+
+const uuidSchema = z.string().uuid();
+
+/**
+ * Sets the whole list of partners on a project and each one's share (a percentage).
+ * The shares add up to at most 100%; whatever is left is the company's and is never
+ * shown to partners. Entries filed under the project afterwards take these shares.
+ * With `applyToExisting`, the entries already in the project are re-copied too
+ * (otherwise they keep the shares they were filed with, so history doesn't change).
+ */
+export async function setProjectPartners(
+  actor: Actor,
+  projectId: string,
+  shares: Array<{ representativeId: string; percent: string }>,
+  opts: { applyToExisting?: boolean } = {}
+): Promise<{ entriesUpdated: number }> {
+  requireOwner(actor);
+  if (shares.length > 50) throw new RuleError("A project can have up to 50 partners.");
+  const seen = new Set<string>();
+  const parsed = shares.map((s) => {
+    if (!uuidSchema.safeParse(s.representativeId).success) throw new RuleError("Choose a partner from the list.");
+    if (seen.has(s.representativeId)) throw new RuleError("Each partner can only be on a project once.");
+    seen.add(s.representativeId);
+    const rate = percentToRate(s.percent);
+    if (Number(rate) <= 0) throw new RuleError("A share has to be more than 0%.");
+    return { representativeId: s.representativeId, rate };
+  });
+  const totalBp = parsed.reduce((a, s) => a + Math.round(Number(s.rate) * 10_000), 0);
+  if (totalBp > 10_000) throw new RuleError(`The shares add up to ${totalBp / 100}%. They can't add up to more than 100%.`);
+
+  const db = getDb();
+  const p = await loadProject(db, projectId);
+  return db.transaction(async (tx) => {
+    await tx.select({ id: projects.id }).from(projects).where(eq(projects.id, p.id)).for("update");
+    const reps = parsed.length ? await tx.select({ id: representatives.id, name: representatives.name, active: representatives.active }).from(representatives) : [];
+    const before = await tx.select().from(projectPartners).where(eq(projectPartners.projectId, p.id));
+    const wasPartner = new Set(before.map((b) => b.representativeId));
+    for (const s of parsed) {
+      const r = reps.find((x) => x.id === s.representativeId);
+      if (!r) throw new RuleError("That partner no longer exists. Refresh the page.");
+      if (!r.active && !wasPartner.has(r.id)) throw new RuleError(`${r.name} is switched off. Switch them on under Representatives first.`);
+    }
+    await tx.delete(projectPartners).where(eq(projectPartners.projectId, p.id));
+    if (parsed.length) await tx.insert(projectPartners).values(parsed.map((s) => ({ projectId: p.id, representativeId: s.representativeId, shareRate: s.rate })));
+    const entriesUpdated = opts.applyToExisting ? await resnapshotProject(tx, p.id) : 0;
+    await writeAudit(tx, actorRef(actor), {
+      action: "update",
+      entity: "project_partners",
+      entityId: p.id,
+      summary: `Partners of project "${p.name}" set: ${parsed.length} ${parsed.length === 1 ? "partner" : "partners"}, ${totalBp / 100}% in total${opts.applyToExisting ? `, applied to ${entriesUpdated} existing ${entriesUpdated === 1 ? "entry" : "entries"}` : ""}`,
+      before: before.map((b) => ({ representativeId: b.representativeId, shareRate: b.shareRate })),
+      after: parsed.map((s) => ({ representativeId: s.representativeId, shareRate: s.rate })),
+    });
+    return { entriesUpdated };
   });
 }

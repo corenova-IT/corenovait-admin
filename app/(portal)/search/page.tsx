@@ -1,9 +1,11 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { IconSearch } from "@/components/icons";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { EmptyState } from "@/components/ui/States";
 import { requireUser } from "@/lib/auth/session";
+import { hasPerm } from "@/lib/dal/guard";
 import { searchEverything } from "@/lib/dal/search";
 import { SEARCH_MIN } from "@/lib/search";
 
@@ -12,6 +14,8 @@ export const metadata = { title: "Search" };
 /** Results from the top-bar search, grouped by page. Only pages (and rows) the person can see are searched. */
 export default async function SearchPage({ searchParams }: { searchParams: Promise<{ q?: string | string[] }> }) {
   const actor = await requireUser();
+  // search needs Home (a partner has none): a clean "no access", not an error page
+  if (!hasPerm(actor, "home", "view")) redirect("/no-access?module=home");
   const raw = (await searchParams).q;
   const { q, groups } = await searchEverything(actor, typeof raw === "string" ? raw : "");
   const total = groups.reduce((n, g) => n + g.hits.length, 0);

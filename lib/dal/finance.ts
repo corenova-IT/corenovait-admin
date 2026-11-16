@@ -8,6 +8,7 @@ import { actorRef, writeAudit, writeAuditMany } from "./audit";
 import { AccessDenied, RuleError, assertCaller, hasPerm, requirePerm, rowAllowed, scopeWhere, type Actor } from "./guard";
 import { saveUpload } from "./files";
 import { rateToDecimal, toSafeNumber } from "./internal";
+import { snapshotShares } from "./shares";
 import { incomeVisible, projectHiddenFromActor } from "./visibility";
 
 /**
@@ -386,6 +387,7 @@ export async function createIncome(actor: Actor, input: IncomeInput, attachment?
   const file = attachment ? await saveUpload(actor, { module: "transactions", entityType: "income_entries", entityId: id, ...attachment }) : null;
   await db.transaction(async (tx) => {
     await tx.insert(incomeEntries).values({ id, ...values, commissionRate, invoiceFileId: file?.id ?? null, createdBy: actor.userId });
+    await snapshotShares(tx, id, values.projectId);
     const [after] = await tx.select().from(incomeEntries).where(eq(incomeEntries.id, id));
     await writeAudit(tx, actorRef(actor), { action: "create", entity: "income_entries", entityId: id, after });
   });
@@ -409,6 +411,8 @@ export async function updateIncome(actor: Actor, id: string, input: IncomeInput,
       .update(incomeEntries)
       .set({ ...values, commissionRate, ...(file ? { invoiceFileId: file.id } : {}) })
       .where(eq(incomeEntries.id, id));
+    // moved to another project (or into/out of one): the entry takes that project's shares; otherwise it keeps its own
+    if ((before.projectId ?? null) !== values.projectId) await snapshotShares(tx, id, values.projectId);
     const [after] = await tx.select().from(incomeEntries).where(eq(incomeEntries.id, id));
     await writeAudit(tx, actorRef(actor), { action: "update", entity: "income_entries", entityId: id, before, after });
   });

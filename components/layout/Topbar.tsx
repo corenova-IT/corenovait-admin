@@ -74,7 +74,22 @@ function useWide() {
   );
 }
 
-export function Topbar({ name, email, avatarUrl, theme, badges: initial }: { name: string; email: string; avatarUrl: string | null; theme: Theme; badges: Badges }) {
+export function Topbar({
+  name,
+  email,
+  avatarUrl,
+  theme,
+  badges: initial,
+  canSearch = true,
+}: {
+  name: string;
+  email: string;
+  avatarUrl: string | null;
+  theme: Theme;
+  badges: Badges;
+  /** false for people who can't open Home (search needs it), e.g. partners */
+  canSearch?: boolean;
+}) {
   const unread = useBadges(initial).notifications;
   const pathname = usePathname();
   // on a phone the long hint ("Search clients, invoices, tasks") would be cut off, so just "Search"
@@ -83,25 +98,29 @@ export function Topbar({ name, email, avatarUrl, theme, badges: initial }: { nam
   return (
     <div className="flex items-center gap-3">
       {/* a plain GET form: works without JavaScript, and the results page searches only what this person can see */}
-      <form role="search" className="relative min-w-0 flex-1" action="/search" method="get">
-        <label htmlFor="global-search" className="sr-only">
-          Search
-        </label>
-        <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-muted">
-          <IconSearch size={17} />
-        </span>
-        <input
-          id="global-search"
-          type="search"
-          name="q"
-          required
-          minLength={2}
-          maxLength={100}
-          enterKeyHint="search"
-          placeholder={placeholder}
-          className="h-12 w-full rounded-[14px] border border-line bg-surface pl-11 pr-4 text-[15px] text-ink placeholder:text-muted focus-visible:border-accent-line"
-        />
-      </form>
+      {canSearch ? (
+        <form role="search" className="relative min-w-0 flex-1" action="/search" method="get">
+          <label htmlFor="global-search" className="sr-only">
+            Search
+          </label>
+          <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-muted">
+            <IconSearch size={17} />
+          </span>
+          <input
+            id="global-search"
+            type="search"
+            name="q"
+            required
+            minLength={2}
+            maxLength={100}
+            enterKeyHint="search"
+            placeholder={placeholder}
+            className="h-12 w-full rounded-[14px] border border-line bg-surface pl-11 pr-4 text-[15px] text-ink placeholder:text-muted focus-visible:border-accent-line"
+          />
+        </form>
+      ) : (
+        <div className="min-w-0 flex-1" />
+      )}
       <ThemeToggle initial={theme} />
       <Link
         href="/notifications"

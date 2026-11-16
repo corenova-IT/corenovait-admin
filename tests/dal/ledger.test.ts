@@ -210,7 +210,7 @@ describe("representatives and commission", () => {
     expect(d.dealsCount).toBe(4);
     expect(d.commissionEarnedBaseMinor).toBe(19500 + 3333 + 2000);
     expect(d.commissionPaidBaseMinor).toBe(10000);
-    expect(d.commissionOwedBaseMinor).toBe(19500 + 3333 + 2000 - 10000);
+    expect(d.owedBaseMinor).toBe(19500 + 3333 + 2000 - 10000);
     expect(d.payouts).toHaveLength(1);
 
     const audit = await import("@/lib/dal/audit");

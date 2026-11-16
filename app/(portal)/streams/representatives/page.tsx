@@ -39,17 +39,17 @@ export default async function RepresentativesPage() {
     { key: "rate", header: "Rate", cell: (r) => <span className="font-mono">{formatRatePercent(r.commissionRate)}</span> },
     { key: "deals", header: "Deals", align: "right", cell: (r) => <span className="font-mono">{r.deals}</span> },
     { key: "revenue", header: "Paid revenue", align: "right", hideBelow: "md", cell: (r) => <span className="num font-mono">{formatMoney(r.revenueBaseMinor, base, { cents: false })}</span> },
-    { key: "earned", header: "Earned", align: "right", hideBelow: "lg", cell: (r) => <span className="num font-mono">{formatMoney(r.commissionEarnedBaseMinor, base)}</span> },
+    { key: "earned", header: "Earned", align: "right", hideBelow: "lg", cell: (r) => <span className="num font-mono">{formatMoney(r.commissionEarnedBaseMinor + r.shareEarnedBaseMinor, base)}</span> },
     { key: "paid", header: "Paid", align: "right", hideBelow: "lg", cell: (r) => <span className="num font-mono">{formatMoney(r.commissionPaidBaseMinor, base)}</span> },
     {
       key: "owed",
       header: "Owed",
       align: "right",
       cell: (r) =>
-        r.commissionOwedBaseMinor > 0 ? (
-          <Badge tone="amber">{formatMoney(r.commissionOwedBaseMinor, base)}</Badge>
+        r.owedBaseMinor > 0 ? (
+          <Badge tone="amber">{formatMoney(r.owedBaseMinor, base)}</Badge>
         ) : (
-          <span className="num font-mono text-muted">{formatMoney(r.commissionOwedBaseMinor, base)}</span>
+          <span className="num font-mono text-muted">{formatMoney(r.owedBaseMinor, base)}</span>
         ),
     },
     { key: "status", header: "Status", hideBelow: "md", cell: (r) => (r.active ? <Badge tone="green">Active</Badge> : <Badge>Inactive</Badge>) },
@@ -65,13 +65,13 @@ export default async function RepresentativesPage() {
         actions={canCreate ? <RepButton users={users} action={saveRep} /> : undefined}
       />
       <div className="mb-[var(--space-gap)] grid grid-cols-1 gap-cards @min-[40rem]:grid-cols-3">
-        <StatCard label="Commission earned" value={formatMoney(sum("commissionEarnedBaseMinor"), base, { cents: false })} detail="On paid deals, all time" />
+        <StatCard label="Earned" value={formatMoney(sum("commissionEarnedBaseMinor") + sum("shareEarnedBaseMinor"), base, { cents: false })} detail="Commission and project shares, on paid income" />
         <StatCard label="Paid out" value={formatMoney(sum("commissionPaidBaseMinor"), base, { cents: false })} detail="From the payout log" />
         <StatCard
           label="Owed now"
-          value={formatMoney(sum("commissionOwedBaseMinor"), base, { cents: false })}
-          note={sum("commissionOwedBaseMinor") > 0 ? "Payouts due" : "All settled"}
-          noteTone={sum("commissionOwedBaseMinor") > 0 ? "amber" : "green"}
+          value={formatMoney(sum("owedBaseMinor"), base, { cents: false })}
+          note={sum("owedBaseMinor") > 0 ? "Payouts due" : "All settled"}
+          noteTone={sum("owedBaseMinor") > 0 ? "amber" : "green"}
         />
       </div>
       <Card>

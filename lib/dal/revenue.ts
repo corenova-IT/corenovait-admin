@@ -16,7 +16,7 @@ import { incomeVisible } from "./visibility";
  * Revenue counts PAID invoices only. Pending and overdue invoices are shown
  * separately as "outstanding". All totals are whole cents in the base currency.
  */
-const { incomeEntries, streams, countries, representatives, repPayouts, users } = schema;
+const { incomeEntries, incomeShares, streams, countries, representatives, repPayouts, users } = schema;
 
 // ---------------------------------------------------------------- shared helpers
 export const PERIODS = ["12m", "ytd", "all"] as const;
@@ -273,9 +273,19 @@ function repScope(actor: Actor): SQL | undefined {
  */
 const earnedExpr = sql<string>`coalesce(sum(case when ${incomeEntries.status} = 'paid' then round(${incomeEntries.amountBaseMinor} * coalesce(${incomeEntries.commissionRate}, ${representatives.commissionRate})) else 0 end), 0)`;
 
-async function repStats(db: Db | Tx, actor: Actor, repIds: string[]) {
-  if (!repIds.length) return new Map<string, { deals: number; revenue: number; outstanding: number; earned: number; paid: number }>();
-  const [deals, payouts] = await Promise.all([
+/**
+ * A partner's share of a PAID entry: the share rate copied onto the entry when it
+ * was filed under the project, times its base-currency amount, rounded per entry
+ * to whole cents half away from zero.
+ */
+export const shareEarnedExpr = sql<string>`coalesce(sum(case when ${incomeEntries.status} = 'paid' then round(${incomeEntries.amountBaseMinor} * ${incomeShares.shareRate}) else 0 end), 0)`;
+export const shareExpectedExpr = sql<string>`coalesce(sum(case when ${incomeEntries.status} = 'paid' then 0 else round(${incomeEntries.amountBaseMinor} * ${incomeShares.shareRate}) end), 0)`;
+
+/** Per representative: commission deals, project shares and payouts. Owed = commission earned + shares earned - paid out. */
+export async function repStats(db: Db | Tx, actor: Actor, repIds: string[]) {
+  type Stat = { deals: number; revenue: number; outstanding: number; earned: number; shareEarned: number; paid: number };
+  if (!repIds.length) return new Map<string, Stat>();
+  const [deals, shares, payouts] = await Promise.all([
     db
       .select({ id: representatives.id, deals: count(incomeEntries.id), revenue: paidSum, outstanding: outstandingSum, earned: earnedExpr })
       .from(representatives)
@@ -283,6 +293,13 @@ async function repStats(db: Db | Tx, actor: Actor, repIds: string[]) {
       .leftJoin(incomeEntries, and(eq(incomeEntries.representativeId, representatives.id), incomeVisible(db, actor)))
       .where(inArray(representatives.id, repIds))
       .groupBy(representatives.id),
+    // project shares, on entries the caller may see
+    db
+      .select({ id: incomeShares.representativeId, earned: shareEarnedExpr })
+      .from(incomeShares)
+      .innerJoin(incomeEntries, eq(incomeEntries.id, incomeShares.incomeEntryId))
+      .where(and(inArray(incomeShares.representativeId, repIds), incomeVisible(db, actor)))
+      .groupBy(incomeShares.representativeId),
     db
       .select({ id: repPayouts.representativeId, paid: sql<string>`sum(${repPayouts.amountBaseMinor})` })
       .from(repPayouts)
@@ -294,7 +311,14 @@ async function repStats(db: Db | Tx, actor: Actor, repIds: string[]) {
       const d = deals.find((x) => x.id === id);
       return [
         id,
-        { deals: n(d?.deals), revenue: n(d?.revenue), outstanding: n(d?.outstanding), earned: n(d?.earned), paid: n(payouts.find((p) => p.id === id)?.paid) },
+        {
+          deals: n(d?.deals),
+          revenue: n(d?.revenue),
+          outstanding: n(d?.outstanding),
+          earned: n(d?.earned),
+          shareEarned: n(shares.find((s) => s.id === id)?.earned),
+          paid: n(payouts.find((p) => p.id === id)?.paid),
+        } satisfies Stat,
       ];
     })
   );
@@ -315,8 +339,11 @@ export type RepSummary = {
   revenueBaseMinor: number;
   outstandingBaseMinor: number;
   commissionEarnedBaseMinor: number;
+  /** their share of paid income in the projects they're a partner on */
+  shareEarnedBaseMinor: number;
   commissionPaidBaseMinor: number;
-  commissionOwedBaseMinor: number;
+  /** commission + project shares earned, less what's been paid out */
+  owedBaseMinor: number;
 };
 
 export async function repSummaries(actor: Actor): Promise<{ rows: RepSummary[]; baseCurrency: string }> {
@@ -349,8 +376,9 @@ export async function repSummaries(actor: Actor): Promise<{ rows: RepSummary[]; 
         revenueBaseMinor: s.revenue,
         outstandingBaseMinor: s.outstanding,
         commissionEarnedBaseMinor: s.earned,
+        shareEarnedBaseMinor: s.shareEarned,
         commissionPaidBaseMinor: s.paid,
-        commissionOwedBaseMinor: s.earned - s.paid,
+        owedBaseMinor: s.earned + s.shareEarned - s.paid,
       };
     }),
   };
@@ -398,8 +426,9 @@ export async function repDetail(actor: Actor, id: string) {
     revenueBaseMinor: s.revenue,
     outstandingBaseMinor: s.outstanding,
     commissionEarnedBaseMinor: s.earned,
+    shareEarnedBaseMinor: s.shareEarned,
     commissionPaidBaseMinor: s.paid,
-    commissionOwedBaseMinor: s.earned - s.paid,
+    owedBaseMinor: s.earned + s.shareEarned - s.paid,
     baseCurrency: base,
   };
 }
@@ -494,7 +523,7 @@ export class OverpaymentNeedsConfirmation extends RuleError {
     public readonly owedBaseMinor: number,
     public readonly amountBaseMinor: number
   ) {
-    super("This payout is more than the commission currently owed. Confirm to record it anyway.");
+    super("This payout is more than is currently owed. Confirm to record it anyway.");
     this.name = "OverpaymentNeedsConfirmation";
   }
 }
@@ -514,7 +543,7 @@ export async function recordPayout(actor: Actor, input: PayoutInput, opts: { con
     // lock the rep so two payouts can't both slip under the owed amount
     await tx.select({ id: representatives.id }).from(representatives).where(eq(representatives.id, v.representativeId)).for("update");
     const owed = (await repStats(tx, actor, [v.representativeId])).get(v.representativeId)!;
-    const owedBase = owed.earned - owed.paid;
+    const owedBase = owed.earned + owed.shareEarned - owed.paid;
     const over = amountBase > owedBase;
     if (over && !opts.confirmOverpayment) throw new OverpaymentNeedsConfirmation(owedBase, amountBase);
     await tx.insert(repPayouts).values({

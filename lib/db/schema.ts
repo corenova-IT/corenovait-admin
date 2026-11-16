@@ -390,6 +390,54 @@ export const incomeEntries = mysqlTable(
   ]
 );
 
+/**
+ * The partners on a project and each one's share of its income (0.3000 = 30%).
+ * Partners are representatives, so they keep their portal login link and
+ * payout log. The shares add up to at most 100%; what's left is the company's.
+ */
+export const projectPartners = mysqlTable(
+  "project_partners",
+  {
+    projectId: varchar("project_id", { length: 36 })
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    representativeId: varchar("representative_id", { length: 36 })
+      .notNull()
+      .references(() => representatives.id),
+    /** 0.3000 = 30% */
+    shareRate: decimal("share_rate", { precision: 5, scale: 4 }).notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.projectId, t.representativeId] }),
+    index("project_partner_rep_idx").on(t.representativeId),
+    check("project_partner_rate_chk", sql`${t.shareRate} > 0 and ${t.shareRate} <= 1`),
+  ]
+);
+
+/**
+ * A copy of the project's shares taken when an income entry is filed under the
+ * project, so changing a partner's share later doesn't rewrite what the
+ * entries already earned. A partner earns share_rate × the entry's base-currency
+ * amount once the entry is paid.
+ */
+export const incomeShares = mysqlTable(
+  "income_shares",
+  {
+    incomeEntryId: varchar("income_entry_id", { length: 36 })
+      .notNull()
+      .references(() => incomeEntries.id, { onDelete: "cascade" }),
+    representativeId: varchar("representative_id", { length: 36 })
+      .notNull()
+      .references(() => representatives.id),
+    shareRate: decimal("share_rate", { precision: 5, scale: 4 }).notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.incomeEntryId, t.representativeId] }),
+    index("income_share_rep_idx").on(t.representativeId),
+    check("income_share_rate_chk", sql`${t.shareRate} > 0 and ${t.shareRate} <= 1`),
+  ]
+);
+
 export const expenses = mysqlTable(
   "expenses",
   {

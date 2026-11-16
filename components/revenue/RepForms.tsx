@@ -107,7 +107,7 @@ export function PayoutButton({ repId, repName, base, owed, action }: { repId: st
           <Msg state={state.overpayment ? {} : state} />
           {state.overpayment && (
             <div role="alert" className="flex flex-col gap-3 rounded-[14px] border border-warning/45 bg-warning-soft px-4 py-3 text-sm text-ink">
-              <p className="font-semibold">This payout is more than the commission owed.</p>
+              <p className="font-semibold">This payout is more than is owed.</p>
               <p className="font-mono text-xs text-ink-2">
                 Owed now {formatMoney(state.overpayment.owedBaseMinor, base)} · this payout {formatMoney(state.overpayment.amountBaseMinor, base)} · over by{" "}
                 {formatMoney(state.overpayment.amountBaseMinor - state.overpayment.owedBaseMinor, base)}

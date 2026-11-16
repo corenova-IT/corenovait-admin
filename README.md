@@ -465,9 +465,27 @@ one main admin) can then choose, project by project, which people must **not** s
   effect on their next request, and a hidden project doesn't even appear by name in the project list.
 - **Tests.** `tests/dal/revenue-privacy.test.ts` walks every one of those paths against a real database.
 
-Not yet built (Phases 2 and 3 of this feature): partners attached to projects with their share, a Partner
-sign-in that shows each partner only their own share, and the Owner overview with a "what would this person
-see?" check. Expenses aren't tied to projects yet.
+**Partners and shares.** A partner is a **representative** (Revenue streams → Representatives), so they keep
+their portal login link and payout log. On the Projects screen, **Partners & shares** sets who is on a
+project and each one's percentage (they add up to at most 100%; the rest is the company's and is never shown
+to partners).
+
+- When income is filed under a project, the entry takes a **copy** of the project's shares, so changing a share
+  later doesn't rewrite what earlier entries earned. The drawer has an "also apply to the entries already in
+  this project" tick for when you do want that. Moving an entry to another project gives it that project's shares.
+- A partner **earns** their share once the entry is marked **paid** (rounded to the cent per entry, in the base
+  currency). Unpaid entries show as "still to come".
+- Representative balances (Earned, Owed, and the payout check) include project shares as well as commission.
+- **Setting up a partner:** add them as a representative → on Team & permissions invite them with the
+  **Partner** role (two-factor is required) → on the representative, choose their **Portal login** → put them on
+  projects. They sign in to **My earnings**.
+- **What a partner sees:** only their own share by project and by entry (date, project, status, rate, amount),
+  their payouts and what they're owed. Never the gross amount, the client, the invoice, other partners, the
+  project's total or the company's share. A project hidden from them is left out like everything else. They
+  can't open any other page (no search, ledger, reports, team or audit log).
+
+Not yet built (Phase 3): the Owner overview across all streams, projects and partners, with a "what would this
+person see?" check. Expenses aren't tied to projects yet.
 
 ### Your profile and the logo
 

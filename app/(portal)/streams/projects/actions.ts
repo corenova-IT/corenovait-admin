@@ -72,6 +72,24 @@ export async function deleteProject(_prev: ProjectState, fd: FormData): Promise<
   }
 }
 
+/** The partners on a project and each one's share. Rows come as parallel repId / percent fields; blank rows are skipped. */
+export async function savePartners(_prev: ProjectState, fd: FormData): Promise<ProjectState> {
+  const g = await ownerOnly();
+  if (!g.actor) return { error: g.error };
+  const id = uuid.safeParse(str(fd, "id"));
+  if (!id.success) return bad("That project");
+  const reps = fd.getAll("repId").map((v) => (typeof v === "string" ? v : ""));
+  const pcts = fd.getAll("percent").map((v) => (typeof v === "string" ? v : ""));
+  const shares = reps.map((representativeId, i) => ({ representativeId, percent: pcts[i] ?? "" })).filter((s) => s.representativeId !== "");
+  try {
+    const r = await projects.setProjectPartners(g.actor, id.data, shares, { applyToExisting: fd.get("applyToExisting") === "on" });
+    const applied = r.entriesUpdated > 0 ? ` Applied to ${r.entriesUpdated} existing ${r.entriesUpdated === 1 ? "entry" : "entries"}.` : "";
+    return done(`${shares.length ? "Partners saved." : "No partners on this project."}${applied}`);
+  } catch (e) {
+    return { error: errorMessage(e) };
+  }
+}
+
 /** The checked people are the ones who can NOT see the project's money. */
 export async function saveHiddenFrom(_prev: ProjectState, fd: FormData): Promise<ProjectState> {
   const g = await ownerOnly();

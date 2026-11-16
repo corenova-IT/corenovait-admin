@@ -57,7 +57,8 @@ export async function projectHiddenFromActor(db: Db | Tx, actor: Actor, projectI
  *     covers its history from before it was moved into that project), or
  *   - its recorded copy of the entry names a hidden project (this covers entries
  *     deleted since, and entries moved out of a hidden project), or
- *   - it records the Owner changing who can see a project (owner-only information), or
+ *   - it records the Owner changing who can see a project, or who its partners are and
+ *     their shares (owner-only information), or
  *   - it records an invoice file being uploaded for such an entry (file names give things away).
  * undefined (no restriction) for the Owner.
  */
@@ -81,7 +82,7 @@ export function auditVisible(db: Db | Tx, actor: Actor): SQL | undefined {
     )
   );
   return and(
-    sql`${auditLog.entity} not in ('projects', 'project_hidden_from')`,
+    sql`${auditLog.entity} not in ('projects', 'project_hidden_from', 'project_partners')`,
     or(
       sql`${auditLog.entity} <> 'income_entries'`,
       and(sql`not coalesce(${entryNowHidden}, false)`, sql`not ${namesHidden(recordedNow)}`, sql`not ${namesHidden(recordedBefore)}`)

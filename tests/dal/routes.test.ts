@@ -183,6 +183,7 @@ describe("guarded pages, opened by a staff user", () => {
     ["/streams/countries/GB", () => import("@/app/(portal)/streams/countries/[code]/page"), { params: Promise.resolve({ code: "GB" }), searchParams: Promise.resolve({}) }],
     ["/streams/representatives", () => import("@/app/(portal)/streams/representatives/page"), {}],
     ["/streams/projects (owner only)", () => import("@/app/(portal)/streams/projects/page"), {}],
+    ["/partner (partners only)", () => import("@/app/(portal)/partner/page"), {}],
     [
       "/streams/representatives/[id]",
       () => import("@/app/(portal)/streams/representatives/[id]/page"),
@@ -199,6 +200,24 @@ describe("guarded pages, opened by a staff user", () => {
       await expect(page(props as never)).rejects.toMatchObject({ url: expect.stringMatching(/^\/no-access/) });
     });
   }
+
+  it("a partner is sent from /home to /partner, can open it, and nothing else", async () => {
+    const partner = await createPerson(t, { email: "partner@example.test", preset: "partner" });
+    const { SESSION_COOKIE } = await import("@/lib/auth/session");
+    jar.set(SESSION_COOKIE, await sessionFor(t, partner.id, { mfaVerified: true }));
+    const home = (await import("@/app/(portal)/home/page")).default as (p: unknown) => Promise<unknown>;
+    await expect(home({ searchParams: Promise.resolve({}) })).rejects.toMatchObject({ url: "/partner" });
+    const mine = (await import("@/app/(portal)/partner/page")).default as () => Promise<unknown>;
+    await expect(mine()).resolves.toBeTruthy();
+    // search needs Home: a clean "no access", not an error page
+    const searchPage = (await import("@/app/(portal)/search/page")).default as (p: unknown) => Promise<unknown>;
+    await expect(searchPage({ searchParams: Promise.resolve({ q: "Gamma" }) })).rejects.toMatchObject({ url: expect.stringMatching(/^\/no-access/) });
+    for (const [route, load, props] of pages) {
+      const page = (await load()).default;
+      if (route.startsWith("/partner")) continue;
+      await expect(page(props as never), route).rejects.toMatchObject({ url: expect.stringMatching(/^\/no-access/) });
+    }
+  });
 
   it("signed-out visitors are sent to /login", async () => {
     jar.clear();

@@ -13,6 +13,7 @@ export const MODULES = [
   "team",
   "settings",
   "audit",
+  "partner",
 ] as const;
 export type AppModule = (typeof MODULES)[number];
 
@@ -37,6 +38,7 @@ export const MODULE_LABELS: Record<AppModule, string> = {
   team: "Team & permissions",
   settings: "Settings",
   audit: "Audit log",
+  partner: "My earnings (partners)",
 };
 
 export const SCOPE_LABELS: Record<DataScope, string> = {
@@ -49,7 +51,7 @@ export const SCOPE_LABELS: Record<DataScope, string> = {
  * Any access to these modules makes two-factor required (as does the Admin
  * preset). Everyone else may turn it on but doesn't have to.
  */
-export const PRIVILEGED_MODULES: AppModule[] = ["finances", "transactions", "team", "settings", "audit"];
+export const PRIVILEGED_MODULES: AppModule[] = ["finances", "transactions", "team", "settings", "audit", "partner"];
 
 export type PermRow = {
   module: AppModule;

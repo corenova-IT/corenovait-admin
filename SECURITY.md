@@ -44,6 +44,23 @@ Only the Owner can create projects or change who sees what (checked before the f
 can't deactivate, demote, reset or rename the Owner, and the Owner can't demote themselves. The test that
 found the invoice file name in the audit log is why file-upload rows are filtered too.
 
+### Partners ("My earnings")
+
+A partner is a representative whose login has the **Partner** role (two-factor required). `partnerEarnings`
+in `lib/dal/partners.ts` is the only data they can reach, and it needs **both** the "My earnings"
+permission **and** a representative record linked to their login. Even the Owner and other admins can't open
+it without the permission. `tests/dal/partners.test.ts` checks, with real data, that a partner never receives:
+
+- the gross amount, client, description or invoice of any entry, or the project's total;
+- another partner's name, share, amounts or payouts, or the company's share;
+- anything from a project hidden from them;
+- and that they are refused by every other path: ledger, exports, reports, representatives, audit log, team,
+  search and all the Owner's tools.
+
+Shares are copied onto each entry when it's filed, so a later change can't silently alter past earnings; the
+Owner chooses whether to apply a change to existing entries, and who the partners are is Owner-only and
+audited (those audit rows are Owner-only too).
+
 Known limits: expenses and subscriptions aren't tied to projects yet (the hiding covers income), and a
 payout "owed" figure for a person who can't see some deals reflects only the deals they can see.
 

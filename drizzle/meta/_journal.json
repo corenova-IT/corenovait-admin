@@ -85,6 +85,13 @@
       "when": 1794828569853,
       "tag": "0011_revenue_privacy",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "5",
+      "when": 1794830667129,
+      "tag": "0012_partner_shares",
+      "breakpoints": true
     }
   ]
 }
