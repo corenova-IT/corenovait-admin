@@ -1,0 +1,127 @@
+# Stream partners: progress
+
+Branch: `feature/stream-partners`. Spec: [stream-partners-spec.md](stream-partners-spec.md). Plan and owner decisions: [stream-partners-plan.md](stream-partners-plan.md).
+
+Approval gate: Phase N+1 starts only when this file contains the line "Phase N approved by Umair".
+
+## Status at the end of run 1 (2026-11-18)
+
+- **Phase 1 is finished** (all steps below ticked). I stopped here, as required: Phase 2 does not start until the line "Phase 1 approved by Umair" appears in this file.
+- **Next:** wait for your review of Phase 1. After approval, the first step is 2.1 (partner "My dashboard").
+- **Blockers:** none. One thing needs your eyes: the migration file `drizzle/0013_stream_partners.sql` (see the report).
+- **Test status:** typecheck clean. Full suite: **395 tests passed, 0 failed** (32 files) on commit `1195811`, which is the 367 earlier tests plus 28 new ones. A second full run after the small audit-label commit was also green: 395 passed, 0 failed.
+- **Nothing was pushed, deployed or run against any real database.** The migration was applied only to throwaway test databases by the test suite.
+- **Not checked in a browser.** The new screens (invite form, user edit page, the two landing pages) are covered by tests and the type checker, but I did not open them in a running app. Please click through them (steps below) on your local database.
+
+## Checklist
+
+### Phase 1: streams and countries, new roles, scoped helper, migration, access tests
+- [x] 1.1 Migration file `drizzle/0013_stream_partners.sql` (a file only, never run on the live database)
+- [x] 1.2 Schema for the new tables and columns (`lib/db/schema.ts`)
+- [x] 1.3 Presets `stream_partner` and `employee`, new permission modules, 2FA rule, presets locked from hand-editing
+- [x] 1.4 Shared scoped-query helper `lib/dal/scope.ts` and the `scoped` field on the Actor
+- [x] 1.5 Stream and country assignment on the invite form and the user edit page, one stream one partner, audit log
+- [x] 1.6 Placeholder landing pages (`/my-dashboard`, `/work`) and `/home` redirects
+- [x] 1.7 Access tests (`tests/dal/stream-partners.test.ts`, plus new cases in `tests/dal/routes.test.ts`)
+- [x] 1.8 Phase 1 report (below)
+
+### Phase 2: partner dashboard, admin Partners, partner writes (not started: waiting for approval of Phase 1)
+- [ ] 2.1 Partner "My dashboard"
+- [ ] 2.2 Admin Partners list
+- [ ] 2.3 Admin per-partner page with "Changes made"
+- [ ] 2.4 Partner writes: expenses, subscriptions, tasks (audited, archive only)
+- [ ] 2.5 Phase 2 report
+
+### Phase 3: employees, projects, pay, Team visible, chat (not started)
+- [ ] 3.1 Employee invites (by partner and by admin)
+- [ ] 3.2 Project assignment and partner project management
+- [ ] 3.3 Tasks for employees
+- [ ] 3.4 Pay records and cost under the stream (counted once)
+- [ ] 3.5 Per-project "Team visible"
+- [ ] 3.6 Chat with the agreed visibility rules
+- [ ] 3.7 Phase 3 report
+
+### Phase 4: shifts and admin Employees (not started)
+- [ ] 4.1 Clock in and out, hours and shift history
+- [ ] 4.2 Forgotten clock-out flag, logged corrections
+- [ ] 4.3 Admin Employees list and per-employee pages
+- [ ] 4.4 Phase 4 report
+
+---
+
+## Phase 1 report
+
+### What changed
+
+**New roles**
+- Two new presets: **Stream partner** and **Employee**. Each holds only its own permission module (`stream_partner`, `employee`: view, create, edit; no delete, no export). They hold none of the older modules (transactions, payments, tasks, finances…), so every older page and query refuses them. A test calls eight of the older queries as each role and checks they are all refused.
+- Stream partners must use two-factor (same rule as the old Partner). Employees may, but need not.
+- The two presets are fixed. An admin can't edit them, can't give one of these people custom permissions, and can't give any other person these two modules by hand. The Permissions section of a stream partner's edit page says so.
+- **The old Partner preset is untouched** (same name, same single "My earnings" module, still view-only, still 2FA). A test compares its rows to the original values.
+
+**Streams and countries**
+- On the **Invite a person** form, choosing the role "Stream partner" shows a list of streams and a list of countries. On the edit page ("Manage") a stream partner has a new "Streams and countries" section.
+- A stream already owned by another partner is shown greyed out with that partner's name, and the server refuses it too. The database itself also refuses a second owner for a stream (so two admins clicking at the same moment can't both win; a test proves exactly one wins).
+- A warning appears under the form when no country is chosen ("won't see any data until you assign at least one country"), and when a country is chosen but no stream.
+- Every change is written to the audit log (action "Assigned", before and after, who did it). Saving without changing anything writes nothing. Changing a person's role away from Stream partner frees their streams and countries (also logged).
+- Only an admin with two-factor done can do any of this. A partner cannot change their own streams, countries or permissions.
+
+**The shared scoped-query helper (`lib/dal/scope.ts`)**
+- The one place that decides which rows a Stream partner or Employee may touch. Rules built in:
+  - Money rows (income, expenses, subscriptions): the row's stream **and** country must both be assigned. A row with no stream, or no country, never matches (so company-wide rows stay admin-only).
+  - Projects and tasks: the stream must match (country is not compared, as you decided), and the partner must have at least one country, otherwise nothing.
+  - A partner with streams but no countries, or countries but no streams, sees nothing.
+  - A project the Owner hid from the partner disappears with everything filed under it (income, tasks).
+  - Writes check the stream and country against the assignment on the server. A stream that doesn't exist and a stream that belongs to someone else give the identical "That no longer exists." answer, so guessing IDs tells nothing.
+- The Actor (the signed-in person object) now carries the partner's streams and countries, loaded fresh on every request, so a change by an admin takes effect on the person's very next click.
+- "What would this person see?" works for the new roles (it carries their scope and shows a plain-words note).
+- Nothing reads company data for these roles yet (that begins in Phase 2). The only reader so far is the partner's own landing page, which shows just the names of their streams and countries, and goes through the helper. A test checks that file never touches a company table directly.
+
+**Pages**
+- `/my-dashboard` ("My dashboard"): shows the partner's streams and countries, or "Nothing to show yet" with the reason. `/work` ("My work"): an empty landing page for employees.
+- Signing in or opening `/home` sends each role to its page. Search is not available to them. Every other page sends them to "no access" (tested for staff, old Partner, stream partner and employee).
+- The Audit log page shows the new action and the two new record types in plain words.
+
+### Migration summary (`drizzle/0013_stream_partners.sql`, not run anywhere real)
+Only adds things; nothing is dropped or rewritten, and no existing row changes.
+- 2 new tables: `stream_partner_streams` (primary key on the stream, so one partner per stream) and `stream_partner_countries`.
+- New nullable columns: `stream_id` on `expenses`, `subscriptions` and `tasks`; `project_id` on `tasks`; `archived_at` on `expenses` and `tasks`. Every existing row gets NULL, so every existing row stays admin-only.
+- 3 indexes for the new columns.
+- The permission-module list (a database enum used in three tables) gains `stream_partner` and `employee`. This is the same kind of change as migration `0012` made for `partner`.
+- 2 new rows in `role_presets` and 2 in `preset_permissions`.
+- The normal deploy runs the existing automatic backup before migrating. I did not run it, and nothing was pushed or deployed.
+
+### How to test it yourself, in plain words (on your local database only)
+1. Start the local database and the app the way you normally do (`npm run db:local`, then `npm run dev`) and sign in as the Owner.
+2. Go to **Team and permissions** and click **Invite person**. Choose the role **Stream partner**. A list of streams and countries appears. Tick one stream and one country, fill in a name and email, and send.
+3. Open that person with **Manage**. Under "Streams and countries" you should see your ticks. Untick the country and save: you should see the message that they won't see any data until you give them a country.
+4. Invite a second stream partner and try to tick the same stream: it should be greyed out with the first partner's name.
+5. Open the **Audit log**. You should see "Assigned" rows for the streams and the countries, with before and after.
+6. Open the first partner's invite link, set a password and two-factor, and sign in as them. You should land on **My dashboard**, which lists their stream and country. There should be no search box and no menu items except "My dashboard". Typing `/transactions` or `/team` in the address bar should show "no access".
+7. Invite someone as **Employee**. After they sign in they land on **My work**, which is empty.
+8. Sign in as an existing old-style **Partner**: they still land on **My earnings**, unchanged.
+9. In **Team and permissions**, look at the Stream partner and Employee rows under "Role presets": they should say "Fixed" and have no Edit button.
+10. As the Owner, open "What would this person see?" for a stream partner: you should see a note about stream-and-country matching.
+
+### What I was unsure about
+1. **Several rule changes in one commit.** Because the full test suite must pass before every commit and takes about 4 minutes, the Phase 1 code went in as one commit (`1195811`) instead of several tiny ones. Only the small audit-label change and this file are separate.
+2. **Employee invites are possible now but pointless.** The Employee preset shows in the invite list today. An invited employee can sign in but is not tied to any partner or project yet (that arrives in Phase 3), so they see only the empty "My work" page. I left the preset in the list; tell me if you'd rather hide it until Phase 3.
+3. **Archived rows.** The `archived_at` columns exist, but nothing writes them yet and the older lists and totals don't filter on them yet. That is deliberate and safe for now (no row can be archived), but it **must** be done in Phase 2 together with the first partner "archive" action, with the all-readers test from the plan. It is the first thing on my Phase 2 list.
+4. **Stream on the admin forms.** The plan says the admin expense and subscription forms get a Stream field, so an admin can file a cost under a stream. I did not add it in Phase 1 (it changes existing finance screens). Until it exists, no expense or subscription is visible to any partner. I plan to add it at the start of Phase 2, and I would like your OK on touching those admin forms.
+5. **The permission grid for custom roles** still lists the two new modules as rows (it lists every module). Ticking one is refused with a plain message ("can only come from those roles"), so it is safe, but a little confusing. I can hide those two rows from the grid in a small follow-up if you want.
+6. **Deactivated partners keep their streams.** Deactivating a stream partner does not free their streams; an admin frees them by editing the partner's streams, or by changing their role. I did not change this automatically, because deactivation is meant to be reversible.
+7. **Inactive streams** can still be assigned to a partner. I did not restrict this.
+8. **Decision 6 from the plan is still unanswered** (can one person be both an old-style Partner and a Stream partner). I kept the working assumption: one role or the other.
+9. **Windows line endings:** git prints "LF will be replaced by CRLF" warnings for the touched files. This already happens in this repo and does not change anything.
+
+### Rules checked against this run
+- Git identity `corenova-IT` passed with `git -c` on the commit; no push, no deploy, no force push.
+- No secrets or database URL were printed (the only place a URL appeared was redacted on screen); only `.env.example` and `.env.local` were checked for names, not values.
+- No migration was run against any real database; no data deleted (all new columns are NULL, "archive" only).
+- The old Partner preset, other features and other branches were not changed. The website repo was not opened.
+- Access rules are enforced on the server through `lib/dal/scope.ts` and `lib/dal/assignments.ts`; hiding buttons is not relied on (the UI hides the fields, and the server refuses the same requests).
+
+## Run log
+
+### Run 1 (2026-11-18)
+Read spec, plan and decisions. Created this file. Baseline: 367 tests passing. Built and tested Phase 1 (commit `1195811`: 395 tests passing). Added audit labels for the new action. Wrote the Phase 1 report and stopped at the approval gate.
