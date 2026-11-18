@@ -36,6 +36,7 @@ export const ACTION_LABELS: Record<string, { label: string; tone: BadgeTone }> =
   recovery_codes_regenerated: { label: "New recovery codes", tone: "neutral" },
   password_changed: { label: "Password changed", tone: "neutral" },
   assign: { label: "Assigned", tone: "amber" },
+  archive: { label: "Archived", tone: "amber" },
 };
 
 export const ENTITY_LABELS: Record<string, string> = {

@@ -5,10 +5,10 @@ Branch: `feature/stream-partners`. Spec: [stream-partners-spec.md](stream-partne
 Approval gate: Phase N+1 starts only when this file contains the line "Phase N approved by Umair".
 
 ## Current status (updated end of run 3)
-- Phase 1 approved (line at the bottom of this file). **Phase 2 is in progress**: 2.0a and 2.0b done and committed; **next is 2.1 (partner "My dashboard")**, then 2.2, 2.3, 2.4, report.
-- Test status: typecheck clean; full suite **407 passed, 0 failed** (34 files).
-- Blockers: none. Not pushed, not deployed, no migration run on any real database (Phase 2 so far adds no migration).
-- Unsure: archived rows are hidden from admins too (an archived expense can no longer be opened by id). There is no admin "unarchive" yet; tell me if you want one.
+- Phase 1 approved. **Phase 2 is finished** (all steps ticked; report below). I stopped at the approval gate: Phase 3 does not start until this file contains the line "Phase 2 approved by Umair".
+- Test status: typecheck clean; full suite **443 passed, 0 failed** (37 files).
+- Blockers: none. Not pushed, not deployed, no migration run on any real database (Phase 2 adds no migration).
+- Needs your decision: budgets (what is a budget?), and whether partners should be able to mark a subscription paid. See "What I was unsure about" in the Phase 2 report.
 
 ## Status at the end of run 1 (2026-11-18)
 
@@ -38,14 +38,14 @@ Phase 1 is **not yet approved**: the line "Phase 1 approved by Umair" is still m
 - [x] 1.7 Access tests (`tests/dal/stream-partners.test.ts`, plus new cases in `tests/dal/routes.test.ts`)
 - [x] 1.8 Phase 1 report (below)
 
-### Phase 2: partner dashboard, admin Partners, partner writes (not started: waiting for approval of Phase 1)
+### Phase 2: partner dashboard, admin Partners, partner writes (finished; waiting for approval)
 - [x] 2.0a Archived expenses and tasks ignored by every older reader (lists, lookups, exports, totals, team progress, calendar, reminders) + all-readers test `tests/dal/archived.test.ts`
 - [x] 2.0b Stream field on the admin expense and subscription forms ("Company-wide" by default); marking a subscription paid keeps its stream; `tests/dal/cost-streams.test.ts`
 - [x] 2.1 Partner "My dashboard" (data: lib/dal/partner-dashboard.ts; page: app/(portal)/my-dashboard; tests/dal/partner-dashboard.test.ts). Budgets: the system has no budgets concept yet, so none shown. Employees panel arrives in Phase 3/4.
 - [x] 2.2 Admin Partners list (lib/dal/admin-partners.ts, /partners; filters stream, country, date range)
 - [x] 2.3 Admin per-partner page with "Changes made" (/partners/[id]; tests/dal/admin-partners.test.ts). Employees section is a placeholder until Phase 3.
-- [ ] 2.4 Partner writes: expenses, subscriptions, tasks (audited, archive only)
-- [ ] 2.5 Phase 2 report
+- [x] 2.4 Partner writes: expenses, subscriptions, tasks (audited, archive only): lib/dal/partner-writes.ts, pages under /my-dashboard, tests/dal/partner-writes.test.ts
+- [x] 2.5 Phase 2 report (below)
 
 ### Phase 3: employees, projects, pay, Team visible, chat (not started)
 - [ ] 3.1 Employee invites (by partner and by admin)
@@ -136,6 +136,49 @@ Only adds things; nothing is dropped or rewritten, and no existing row changes.
 - The old Partner preset, other features and other branches were not changed. The website repo was not opened.
 - Access rules are enforced on the server through `lib/dal/scope.ts` and `lib/dal/assignments.ts`; hiding buttons is not relied on (the UI hides the fields, and the server refuses the same requests).
 
+## Phase 2 report
+
+### What changed
+**Older code**
+- Archived expenses and tasks now drop out of every list, lookup, CSV export, total, team-progress figure, calendar entry and reminder (tests/dal/archived.test.ts walks each reader; the rows stay in the database).
+- The admin Transactions (expense) and Payments (subscription) forms have a new **Stream** field, "Company-wide (no stream)" by default. Marking a subscription paid files the resulting expense under the same stream. Editing without touching the field leaves the stream alone. Changes show in the audit log.
+
+**Stream partner: "My dashboard"** (`/my-dashboard`)
+- Revenue (paid income only) per stream and overall, this month and all time; "still to come" (income not yet paid) shown separately; costs (expenses, which include paid subscriptions); net per stream and overall; subscriptions and renewals due soon (each shows its own currency and its base-currency value); open and overdue tasks and the next deadlines.
+- All totals add base-currency values using the exchange rate stored on each row, never raw amounts in different currencies.
+- Everything goes through the shared helper: a row counts only if its stream AND country are assigned (tasks: the stream, with at least one country); nothing archived; nothing under a project the Owner hid from them; nothing company-wide; nothing about other partners or the company's share.
+- Three new pages for the partner to manage their own things: **Expenses**, **Subscriptions**, **Tasks** (`/my-dashboard/expenses`, `/subscriptions`, `/tasks`): add, edit, archive. The server checks the stream, country and project again, so a tampered form can't reach another stream. They can't enter income, change shares or hiding, or delete. No file attachments.
+- "Delete" is an archive: an expense or task gets an archived date; a subscription becomes cancelled. Every add, edit and archive is written to the audit log.
+
+**Admin: "Partners"** (`/partners`, `/partners/[id]`, admins only)
+- List: name, streams, countries, revenue and profit for the chosen period (default this month), open tasks, payments due in 30 days, last active. Filters: stream, country, date range.
+- Partner page: streams and countries, the same figures a partner sees, deadlines, upcoming subscriptions, task progress, and **Changes made** (what this partner added, edited or archived). Employees show as "later" until Phase 3.
+- Uses the same rules as the partner's own view (shared in `lib/dal/scope.ts`), then removes whatever the Owner hid from the admin. "Changes made" only reads the partner's own changes to expenses, subscriptions, tasks and (later) projects; hiding and share records can never appear there. A person who isn't a stream partner gets the same "not found" as someone who doesn't exist.
+
+### Migration summary
+**None in Phase 2.** `0013` (from Phase 1) already added every column used. I did not check query plans on a large database, so I did not add the optional `0014` indexes. Nothing was run on any real database.
+
+### How to test it yourself, in plain words (local database only)
+1. As the Owner open **Transactions, Expenses, Add**. Choose the new **Stream** (e.g. Upwork) and a **Country** (not "Shared"), save. Do the same on **Payments** for a subscription due in the next few days. A row with no stream, or with "Shared" for country, stays admin-only on purpose.
+2. In **Team**, make sure your test Stream partner has that stream and that country.
+3. Sign in as the partner: **My dashboard** shows the stream, this month's revenue/costs/net (add an income entry as the Owner for that stream and country with status Paid to see revenue), the upcoming subscription and any open tasks. Use the **Expenses**, **Subscriptions** and **Tasks** buttons to add, edit and archive one of each. An archived item disappears.
+4. Try to cheat: in the partner's forms the stream and country lists only contain theirs. (A tampered request is refused by the server; tests cover this.)
+5. As the Owner open **Partners** in the admin menu: the partner appears with their figures. Click the name: you should see the same figures, and **Changes made** listing what they just did, with before and after.
+6. As the Owner hide a project from that partner (Revenue streams, Projects) and confirm its income disappears from their dashboard but not from yours.
+7. Open **Audit log**: partner actions show "Created / Changed / Archived".
+
+### What I was unsure about
+1. **Budgets.** The spec lists "budgets" on the dashboard, but the system has no budgets concept at all (no table or screen), so I showed none. I need your decision on what a budget is before I build it.
+2. **Partner can't "mark a subscription as paid".** A subscription only becomes a cost when it is marked paid (that creates the expense). Partners can add expenses by hand, but have no "mark paid" button; the spec did not list one. Tell me if they should have it.
+3. **Costs = expenses only.** Employee pay joins costs in Phase 3 (counted once, as decided).
+4. **A partner's view and the admin's view can differ** in one case: if the Owner hid a project from the partner, the partner doesn't see it but an admin does (unless the Owner also hid it from that admin).
+5. **Existing rows need both a stream and a country** before a partner sees them. "Shared" country rows never show to partners.
+6. **Partner tasks have no assignee**, so no reminder emails or notifications are sent for them (partners have no notifications module). Admins see partner tasks in the normal Tasks page.
+7. **No admin "unarchive"** yet, and archived items can no longer be opened by id even by an admin.
+8. **The "Partners" menu item** shows to anyone who can open Team and permissions; a non-admin who clicks it gets "no access".
+9. **Not checked in a browser.** Pages and forms are covered by tests and the type checker only; please click through them.
+10. One earlier full test run had a one-off unexplained failure (see the run log); the full suite has been green since.
+
 ## Run log
 
 ### Run 1 (2026-11-18)
@@ -145,6 +188,6 @@ Read spec, plan and decisions. Created this file. Baseline: 367 tests passing. B
 Recorded your four answers. Hid the Employee role until Phase 3 (picker + server refusal + test). Test status: typecheck clean; full suite **396 passed, 0 failed**. Note: one earlier full run of this same change showed 2 failures in 1 file that I did not capture; the new file passed alone (25/25) and a full re-run was green. I don't know the cause, so treat it as a possible flaky test. Phase 2 not started: still waiting for the line "Phase 1 approved by Umair".
 
 ### Run 3 (2026-11-18)
-Phase 1 approved in chat by Umair ("approve the test 1 go for the second phase"); approval line recorded below. Did Phase 2 steps 2.0a and 2.0b (above). Stopped here to keep the run focused; 2.1 onwards continues next run.
+Phase 1 approved in chat by Umair ("approve the test 1 go for the second phase"); approval line recorded below. Did Phase 2 steps 2.0a and 2.0b (above). Then continued: 2.1 to 2.4 built and tested; Phase 2 report written; stopped at the approval gate.
 
 Phase 1 approved by Umair

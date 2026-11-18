@@ -445,7 +445,7 @@ export const expenseInput = z.object({
 });
 export type ExpenseInput = z.input<typeof expenseInput>;
 
-function expenseValues(input: ExpenseInput) {
+export function expenseValues(input: ExpenseInput) {
   const parsed = expenseInput.safeParse(input);
   if (!parsed.success) throw new RuleError(parsed.error.issues[0]?.message ?? "Check the expense and try again.");
   const v = parsed.data;

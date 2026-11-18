@@ -186,6 +186,9 @@ describe("guarded pages, opened by a staff user", () => {
     ["/partner (partners only)", () => import("@/app/(portal)/partner/page"), {}],
     ["/my-dashboard (stream partners only)", () => import("@/app/(portal)/my-dashboard/page"), {}],
     ["/work (employees only)", () => import("@/app/(portal)/work/page"), {}],
+    ["/my-dashboard/expenses (stream partners only)", () => import("@/app/(portal)/my-dashboard/expenses/page"), {}],
+    ["/my-dashboard/subscriptions (stream partners only)", () => import("@/app/(portal)/my-dashboard/subscriptions/page"), {}],
+    ["/my-dashboard/tasks (stream partners only)", () => import("@/app/(portal)/my-dashboard/tasks/page"), {}],
     ["/partners (admins only)", () => import("@/app/(portal)/partners/page"), { searchParams: Promise.resolve({}) }],
     ["/partners/x (admins only)", () => import("@/app/(portal)/partners/[id]/page"), { params: Promise.resolve({ id: "x" }), searchParams: Promise.resolve({}) }],
     ["/streams/overview (owner only)", () => import("@/app/(portal)/streams/overview/page"), { searchParams: Promise.resolve({}) }],
@@ -232,11 +235,15 @@ describe("guarded pages, opened by a staff user", () => {
     await expect(home({ searchParams: Promise.resolve({}) })).rejects.toMatchObject({ url: "/my-dashboard" });
     const mine = (await import("@/app/(portal)/my-dashboard/page")).default as () => Promise<unknown>;
     await expect(mine()).resolves.toBeTruthy();
+    for (const sub of ["expenses", "subscriptions", "tasks"]) {
+      const subPage = (await import(`@/app/(portal)/my-dashboard/${sub}/page`)).default as () => Promise<unknown>;
+      await expect(subPage(), sub).resolves.toBeTruthy();
+    }
     const searchPage = (await import("@/app/(portal)/search/page")).default as (p: unknown) => Promise<unknown>;
     await expect(searchPage({ searchParams: Promise.resolve({ q: "Gamma" }) })).rejects.toMatchObject({ url: expect.stringMatching(/^\/no-access/) });
     for (const [route, load, props] of pages) {
       const page = (await load()).default;
-      if (route.startsWith("/my-dashboard")) continue;
+      if (route.startsWith("/my-dashboard")) continue; // their own pages (the dashboard and its three sub-pages)
       await expect(page(props as never), route).rejects.toMatchObject({ url: expect.stringMatching(/^\/no-access/) });
     }
   });

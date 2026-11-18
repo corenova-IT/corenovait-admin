@@ -1,4 +1,5 @@
 import { Badge } from "@/components/ui/Badge";
+import { ButtonLink } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -79,7 +80,17 @@ export default async function MyDashboardPage() {
 
   return (
     <>
-      <PageHeader title="My dashboard" subtitle={`${mine.streams.map((s) => s.name).join(", ")} · ${mine.countries.map((c) => c.name).join(", ")} · in ${base}`} />
+      <PageHeader
+        title="My dashboard"
+        subtitle={`${mine.streams.map((s) => s.name).join(", ")} · ${mine.countries.map((c) => c.name).join(", ")} · in ${base}`}
+        actions={
+          <>
+            <ButtonLink href="/my-dashboard/expenses" variant="secondary">Expenses</ButtonLink>
+            <ButtonLink href="/my-dashboard/subscriptions" variant="secondary">Subscriptions</ButtonLink>
+            <ButtonLink href="/my-dashboard/tasks" variant="secondary">Tasks</ButtonLink>
+          </>
+        }
+      />
 
       <div className="mb-[var(--space-gap)] grid grid-cols-1 gap-cards @min-[34rem]:grid-cols-2 @min-[60rem]:grid-cols-4">
         <StatCard label="Revenue this month" value={money(o.revenueMonthBaseMinor)} detail="Income that has been paid" />
