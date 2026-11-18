@@ -1,10 +1,10 @@
 import "server-only";
-import { and, asc, eq, isNull, lt, ne, sql } from "drizzle-orm";
-import { getDb, schema } from "@/lib/db";
+import { and, asc, eq, isNull, ne, sql, type SQL } from "drizzle-orm";
+import { getDb, schema, type Db, type Tx } from "@/lib/db";
 import { daysBetween } from "@/lib/dates";
 import type { Actor } from "./guard";
 import { companyToday } from "./payments";
-import { moneyRowsWhere, notHiddenFrom, partnerScope, streamRowsWhere } from "./scope";
+import { moneyRowsWhere, notHiddenFrom, partnerScope, streamRowsWhere, type PartnerScope } from "./scope";
 
 /**
  * "My dashboard": a Stream partner's own revenue, costs, net, upcoming payments and tasks.
@@ -64,24 +64,42 @@ export type DashboardData = {
 const num = (v: unknown) => Number(v ?? 0);
 const sumIf = (amount: ReturnType<typeof sql>, cond: ReturnType<typeof sql>) => sql<string>`coalesce(sum(case when ${cond} then ${amount} else 0 end), 0)`;
 
+export type DashboardConds = { income: SQL | undefined; expense: SQL | undefined; subscription: SQL | undefined; task: SQL | undefined };
+
+/** The signed-in partner's own dashboard. */
 export async function myDashboard(actor: Actor): Promise<DashboardData> {
   const scope = partnerScope(actor);
   const db = getDb();
+  return computeDashboard(db, scope, {
+    income: and(moneyRowsWhere(actor, { streamId: incomeEntries.streamId, countryCode: incomeEntries.countryCode }), notHiddenFrom(db, actor, incomeEntries.projectId)),
+    expense: and(moneyRowsWhere(actor, { streamId: expenses.streamId, countryCode: expenses.countryCode }), isNull(expenses.archivedAt)),
+    subscription: and(moneyRowsWhere(actor, { streamId: subscriptions.streamId, countryCode: subscriptions.countryCode }), eq(subscriptions.status, "active")),
+    task: and(streamRowsWhere(actor, { streamId: tasks.streamId }), notHiddenFrom(db, actor, tasks.projectId), isNull(tasks.archivedAt)),
+  });
+}
+
+/**
+ * The figures for one assignment under the given row conditions. Exported for lib/dal/admin-partners.ts,
+ * which builds the same conditions for a chosen partner (from lib/dal/scope.ts) and adds the admin's own
+ * Owner-hidden filters. Never call it with conditions that were not built by lib/dal/scope.ts.
+ */
+export async function computeDashboard(db: Db | Tx, scope: PartnerScope, conds: DashboardConds, range?: { from: string; to: string }): Promise<DashboardData> {
   const [settingsRow] = await db.select({ base: settings.baseCurrency }).from(settings).where(eq(settings.id, 1));
   const baseCurrency = settingsRow?.base ?? "AUD";
   const today = await companyToday(db);
-  const monthStart = `${today.slice(0, 7)}-01`;
+  const monthStart = range?.from ?? `${today.slice(0, 7)}-01`;
+  const monthEnd = range?.to ?? "9999-12-31";
 
   const empty = { revenueMonthBaseMinor: 0, revenueTotalBaseMinor: 0, pendingBaseMinor: 0, costsMonthBaseMinor: 0, costsTotalBaseMinor: 0, netMonthBaseMinor: 0, netTotalBaseMinor: 0 };
-  const base: DashboardData = { baseCurrency, today, monthLabel: today.slice(0, 7), hasData: scope.hasData, perStream: [], overall: empty, upcomingPayments: [], dueWithin30DaysBaseMinor: 0, tasks: { open: 0, overdue: 0, upcoming: [] } };
+  const base: DashboardData = { baseCurrency, today, monthLabel: range ? `${range.from} to ${range.to}` : today.slice(0, 7), hasData: scope.hasData, perStream: [], overall: empty, upcomingPayments: [], dueWithin30DaysBaseMinor: 0, tasks: { open: 0, overdue: 0, upcoming: [] } };
   if (!scope.hasData) return base;
 
   const streamNames = new Map((await db.select({ id: streams.id, name: streams.name }).from(streams).orderBy(asc(streams.sort), asc(streams.name))).filter((s) => scope.streamIds.includes(s.id)).map((s) => [s.id, s.name]));
 
-  const incomeWhere = and(moneyRowsWhere(actor, { streamId: incomeEntries.streamId, countryCode: incomeEntries.countryCode }), notHiddenFrom(db, actor, incomeEntries.projectId));
-  const expenseWhere = and(moneyRowsWhere(actor, { streamId: expenses.streamId, countryCode: expenses.countryCode }), isNull(expenses.archivedAt));
-  const subWhere = and(moneyRowsWhere(actor, { streamId: subscriptions.streamId, countryCode: subscriptions.countryCode }), eq(subscriptions.status, "active"));
-  const taskWhere = and(streamRowsWhere(actor, { streamId: tasks.streamId }), notHiddenFrom(db, actor, tasks.projectId), isNull(tasks.archivedAt));
+  const incomeWhere = conds.income;
+  const expenseWhere = conds.expense;
+  const subWhere = conds.subscription;
+  const taskWhere = conds.task;
 
   const incAmount = sql`${incomeEntries.amountBaseMinor}`;
   const expAmount = sql`${expenses.amountBaseMinor}`;
@@ -89,7 +107,7 @@ export async function myDashboard(actor: Actor): Promise<DashboardData> {
     db
       .select({
         streamId: incomeEntries.streamId,
-        paidMonth: sumIf(incAmount, sql`${incomeEntries.status} = 'paid' and ${incomeEntries.entryDate} >= ${monthStart}`),
+        paidMonth: sumIf(incAmount, sql`${incomeEntries.status} = 'paid' and ${incomeEntries.entryDate} >= ${monthStart} and ${incomeEntries.entryDate} <= ${monthEnd}`),
         paidAll: sumIf(incAmount, sql`${incomeEntries.status} = 'paid'`),
         pending: sumIf(incAmount, sql`${incomeEntries.status} <> 'paid'`),
       })
@@ -99,7 +117,7 @@ export async function myDashboard(actor: Actor): Promise<DashboardData> {
     db
       .select({
         streamId: expenses.streamId,
-        month: sumIf(expAmount, sql`${expenses.expenseDate} >= ${monthStart}`),
+        month: sumIf(expAmount, sql`${expenses.expenseDate} >= ${monthStart} and ${expenses.expenseDate} <= ${monthEnd}`),
         all: sql<string>`coalesce(sum(${expAmount}), 0)`,
       })
       .from(expenses)

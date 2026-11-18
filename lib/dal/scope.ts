@@ -56,18 +56,30 @@ export function partnerScope(actor: Actor): PartnerScope {
   return { streamIds: [...s.streamIds], countryCodes: [...s.countryCodes], hasData: s.streamIds.length > 0 && s.countryCodes.length > 0 };
 }
 
+export type Assignment = { streamIds: readonly number[]; countryCodes: readonly string[] };
+
+/**
+ * The same two rules for a GIVEN assignment (not the signed-in caller). The admin Partners pages use these
+ * to show an admin exactly what a partner's assignment covers, so the rule lives here once and the
+ * partner's own view and the admin's view of that partner can never drift apart.
+ */
+export function moneyRowsFor(p: Assignment, cols: { streamId: MySqlColumn; countryCode: MySqlColumn }): SQL {
+  if (!p.streamIds.length || !p.countryCodes.length) return NOTHING;
+  return and(inArray(cols.streamId, [...p.streamIds]), inArray(cols.countryCode, [...p.countryCodes])) ?? NOTHING;
+}
+export function streamRowsFor(p: Assignment, cols: { streamId: MySqlColumn }): SQL {
+  if (!p.streamIds.length || !p.countryCodes.length) return NOTHING;
+  return inArray(cols.streamId, [...p.streamIds]);
+}
+
 /** Money rows: `stream_id IN (assigned) AND country_code IN (assigned)`. */
 export function moneyRowsWhere(actor: Actor, cols: { streamId: MySqlColumn; countryCode: MySqlColumn }): SQL {
-  const p = partnerScope(actor);
-  if (!p.hasData) return NOTHING;
-  return and(inArray(cols.streamId, p.streamIds), inArray(cols.countryCode, p.countryCodes)) ?? NOTHING;
+  return moneyRowsFor(partnerScope(actor), cols);
 }
 
 /** Projects and tasks: `stream_id IN (assigned)`, and only if at least one country is assigned. */
 export function streamRowsWhere(actor: Actor, cols: { streamId: MySqlColumn }): SQL {
-  const p = partnerScope(actor);
-  if (!p.hasData) return NOTHING;
-  return inArray(cols.streamId, p.streamIds);
+  return streamRowsFor(partnerScope(actor), cols);
 }
 
 /**

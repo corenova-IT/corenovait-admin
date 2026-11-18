@@ -28,6 +28,7 @@ export const NAV: NavItem[] = [
   { href: "/calendar", label: "Calendar", icon: "calendar", modules: ["calendar"], search: "Search meetings, tasks, messages", group: "workspace" },
   { href: "/tasks", label: "Tasks", icon: "tasks", modules: ["tasks"], search: "Search tasks", group: "workspace" },
   { href: "/chat", label: "Team chat", icon: "chat", modules: ["chat"], search: "Search messages", group: "workspace" },
+  { href: "/partners", label: "Partners", icon: "team", modules: ["team"], search: "Search partners", group: "admin" },
   { href: "/team", label: "Team & permissions", icon: "team", modules: ["team"], search: "Search people", group: "admin" },
   { href: "/settings", label: "Settings", icon: "settings", modules: ["settings"], search: "Search settings", group: "admin" },
   { href: "/audit", label: "Audit log", icon: "audit", modules: ["audit"], search: "Search the audit log", group: "admin" },

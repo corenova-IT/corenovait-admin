@@ -186,6 +186,8 @@ describe("guarded pages, opened by a staff user", () => {
     ["/partner (partners only)", () => import("@/app/(portal)/partner/page"), {}],
     ["/my-dashboard (stream partners only)", () => import("@/app/(portal)/my-dashboard/page"), {}],
     ["/work (employees only)", () => import("@/app/(portal)/work/page"), {}],
+    ["/partners (admins only)", () => import("@/app/(portal)/partners/page"), { searchParams: Promise.resolve({}) }],
+    ["/partners/x (admins only)", () => import("@/app/(portal)/partners/[id]/page"), { params: Promise.resolve({ id: "x" }), searchParams: Promise.resolve({}) }],
     ["/streams/overview (owner only)", () => import("@/app/(portal)/streams/overview/page"), { searchParams: Promise.resolve({}) }],
     [
       "/streams/representatives/[id]",
