@@ -222,6 +222,77 @@ export function MarkPaidForm({ id, action }: { id: string; action: PartnerAction
   );
 }
 
+/** Create a project, or rename one. */
+export function ProjectForm({ c, row, action, idPrefix }: { c: Choices; row?: { id: string; name: string }; action: PartnerAction; idPrefix: string }) {
+  const [state, formAction, pending] = useActionState(action, {});
+  return (
+    <form action={formAction} className="flex flex-wrap items-end gap-3" noValidate>
+      {row && <input type="hidden" name="id" value={row.id} />}
+      {!row && (
+        <Field label="Stream" htmlFor={`${idPrefix}-stream`}>
+          <Select id={`${idPrefix}-stream`} name="streamId" required defaultValue={c.streams[0]?.id}>
+            {c.streams.map((s) => (
+              <option key={s.id} value={s.id}>{s.name}</option>
+            ))}
+          </Select>
+        </Field>
+      )}
+      <Field label="Project name" htmlFor={`${idPrefix}-name`} className="min-w-56 flex-1">
+        <Input id={`${idPrefix}-name`} name="name" required maxLength={120} defaultValue={row?.name} />
+      </Field>
+      <Button type="submit" disabled={pending}>{pending ? "Saving…" : row ? "Rename" : "Add project"}</Button>
+      <div className="basis-full"><Msg state={state} /></div>
+    </form>
+  );
+}
+
+/** Team visible, and which of the partner's employees are on the project. */
+export function ProjectTeamForm({ project, employees, action }: { project: { id: string; teamVisible: boolean; members: string[] }; employees: Array<{ id: string; name: string }>; action: PartnerAction }) {
+  const [state, formAction, pending] = useActionState(action, {});
+  return (
+    <form action={formAction} className="flex flex-col gap-3">
+      <input type="hidden" name="id" value={project.id} />
+      <fieldset>
+        <legend className="label-mono mb-2">Who is on this project</legend>
+        {employees.length === 0 ? (
+          <p className="text-sm text-muted">You have no employees yet. Invite some on the My team page.</p>
+        ) : (
+          <ul className="grid gap-2 sm:grid-cols-2">
+            {employees.map((e) => (
+              <li key={e.id} className="flex items-center gap-2">
+                <input id={`pm-${project.id}-${e.id}`} type="checkbox" name="employeeIds" value={e.id} defaultChecked={project.members.includes(e.id)} className="size-[18px] accent-[var(--accent)]" />
+                <label htmlFor={`pm-${project.id}-${e.id}`} className="text-sm text-ink">{e.name}</label>
+              </li>
+            ))}
+          </ul>
+        )}
+      </fieldset>
+      <div className="flex items-start gap-2">
+        <input id={`tv-${project.id}`} type="checkbox" name="teamVisible" defaultChecked={project.teamVisible} className="mt-0.5 size-[18px] accent-[var(--accent)]" />
+        <label htmlFor={`tv-${project.id}`} className="text-sm text-ink">
+          Team visible
+          <span className="block text-xs text-muted">Off by default. When on, people on this project see each other&apos;s name and whether they are online. Never tasks, chats, hours or costs.</span>
+        </label>
+      </div>
+      <Msg state={state} />
+      <Button type="submit" variant="secondary" disabled={pending} className="self-start">{pending ? "Saving…" : "Save team"}</Button>
+    </form>
+  );
+}
+
+/** Archive or restore a project. */
+export function ProjectActiveButton({ id, active, action }: { id: string; active: boolean; action: PartnerAction }) {
+  const [state, formAction, pending] = useActionState(action, {});
+  return (
+    <form action={formAction} className="flex flex-col gap-2">
+      <input type="hidden" name="id" value={id} />
+      <input type="hidden" name="active" value={active ? "false" : "true"} />
+      <Button type="submit" variant="secondary" disabled={pending} className="self-start">{pending ? "Saving…" : active ? "Archive this project" : "Restore this project"}</Button>
+      <Msg state={state} />
+    </form>
+  );
+}
+
 /** Invite an employee. They always get the Employee role, for this partner only. */
 export function InviteEmployeeForm({ action }: { action: PartnerAction }) {
   const [state, formAction, pending] = useActionState(action, {});

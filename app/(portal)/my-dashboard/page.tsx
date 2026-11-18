@@ -88,6 +88,7 @@ export default async function MyDashboardPage() {
             <ButtonLink href="/my-dashboard/expenses" variant="secondary">Expenses</ButtonLink>
             <ButtonLink href="/my-dashboard/subscriptions" variant="secondary">Subscriptions</ButtonLink>
             <ButtonLink href="/my-dashboard/tasks" variant="secondary">Tasks</ButtonLink>
+            <ButtonLink href="/my-dashboard/projects" variant="secondary">Projects</ButtonLink>
             <ButtonLink href="/my-dashboard/team" variant="secondary">My team</ButtonLink>
           </>
         }

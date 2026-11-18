@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { actorWithPerm, errorMessage } from "@/lib/auth/session";
 import * as emp from "@/lib/dal/partner-employees";
+import * as pp from "@/lib/dal/partner-projects";
 import * as w from "@/lib/dal/partner-writes";
 import { inviteEmail, sendMail } from "@/lib/email";
 
@@ -40,6 +41,50 @@ export async function inviteEmployee(_prev: PartnerState, fd: FormData): Promise
     const mail = await sendMail(inviteEmail(inv.email, inv.name, inv.token, g.actor.fullName || g.actor.email));
     revalidatePath("/my-dashboard", "layout");
     return mail.ok ? { ok: `Invite sent to ${inv.email}.` } : { error: `${inv.email} was added, but the email couldn't be sent. Ask an admin to re-send the invite.` };
+  } catch (e) {
+    return { error: errorMessage(e) };
+  }
+}
+
+export async function saveProject(_prev: PartnerState, fd: FormData): Promise<PartnerState> {
+  const g = await actorWithPerm("stream_partner", "create");
+  if (!g.actor) return { error: g.error };
+  const id = str(fd, "id");
+  if (id && !uuid.safeParse(id).success) return { error: "That no longer exists." };
+  try {
+    if (id) await pp.renameMyProject(g.actor, id, str(fd, "name"));
+    else await pp.createMyProject(g.actor, { streamId: Number(str(fd, "streamId")), name: str(fd, "name") });
+    return done(id ? "Project saved." : "Project added.");
+  } catch (e) {
+    return { error: errorMessage(e) };
+  }
+}
+
+/** Team visible and who is on the project, saved together. */
+export async function saveProjectTeam(_prev: PartnerState, fd: FormData): Promise<PartnerState> {
+  const g = await actorWithPerm("stream_partner", "edit");
+  if (!g.actor) return { error: g.error };
+  const id = uuid.safeParse(fd.get("id"));
+  const people = z.array(z.string().uuid()).max(500).safeParse(fd.getAll("employeeIds"));
+  if (!id.success || !people.success) return { error: "That no longer exists." };
+  try {
+    await pp.setMyProjectTeamVisible(g.actor, id.data, fd.get("teamVisible") === "on");
+    await pp.setMyProjectMembers(g.actor, id.data, people.data);
+    return done("Project team saved.");
+  } catch (e) {
+    return { error: errorMessage(e) };
+  }
+}
+
+export async function setProjectActive(_prev: PartnerState, fd: FormData): Promise<PartnerState> {
+  const g = await actorWithPerm("stream_partner", "edit");
+  if (!g.actor) return { error: g.error };
+  const id = uuid.safeParse(fd.get("id"));
+  if (!id.success) return { error: "That no longer exists." };
+  try {
+    const active = fd.get("active") === "true";
+    await pp.setMyProjectActive(g.actor, id.data, active);
+    return done(active ? "Project restored." : "Project archived.");
   } catch (e) {
     return { error: errorMessage(e) };
   }

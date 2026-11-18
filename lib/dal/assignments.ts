@@ -25,7 +25,7 @@ export type PartnerAssignment = { streamIds: number[]; countryCodes: string[] };
 const BUSY = "Someone else just assigned one of those streams. Refresh the page and try again.";
 
 /** The MySQL error code buried inside a driver or ORM error (duplicate key, deadlock). */
-function mysqlCode(e: unknown): string | undefined {
+export function mysqlCode(e: unknown): string | undefined {
   for (let x: unknown = e, i = 0; x && typeof x === "object" && i < 4; x = (x as { cause?: unknown }).cause, i++) {
     const code = (x as { code?: unknown }).code;
     if (typeof code === "string" && code.startsWith("ER_")) return code;
