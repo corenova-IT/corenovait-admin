@@ -29,6 +29,7 @@ export const AUDIT_ACTIONS = [
   "mfa_reset",
   "recovery_code_used",
   "recovery_codes_regenerated",
+  "assign",
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 

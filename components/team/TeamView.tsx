@@ -13,7 +13,8 @@ import { StatCard } from "@/components/ui/StatCard";
 import { EmptyState } from "@/components/ui/States";
 import { permMapToPayload, type PermMap } from "@/lib/permissions";
 import { PermissionMatrix } from "./PermissionMatrix";
-import type { Action, Member, Preset, TeamActions, TeamState } from "./types";
+import { AssignmentFields } from "./AssignmentFields";
+import type { Action, AssignmentOptions, Member, PartnerAssignment, Preset, TeamActions, TeamState } from "./types";
 
 const empty: TeamState = {};
 
@@ -37,9 +38,10 @@ function mfaBadge(m: Member) {
 }
 
 // ---------- invite ----------
-function InviteDrawer({ open, onClose, presets, action }: { open: boolean; onClose: () => void; presets: Preset[]; action: Action }) {
+function InviteDrawer({ open, onClose, presets, action, options }: { open: boolean; onClose: () => void; presets: Preset[]; action: Action; options: AssignmentOptions }) {
   const [state, formAction, pending] = useActionState(action, empty);
   const [formKey, setFormKey] = useState(0);
+  const [role, setRole] = useState("staff");
   useEffect(() => {
     if (state.ok) setFormKey((k) => k + 1);
   }, [state]);
@@ -58,7 +60,7 @@ function InviteDrawer({ open, onClose, presets, action }: { open: boolean; onClo
           <Input id="inv-title" name="jobTitle" />
         </Field>
         <Field label="Role" htmlFor="inv-role" error={e.presetId}>
-          <Select id="inv-role" name="presetId" defaultValue="staff">
+          <Select id="inv-role" name="presetId" value={role} onChange={(ev) => setRole(ev.target.value)}>
             {presets.filter((p) => p.id !== "custom").map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name}
@@ -66,6 +68,7 @@ function InviteDrawer({ open, onClose, presets, action }: { open: boolean; onClo
             ))}
           </Select>
         </Field>
+        {role === "stream_partner" && <AssignmentFields key={formKey} options={options} idPrefix="inv" />}
         <Button type="submit" disabled={pending}>
           {pending ? "Sending invite…" : "Send invite"}
         </Button>
@@ -80,14 +83,19 @@ function ManageDrawer({
   presets,
   actions,
   isSelf,
+  options,
+  assignment,
   onClose,
 }: {
   member: Member | null;
   presets: Preset[];
   actions: TeamActions;
   isSelf: boolean;
+  options: AssignmentOptions;
+  assignment: PartnerAssignment | undefined;
   onClose: () => void;
 }) {
+  const [assign, assignAction, assignPending] = useActionState(actions.saveAssignments, empty);
   const [details, detailsAction, detailsPending] = useActionState(actions.saveDetails, empty);
   const [role, roleAction, rolePending] = useActionState(actions.applyPreset, empty);
   const [perms, permsAction, permsPending] = useActionState(actions.savePermissions, empty);
@@ -151,8 +159,26 @@ function ManageDrawer({
           </div>
         </section>
 
+        {member.presetId === "stream_partner" && (
+          <section aria-labelledby="mg-assign">
+            <h3 id="mg-assign" className="label-mono mb-4">Streams and countries</h3>
+            <form action={assignAction} className="flex flex-col gap-4">
+              <input type="hidden" name="userId" value={member.id} />
+              <AssignmentFields key={`${member.id}-${assignment?.streamIds.join(",")}-${assignment?.countryCodes.join(",")}`} options={options} initial={assignment} userId={member.id} idPrefix={`mg-${member.id}`} />
+              <Msg state={assign} />
+              <Button type="submit" variant="secondary" disabled={assignPending} className="self-start">
+                {assignPending ? "Saving…" : "Save streams and countries"}
+              </Button>
+              <p className="text-xs text-muted">Every change is written to the audit log.</p>
+            </form>
+          </section>
+        )}
+
         <section aria-labelledby="mg-perms">
           <h3 id="mg-perms" className="label-mono mb-4">Permissions</h3>
+          {member.presetId === "stream_partner" || member.presetId === "employee" ? (
+            <p className="text-sm text-muted">This role&apos;s permissions are fixed. To give them something different, change their role above.</p>
+          ) : (
           <form action={permsAction} className="flex flex-col gap-4">
             <input type="hidden" name="userId" value={member.id} />
             <input type="hidden" name="perms" value={JSON.stringify(permMapToPayload(matrix))} />
@@ -162,6 +188,7 @@ function ManageDrawer({
               {permsPending ? "Saving…" : "Save as custom role"}
             </Button>
           </form>
+          )}
         </section>
 
         <section aria-labelledby="mg-access" className="rounded-[18px] border border-line p-5">
@@ -280,12 +307,16 @@ export function TeamView({
   actions,
   canManage,
   currentUserId,
+  assignOptions,
+  assignments,
 }: {
   members: Member[];
   presets: Preset[];
   actions: TeamActions;
   canManage: boolean;
   currentUserId: string;
+  assignOptions: AssignmentOptions;
+  assignments: Record<string, PartnerAssignment>;
 }) {
   const [inviteOpen, setInviteOpen] = useState(false);
   const [managing, setManaging] = useState<string | null>(null);
@@ -408,12 +439,14 @@ export function TeamView({
 
       {canManage && (
         <>
-          <InviteDrawer open={inviteOpen} onClose={() => setInviteOpen(false)} presets={presets} action={actions.inviteMember} />
+          <InviteDrawer open={inviteOpen} onClose={() => setInviteOpen(false)} presets={presets} action={actions.inviteMember} options={assignOptions} />
           <ManageDrawer
             member={members.find((m) => m.id === managing) ?? null}
             presets={presets}
             actions={actions}
             isSelf={managing === currentUserId}
+            options={assignOptions}
+            assignment={managing ? assignments[managing] ?? { streamIds: [], countryCodes: [] } : undefined}
             onClose={() => setManaging(null)}
           />
           <PresetDrawer preset={presets.find((p) => p.id === editingPreset) ?? null} action={actions.savePreset} onClose={() => setEditingPreset(null)} />

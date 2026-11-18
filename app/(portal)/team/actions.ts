@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { actorForAction, errorMessage } from "@/lib/auth/session";
 import type { Actor } from "@/lib/dal/guard";
+import * as assignments from "@/lib/dal/assignments";
 import * as team from "@/lib/dal/team";
 import { inviteEmail, sendMail } from "@/lib/email";
 import { MODULES, SCOPES, emptyPermMap, type PermMap } from "@/lib/permissions";
@@ -61,10 +62,17 @@ const inviteSchema = z.object({
   fullName: z.string().trim().min(1, "Enter their name.").max(120),
   jobTitle: z.string().trim().max(120),
   presetId,
+  // only used for the Stream partner role; the data-access layer refuses them for any other role
+  streamIds: z.array(z.coerce.number().int().positive()).max(200).default([]),
+  countryCodes: z.array(z.string().regex(/^[A-Z]{2,8}$/)).max(300).default([]),
 });
 
 export async function inviteMember(_prev: TeamState, formData: FormData): Promise<TeamState> {
-  const parsed = inviteSchema.safeParse(Object.fromEntries(formData));
+  const parsed = inviteSchema.safeParse({
+    ...Object.fromEntries(formData),
+    streamIds: formData.getAll("streamIds"),
+    countryCodes: formData.getAll("countryCodes"),
+  });
   if (!parsed.success) {
     const fieldErrors: Record<string, string> = {};
     for (const i of parsed.error.issues) fieldErrors[String(i.path[0])] = i.message;
@@ -83,6 +91,25 @@ export async function inviteMember(_prev: TeamState, formData: FormData): Promis
     const msg = errorMessage(e);
     return msg === "That email already has an account." ? { fieldErrors: { email: msg } } : { error: msg };
   }
+}
+
+// ---------- streams and countries of a stream partner ----------
+export async function saveAssignments(_prev: TeamState, formData: FormData): Promise<TeamState> {
+  const parsed = z
+    .object({
+      userId: uuid,
+      streamIds: z.array(z.coerce.number().int().positive()).max(200),
+      countryCodes: z.array(z.string().regex(/^[A-Z]{2,8}$/)).max(300),
+    })
+    .safeParse({ userId: formData.get("userId"), streamIds: formData.getAll("streamIds"), countryCodes: formData.getAll("countryCodes") });
+  if (!parsed.success) return { error: "Those choices couldn't be read. Refresh the page and try again." };
+  return run((actor) =>
+    assignments.setAssignments(actor, parsed.data).then(() =>
+      parsed.data.countryCodes.length === 0
+        ? "Saved. They won't see any data until you give them at least one country."
+        : "Streams and countries saved."
+    )
+  );
 }
 
 export async function resendInvite(_prev: TeamState, formData: FormData): Promise<TeamState> {

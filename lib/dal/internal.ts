@@ -2,10 +2,10 @@ import "server-only";
 import { and, eq, inArray, ne } from "drizzle-orm";
 import { schema, type Db, type Tx } from "@/lib/db";
 import { ACTIONS, PRIVILEGED_MODULES, emptyPermMap, type ModulePerm, type PermMap } from "@/lib/permissions";
-import { RuleError } from "./guard";
+import { RuleError, type ActorScope } from "./guard";
 
 /** Helpers shared by the DAL modules. Never call these from outside lib/dal. */
-const { users, userPermissions, presetPermissions } = schema;
+const { users, userPermissions, presetPermissions, streamPartnerStreams, streamPartnerCountries } = schema;
 
 type PermRecord = typeof userPermissions.$inferSelect | typeof presetPermissions.$inferSelect;
 
@@ -30,6 +30,26 @@ export async function loadUserPerms(db: Db | Tx, userId: string): Promise<PermMa
 
 export async function loadPresetPerms(db: Db | Tx, presetId: string): Promise<PermMap> {
   return rowsToPermMap(await db.select().from(presetPermissions).where(eq(presetPermissions.presetId, presetId)));
+}
+
+/** The presets whose data is decided row by row in lib/dal/scope.ts, never by the permission matrix. */
+export const SCOPED_PRESETS = ["stream_partner", "employee"] as const;
+
+/**
+ * Which rows a Stream partner / Employee may touch. Everyone else gets null.
+ * An Employee's partner and projects arrive with the employee tables (a later phase);
+ * until then an Employee's scope is empty, which means they see nothing.
+ */
+export async function loadActorScope(db: Db | Tx, userId: string, presetId: string): Promise<ActorScope | null> {
+  if (presetId === "stream_partner") {
+    const [streamRows, countryRows] = await Promise.all([
+      db.select({ id: streamPartnerStreams.streamId }).from(streamPartnerStreams).where(eq(streamPartnerStreams.userId, userId)),
+      db.select({ code: streamPartnerCountries.countryCode }).from(streamPartnerCountries).where(eq(streamPartnerCountries.userId, userId)),
+    ]);
+    return { kind: "stream_partner", streamIds: streamRows.map((r) => r.id), countryCodes: countryRows.map((r) => r.code) };
+  }
+  if (presetId === "employee") return { kind: "employee", partnerUserId: null, projectIds: [] };
+  return null;
 }
 
 /** Any action implies view; rows with nothing granted are dropped. */

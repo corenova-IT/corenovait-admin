@@ -60,7 +60,9 @@ export default async function DevPreview({ params }: { params: Promise<{ page: s
           presets={previewPresets}
           canManage
           currentUserId={previewMembers[0].id}
-          actions={{ inviteMember: previewAction, resendInvite: previewAction, resetTwoFactor: previewAction, saveDetails: previewAction, applyPreset: previewAction, savePermissions: previewAction, setActive: previewAction, resetSessions: previewAction, savePreset: previewAction }}
+          assignOptions={{ streams: [], countries: [] }}
+          assignments={{}}
+          actions={{ inviteMember: previewAction, saveAssignments: previewAction, resendInvite: previewAction, resetTwoFactor: previewAction, saveDetails: previewAction, applyPreset: previewAction, savePermissions: previewAction, setActive: previewAction, resetSessions: previewAction, savePreset: previewAction }}
         />
       </>
     );

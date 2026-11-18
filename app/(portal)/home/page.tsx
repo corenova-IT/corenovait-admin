@@ -174,9 +174,11 @@ async function MyDay({ user, sample }: { user: Actor; sample: boolean }) {
 }
 
 export default async function HomePage({ searchParams }: { searchParams: Promise<{ country?: string }> }) {
-  // a partner has no Home: their page is "My earnings"
+  // a partner has no Home: their page is "My earnings". A stream partner and an employee have their own landing pages.
   const signedIn = await requireUser();
   if (!hasPerm(signedIn, "home", "view") && hasPerm(signedIn, "partner", "view")) redirect("/partner");
+  if (!hasPerm(signedIn, "home", "view") && hasPerm(signedIn, "stream_partner", "view")) redirect("/my-dashboard");
+  if (!hasPerm(signedIn, "home", "view") && hasPerm(signedIn, "employee", "view")) redirect("/work");
   const user = await requirePerm("home");
   const sample = await hasSampleData(user);
 

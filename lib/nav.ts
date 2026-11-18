@@ -18,6 +18,8 @@ export type NavItem = {
 export const NAV: NavItem[] = [
   { href: "/home", label: "Overview", icon: "overview", modules: ["home"], search: "Search clients, invoices, tasks", group: "workspace" },
   { href: "/partner", label: "My earnings", icon: "payments", modules: ["partner"], search: "Search", group: "workspace" },
+  { href: "/my-dashboard", label: "My dashboard", icon: "overview", modules: ["stream_partner"], search: "Search", group: "workspace" },
+  { href: "/work", label: "My work", icon: "tasks", modules: ["employee"], search: "Search", group: "workspace" },
   { href: "/analytics", label: "Finances", icon: "finances", modules: ["finances"], search: "Search reports, clients, streams", group: "workspace" },
   { href: "/transactions", label: "Transactions", icon: "transactions", modules: ["transactions"], search: "Search income and expenses", group: "workspace" },
   { href: "/payments", label: "Payments", icon: "payments", modules: ["payments"], search: "Search payments and subscriptions", group: "workspace" },

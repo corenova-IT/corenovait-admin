@@ -18,7 +18,7 @@ import { passwordProblems } from "@/lib/password";
 import { avatarUrl } from "@/lib/avatar";
 import { actorRef, writeAudit } from "./audit";
 import { AccessDenied, RuleError, assertCaller, issueActor, requireOwner, type Actor } from "./guard";
-import { copyPresetToUser, deleteSessions, loadUserPerms } from "./internal";
+import { copyPresetToUser, deleteSessions, loadActorScope, loadUserPerms } from "./internal";
 
 /**
  * Sign-in, sessions, two-factor and email-link tokens. These run before a
@@ -96,6 +96,7 @@ export async function resolveSession(token: string | null | undefined, now = new
   }
 
   const perms = await loadUserPerms(db, u.id);
+  const scoped = await loadActorScope(db, u.id, u.presetId);
   return {
     status: "ok",
     actor: issueActor({
@@ -113,6 +114,7 @@ export async function resolveSession(token: string | null | undefined, now = new
       mfaVerified: s.mfaVerifiedAt != null,
       sessionId: id,
       perms,
+      scoped,
     }),
   };
 }
@@ -455,6 +457,7 @@ export async function previewActorFor(owner: Actor, userId: string): Promise<Act
   if (!row) return null;
   const u = row.u;
   const perms = await loadUserPerms(db, u.id);
+  const scoped = await loadActorScope(db, u.id, u.presetId);
   return issueActor({
     userId: u.id,
     email: u.email,
@@ -470,5 +473,6 @@ export async function previewActorFor(owner: Actor, userId: string): Promise<Act
     mfaVerified: true,
     sessionId: "preview",
     perms,
+    scoped,
   });
 }

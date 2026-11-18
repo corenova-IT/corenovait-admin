@@ -331,6 +331,42 @@ export const projectHiddenFrom = mysqlTable(
   (t) => [primaryKey({ columns: [t.projectId, t.userId] }), index("project_hidden_user_idx").on(t.userId)]
 );
 
+/**
+ * Stream partners (the "Stream partner" preset): which streams a partner runs.
+ * The primary key on stream_id is what makes "one stream belongs to at most one
+ * partner" true even if two admins assign it at the same moment.
+ */
+export const streamPartnerStreams = mysqlTable(
+  "stream_partner_streams",
+  {
+    streamId: int("stream_id")
+      .primaryKey()
+      .references(() => streams.id),
+    userId: userRef("user_id")
+      .notNull()
+      .references(() => users.id),
+    assignedBy: userRef("assigned_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("sps_user_idx").on(t.userId)]
+);
+
+/** Which countries a stream partner may see. No rows = they see nothing at all. */
+export const streamPartnerCountries = mysqlTable(
+  "stream_partner_countries",
+  {
+    userId: userRef("user_id")
+      .notNull()
+      .references(() => users.id),
+    countryCode: varchar("country_code", { length: 8 })
+      .notNull()
+      .references(() => countries.code),
+    assignedBy: userRef("assigned_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.countryCode] })]
+);
+
 // ---------------------------------------------------------------- finance core
 const money = {
   amountMinor: bigint("amount_minor", { mode: "number" }).notNull(),
@@ -452,6 +488,10 @@ export const expenses = mysqlTable(
     /** set when the expense was created by "mark as paid" on a subscription */
     subscriptionId: varchar("subscription_id", { length: 36 }).references(() => subscriptions.id, { onDelete: "set null" }),
     receiptFileId: varchar("receipt_file_id", { length: 36 }).references(() => files.id, { onDelete: "set null" }),
+    /** the stream it belongs to; null = company-wide, visible to admins only (never to a stream partner) */
+    streamId: int("stream_id").references(() => streams.id),
+    /** archived rows stay in the database but drop out of every list and total */
+    archivedAt: datetime("archived_at", { mode: "date", fsp: 3 }),
     isRecurring: boolean("is_recurring").notNull().default(false),
     notes: text("notes"),
     isSample: boolean("is_sample").notNull().default(false),
@@ -463,6 +503,7 @@ export const expenses = mysqlTable(
   },
   (t) => [
     index("expense_date_idx").on(t.expenseDate),
+    index("expense_stream_country_idx").on(t.streamId, t.countryCode),
     index("expense_created_by_idx").on(t.createdBy),
     index("expense_category_idx").on(t.category),
     index("expense_country_date_idx").on(t.countryCode, t.expenseDate),
@@ -495,6 +536,8 @@ export const subscriptions = mysqlTable(
     responsibleUserId: userRef("responsible_user_id").references(() => users.id, { onDelete: "set null" }),
     /** null = shared across countries */
     countryCode: varchar("country_code", { length: 8 }).references(() => countries.code),
+    /** the stream it belongs to; null = company-wide, visible to admins only */
+    streamId: int("stream_id").references(() => streams.id),
     notes: text("notes"),
     isSample: boolean("is_sample").notNull().default(false),
     createdBy: userRef("created_by")
@@ -505,6 +548,7 @@ export const subscriptions = mysqlTable(
   },
   (t) => [
     index("sub_due_idx").on(t.status, t.nextDueDate),
+    index("sub_stream_country_idx").on(t.streamId, t.countryCode),
     index("sub_created_by_idx").on(t.createdBy),
     check("sub_amount_chk", sql`${t.amountMinor} > 0`),
     check("sub_rate_chk", sql`${t.fxRateToBase} > 0`),
@@ -708,6 +752,11 @@ export const tasks = mysqlTable(
     labels: json("labels").$type<string[]>(),
     checklist: json("checklist").$type<ChecklistItem[]>(),
     completedAt: datetime("completed_at", { mode: "date", fsp: 3 }),
+    /** the stream and project it is filed under; null = company task, visible to staff by the usual rules only */
+    streamId: int("stream_id").references(() => streams.id),
+    projectId: varchar("project_id", { length: 36 }).references(() => projects.id),
+    /** archived tasks stay in the database but drop out of every list and total */
+    archivedAt: datetime("archived_at", { mode: "date", fsp: 3 }),
     isSample: boolean("is_sample").notNull().default(false),
     createdBy: userRef("created_by")
       .notNull()
@@ -717,6 +766,7 @@ export const tasks = mysqlTable(
   },
   (t) => [
     index("task_assignee_idx").on(t.assigneeId, t.status),
+    index("task_stream_idx").on(t.streamId),
     index("task_due_idx").on(t.dueDate),
     index("task_status_due_idx").on(t.status, t.dueDate),
     index("task_created_by_idx").on(t.createdBy),

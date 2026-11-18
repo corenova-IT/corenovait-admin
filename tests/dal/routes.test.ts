@@ -163,7 +163,7 @@ describe("every server action, called by a staff user", () => {
     const team = await import("@/app/(portal)/team/actions");
     const names = Object.keys(team).filter((k) => typeof (team as Record<string, unknown>)[k] === "function");
     expect(names.sort()).toEqual(
-      ["applyPreset", "inviteMember", "resendInvite", "resetSessions", "resetTwoFactor", "savePermissions", "savePreset", "saveDetails", "setActive"].sort()
+      ["applyPreset", "inviteMember", "resendInvite", "resetSessions", "resetTwoFactor", "saveAssignments", "savePermissions", "savePreset", "saveDetails", "setActive"].sort()
     );
   });
 });
@@ -184,6 +184,8 @@ describe("guarded pages, opened by a staff user", () => {
     ["/streams/representatives", () => import("@/app/(portal)/streams/representatives/page"), {}],
     ["/streams/projects (owner only)", () => import("@/app/(portal)/streams/projects/page"), {}],
     ["/partner (partners only)", () => import("@/app/(portal)/partner/page"), {}],
+    ["/my-dashboard (stream partners only)", () => import("@/app/(portal)/my-dashboard/page"), {}],
+    ["/work (employees only)", () => import("@/app/(portal)/work/page"), {}],
     ["/streams/overview (owner only)", () => import("@/app/(portal)/streams/overview/page"), { searchParams: Promise.resolve({}) }],
     [
       "/streams/representatives/[id]",
@@ -216,6 +218,38 @@ describe("guarded pages, opened by a staff user", () => {
     for (const [route, load, props] of pages) {
       const page = (await load()).default;
       if (route.startsWith("/partner")) continue;
+      await expect(page(props as never), route).rejects.toMatchObject({ url: expect.stringMatching(/^\/no-access/) });
+    }
+  });
+
+  it("a stream partner is sent from /home to /my-dashboard, can open it, and nothing else", async () => {
+    const sp = await createPerson(t, { email: "streampartner@example.test", preset: "stream_partner" });
+    const { SESSION_COOKIE } = await import("@/lib/auth/session");
+    jar.set(SESSION_COOKIE, await sessionFor(t, sp.id, { mfaVerified: true }));
+    const home = (await import("@/app/(portal)/home/page")).default as (p: unknown) => Promise<unknown>;
+    await expect(home({ searchParams: Promise.resolve({}) })).rejects.toMatchObject({ url: "/my-dashboard" });
+    const mine = (await import("@/app/(portal)/my-dashboard/page")).default as () => Promise<unknown>;
+    await expect(mine()).resolves.toBeTruthy();
+    const searchPage = (await import("@/app/(portal)/search/page")).default as (p: unknown) => Promise<unknown>;
+    await expect(searchPage({ searchParams: Promise.resolve({ q: "Gamma" }) })).rejects.toMatchObject({ url: expect.stringMatching(/^\/no-access/) });
+    for (const [route, load, props] of pages) {
+      const page = (await load()).default;
+      if (route.startsWith("/my-dashboard")) continue;
+      await expect(page(props as never), route).rejects.toMatchObject({ url: expect.stringMatching(/^\/no-access/) });
+    }
+  });
+
+  it("an employee is sent from /home to /work, can open it, and nothing else", async () => {
+    const emp = await createPerson(t, { email: "employee@example.test", preset: "employee" });
+    const { SESSION_COOKIE } = await import("@/lib/auth/session");
+    jar.set(SESSION_COOKIE, await sessionFor(t, emp.id));
+    const home = (await import("@/app/(portal)/home/page")).default as (p: unknown) => Promise<unknown>;
+    await expect(home({ searchParams: Promise.resolve({}) })).rejects.toMatchObject({ url: "/work" });
+    const mine = (await import("@/app/(portal)/work/page")).default as () => Promise<unknown>;
+    await expect(mine()).resolves.toBeTruthy();
+    for (const [route, load, props] of pages) {
+      const page = (await load()).default;
+      if (route.startsWith("/work")) continue;
       await expect(page(props as never), route).rejects.toMatchObject({ url: expect.stringMatching(/^\/no-access/) });
     }
   });

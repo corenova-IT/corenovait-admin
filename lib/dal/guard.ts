@@ -4,6 +4,14 @@ import type { MySqlColumn } from "drizzle-orm/mysql-core";
 import { can, type AppAction, type AppModule, type PermMap } from "@/lib/permissions";
 
 /**
+ * Which ROWS a "Stream partner" or "Employee" may touch (the permission matrix only decides
+ * which ACTIONS). Loaded with the session and read only through lib/dal/scope.ts.
+ */
+export type ActorScope =
+  | { kind: "stream_partner"; streamIds: number[]; countryCodes: string[] }
+  | { kind: "employee"; partnerUserId: string | null; projectIds: string[] };
+
+/**
  * Who is calling. Only lib/dal/auth.ts creates these (from a database session),
  * and every data-access function rejects an Actor it didn't issue, so a page
  * can't hand-craft `{ perms: everything }`.
@@ -26,12 +34,23 @@ export type Actor = Readonly<{
   mfaVerified: boolean;
   sessionId: string;
   perms: PermMap;
+  /** null for everyone except the Stream partner and Employee presets */
+  scoped: ActorScope | null;
 }>;
 
 const issued = new WeakSet<object>();
 
+/** The id lists inside a scope are frozen too, so nothing can widen them after the session is read. */
+function freezeScope(s: ActorScope | null): ActorScope | null {
+  if (!s) return null;
+  if (s.kind === "stream_partner") {
+    return Object.freeze({ kind: s.kind, streamIds: Object.freeze([...s.streamIds]) as number[], countryCodes: Object.freeze([...s.countryCodes]) as string[] });
+  }
+  return Object.freeze({ kind: s.kind, partnerUserId: s.partnerUserId, projectIds: Object.freeze([...s.projectIds]) as string[] });
+}
+
 export function issueActor(a: Actor): Actor {
-  const frozen = Object.freeze({ ...a, perms: Object.freeze(a.perms) });
+  const frozen = Object.freeze({ ...a, perms: Object.freeze(a.perms), scoped: freezeScope(a.scoped) });
   issued.add(frozen);
   return frozen;
 }
