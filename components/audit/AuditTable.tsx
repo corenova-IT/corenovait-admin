@@ -35,6 +35,7 @@ export const ACTION_LABELS: Record<string, { label: string; tone: BadgeTone }> =
   recovery_code_used: { label: "Recovery code used", tone: "amber" },
   recovery_codes_regenerated: { label: "New recovery codes", tone: "neutral" },
   password_changed: { label: "Password changed", tone: "neutral" },
+  assign: { label: "Assigned", tone: "amber" },
 };
 
 export const ENTITY_LABELS: Record<string, string> = {
@@ -51,6 +52,8 @@ export const ENTITY_LABELS: Record<string, string> = {
   users: "Team member",
   files: "File",
   role_presets: "Role preset",
+  stream_partner_streams: "Stream partner's streams",
+  stream_partner_countries: "Stream partner's countries",
   auth: "Sign-in",
   transactions: "Transactions",
   marketing_activities: "Marketing activity",
