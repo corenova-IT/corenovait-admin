@@ -45,7 +45,8 @@ async function incomeRowAllowed(db: Db | Tx, actor: Actor, row: { createdBy: str
   return rowAllowed(actor, "transactions", { ownerId: row.createdBy, assigneeId });
 }
 
-const expenseScope = (actor: Actor) => scopeWhere(actor, "transactions", { owner: expenses.createdBy });
+/** Archived expenses stay in the database but drop out of every list, total and lookup. */
+const expenseScope = (actor: Actor) => and(scopeWhere(actor, "transactions", { owner: expenses.createdBy }), isNull(expenses.archivedAt));
 
 const likeTerm = (q: string) => `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -438,6 +439,8 @@ export const expenseInput = z.object({
   isRecurring: z.boolean().default(false),
   /** blank = a shared cost, not tied to one country */
   countryCode: z.string().trim().toUpperCase().max(8).nullable().optional(),
+  /** blank = a company-wide cost, visible to admins only; a stream puts it under that stream's partner */
+  streamId: z.preprocess((v) => (v === "" || v === undefined ? null : v), z.coerce.number().int().positive().nullable()).optional(),
   notes: z.string().trim().max(5000).optional(),
 });
 export type ExpenseInput = z.input<typeof expenseInput>;
@@ -454,13 +457,19 @@ function expenseValues(input: ExpenseInput) {
     ...moneyValues(v),
     isRecurring: v.isRecurring,
     countryCode: v.countryCode || null,
+    // left alone when the caller doesn't send it (a CSV import, an older form)
+    ...(v.streamId !== undefined ? { streamId: v.streamId } : {}),
     notes: v.notes || null,
   };
 }
 
 /** Category must be on the list; country must exist (or be blank for shared). */
-export async function checkExpenseRefs(db: Db | Tx, v: { category: string; countryCode: string | null }, keepCategory: string | null = null) {
+export async function checkExpenseRefs(db: Db | Tx, v: { category: string; countryCode: string | null; streamId?: number | null }, keepCategory: string | null = null) {
   const category = await canonicalCategory(db, v.category, keepCategory);
+  if (v.streamId) {
+    const [s] = await db.select({ id: streams.id }).from(streams).where(eq(streams.id, v.streamId));
+    if (!s) throw new RuleError("Choose a stream from the list, or leave it blank for a company-wide cost.");
+  }
   if (v.countryCode) {
     const [c] = await db.select({ code: countries.code }).from(countries).where(eq(countries.code, v.countryCode));
     if (!c) throw new RuleError("Choose a country from the list, or leave it blank for a shared cost.");

@@ -65,6 +65,7 @@ const expenseView = (r: ExpenseRow): ExpenseView => ({
   fxRateToBase: r.fxRateToBase,
   isRecurring: r.isRecurring,
   countryCode: r.countryCode,
+  streamId: r.streamId,
   receiptFileId: r.receiptFileId,
   notes: r.notes,
 });

@@ -41,6 +41,7 @@ export type ExpenseView = {
   fxRateToBase: string;
   isRecurring: boolean;
   countryCode: string | null;
+  streamId: number | null;
   receiptFileId: string | null;
   notes: string | null;
 };

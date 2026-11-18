@@ -46,7 +46,8 @@ type Filters = { income: SQL | undefined; expense: SQL | undefined; sharedExpens
 
 function filtersFor(db: Db | Tx, actor: Actor, country: CountryFilter): Filters {
   const incScope = incomeScopeFor(db, actor, "finances");
-  const expScope = scopeWhere(actor, "finances", { owner: expenses.createdBy });
+  // archived expenses never count towards a total
+  const expScope = and(scopeWhere(actor, "finances", { owner: expenses.createdBy }), isNull(expenses.archivedAt));
   return {
     income: and(incScope, country ? eq(incomeEntries.countryCode, country) : undefined),
     expense: and(expScope, country ? eq(expenses.countryCode, country) : undefined),

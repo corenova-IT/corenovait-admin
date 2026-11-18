@@ -28,12 +28,14 @@ export type SubView = {
   paidFrom: string;
   responsibleUserId: string | null;
   countryCode: string | null;
+  streamId: number | null;
   notes: string | null;
 };
 
 export type PaymentLookups = {
   categories: string[];
   countries: Array<{ code: string; name: string }>;
+  streams: Array<{ id: number; name: string; active: boolean }>;
   people: Array<{ id: string; name: string; email: string }>;
   baseCurrency: string;
   today: string;
@@ -113,6 +115,16 @@ function SubscriptionForm({ sub, lookups, action, onSaved }: { sub?: SubView; lo
             {lookups.people.map((u) => (
               <option key={u.id} value={u.id}>
                 {u.name || u.email}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Stream" htmlFor={`${p}-stream`} hint="Company-wide costs are visible to admins only. A stream also shows the cost to that stream's partner.">
+          <Select id={`${p}-stream`} name="streamId" defaultValue={sub?.streamId ?? ""}>
+            <option value="">Company-wide (no stream)</option>
+            {lookups.streams.filter((s) => s.active || s.id === sub?.streamId).map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
               </option>
             ))}
           </Select>

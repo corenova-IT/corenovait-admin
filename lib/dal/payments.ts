@@ -57,6 +57,7 @@ export type SubscriptionRow = {
   responsibleUserId: string | null;
   responsibleName: string | null;
   countryCode: string | null;
+  streamId: number | null;
   notes: string | null;
   monthlyBaseMinor: number;
   daysUntilDue: number;
@@ -94,6 +95,7 @@ async function loadSubs(db: Db | Tx, actor: Actor, extra?: SQL) {
         responsibleUserId: s.responsibleUserId,
         responsibleName,
         countryCode: s.countryCode,
+        streamId: s.streamId,
         notes: s.notes,
         monthlyBaseMinor: live ? monthlyEquivalent(n(s.amountBaseMinor), s.billingCycle) : 0,
         daysUntilDue: days,
@@ -189,6 +191,8 @@ export const subscriptionInput = z.object({
   paidFrom: z.string().trim().max(120).default(""),
   responsibleUserId: z.union([z.literal(""), z.string().uuid()]).nullable().optional(),
   countryCode: z.string().trim().toUpperCase().max(8).nullable().optional(),
+  /** blank = a company-wide cost, visible to admins only; a stream puts it under that stream's partner */
+  streamId: z.preprocess((v) => (v === "" || v === undefined ? null : v), z.coerce.number().int().positive().nullable()).optional(),
   notes: z.string().trim().max(5000).optional(),
 });
 export type SubscriptionInput = z.input<typeof subscriptionInput>;
@@ -211,7 +215,7 @@ export async function saveSubscription(actor: Actor, id: string | null, input: S
   const existing = id ? await loadOwned(db, actor, id) : null;
   const values = {
     vendor: v.vendor,
-    category: await checkExpenseRefs(db, { category: v.category, countryCode: v.countryCode || null }, existing?.category ?? null),
+    category: await checkExpenseRefs(db, { category: v.category, countryCode: v.countryCode || null, streamId: v.streamId ?? null }, existing?.category ?? null),
     description: v.description,
     ...moneyValues(v),
     billingCycle: v.billingCycle,
@@ -220,6 +224,7 @@ export async function saveSubscription(actor: Actor, id: string | null, input: S
     paidFrom: v.paidFrom,
     responsibleUserId: v.responsibleUserId || null,
     countryCode: v.countryCode || null,
+    ...(v.streamId !== undefined ? { streamId: v.streamId } : {}),
     notes: v.notes || null,
   };
   if (values.responsibleUserId) {
@@ -288,6 +293,7 @@ export async function markSubscriptionPaid(actor: Actor, id: string, opts: { pai
       fxRateToBase: before.fxRateToBase,
       isRecurring: before.billingCycle !== "once",
       countryCode: before.countryCode,
+      streamId: before.streamId,
       subscriptionId: id,
       notes: before.paidFrom ? `Paid from ${before.paidFrom}` : null,
       createdBy: actor.userId,

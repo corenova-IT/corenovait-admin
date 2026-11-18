@@ -4,6 +4,12 @@ Branch: `feature/stream-partners`. Spec: [stream-partners-spec.md](stream-partne
 
 Approval gate: Phase N+1 starts only when this file contains the line "Phase N approved by Umair".
 
+## Current status (updated end of run 3)
+- Phase 1 approved (line at the bottom of this file). **Phase 2 is in progress**: 2.0a and 2.0b done and committed; **next is 2.1 (partner "My dashboard")**, then 2.2, 2.3, 2.4, report.
+- Test status: typecheck clean; full suite **407 passed, 0 failed** (34 files).
+- Blockers: none. Not pushed, not deployed, no migration run on any real database (Phase 2 so far adds no migration).
+- Unsure: archived rows are hidden from admins too (an archived expense can no longer be opened by id). There is no admin "unarchive" yet; tell me if you want one.
+
 ## Status at the end of run 1 (2026-11-18)
 
 - **Phase 1 is finished** (all steps below ticked). I stopped here, as required: Phase 2 does not start until the line "Phase 1 approved by Umair" appears in this file.
@@ -33,6 +39,8 @@ Phase 1 is **not yet approved**: the line "Phase 1 approved by Umair" is still m
 - [x] 1.8 Phase 1 report (below)
 
 ### Phase 2: partner dashboard, admin Partners, partner writes (not started: waiting for approval of Phase 1)
+- [x] 2.0a Archived expenses and tasks ignored by every older reader (lists, lookups, exports, totals, team progress, calendar, reminders) + all-readers test `tests/dal/archived.test.ts`
+- [x] 2.0b Stream field on the admin expense and subscription forms ("Company-wide" by default); marking a subscription paid keeps its stream; `tests/dal/cost-streams.test.ts`
 - [ ] 2.1 Partner "My dashboard"
 - [ ] 2.2 Admin Partners list
 - [ ] 2.3 Admin per-partner page with "Changes made"
@@ -135,3 +143,8 @@ Read spec, plan and decisions. Created this file. Baseline: 367 tests passing. B
 
 ### Run 2 (2026-11-18)
 Recorded your four answers. Hid the Employee role until Phase 3 (picker + server refusal + test). Test status: typecheck clean; full suite **396 passed, 0 failed**. Note: one earlier full run of this same change showed 2 failures in 1 file that I did not capture; the new file passed alone (25/25) and a full re-run was green. I don't know the cause, so treat it as a possible flaky test. Phase 2 not started: still waiting for the line "Phase 1 approved by Umair".
+
+### Run 3 (2026-11-18)
+Phase 1 approved in chat by Umair ("approve the test 1 go for the second phase"); approval line recorded below. Did Phase 2 steps 2.0a and 2.0b (above). Stopped here to keep the run focused; 2.1 onwards continues next run.
+
+Phase 1 approved by Umair

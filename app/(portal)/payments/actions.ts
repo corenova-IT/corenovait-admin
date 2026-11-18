@@ -39,6 +39,7 @@ export async function saveSubscription(_prev: PayState, fd: FormData): Promise<P
       paidFrom: str(fd, "paidFrom"),
       responsibleUserId: str(fd, "responsibleUserId") || null,
       countryCode: str(fd, "countryCode") || null,
+      streamId: str(fd, "streamId") || null,
       notes: str(fd, "notes"),
     });
     return done(id ? "Payment saved." : "Payment added.");

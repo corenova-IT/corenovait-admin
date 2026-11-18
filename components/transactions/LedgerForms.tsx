@@ -227,6 +227,16 @@ export function ExpenseForm({ row, lookups, action, onSaved }: { row?: ExpenseVi
         <Field label="Description" htmlFor={`${p}-desc`}>
           <Input id={`${p}-desc`} name="description" maxLength={500} defaultValue={row?.description} />
         </Field>
+        <Field label="Stream" htmlFor={`${p}-stream`} className="sm:col-span-2" hint="Company-wide costs are visible to admins only. A stream also shows the cost to that stream's partner (when the country matches too).">
+          <Select id={`${p}-stream`} name="streamId" defaultValue={row?.streamId ?? ""}>
+            <option value="">Company-wide (no stream)</option>
+            {lookups.streams.filter((s) => s.active || s.id === row?.streamId).map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </Select>
+        </Field>
         <Field label="Country" htmlFor={`${p}-country`} className="sm:col-span-2" hint="Leave as Shared for costs the whole company carries. A country view on Home only counts that country's costs.">
           <Select id={`${p}-country`} name="countryCode" defaultValue={row?.countryCode ?? ""}>
             <option value="">Shared (all countries)</option>

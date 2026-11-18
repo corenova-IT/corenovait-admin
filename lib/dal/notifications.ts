@@ -134,7 +134,7 @@ export async function runScheduler(now = new Date()): Promise<SchedulerResult> {
   const due = await db
     .select({ id: tasks.id, title: tasks.title, dueDate: tasks.dueDate, assigneeId: tasks.assigneeId })
     .from(tasks)
-    .where(and(isNotNull(tasks.assigneeId), ne(tasks.status, "done"), gte(tasks.dueDate, today), lte(tasks.dueDate, tomorrow)));
+    .where(and(isNotNull(tasks.assigneeId), isNull(tasks.archivedAt), ne(tasks.status, "done"), gte(tasks.dueDate, today), lte(tasks.dueDate, tomorrow)));
   const taskPeople = await peopleWhoCan(db, due.map((t) => t.assigneeId!), "tasks");
   for (const t of due) {
     if (!taskPeople.has(t.assigneeId!)) continue;

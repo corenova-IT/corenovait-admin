@@ -32,6 +32,7 @@ const subView = (s: SubscriptionRow): SubView => ({
   paidFrom: s.paidFrom,
   responsibleUserId: s.responsibleUserId,
   countryCode: s.countryCode,
+  streamId: s.streamId,
   notes: s.notes,
 });
 
@@ -50,7 +51,7 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
     hasSampleData(actor),
   ]);
   const base = o.baseCurrency;
-  const lookups: PaymentLookups = { categories: lookupsRaw.categories, countries: lookupsRaw.countries, people, baseCurrency: base, today: o.today };
+  const lookups: PaymentLookups = { categories: lookupsRaw.categories, countries: lookupsRaw.countries, streams: lookupsRaw.streams, people, baseCurrency: base, today: o.today };
   const shown = o.timeline.filter((x) => x.daysUntil <= windowDays);
   const shownTotal = shown.reduce((a, x) => a + x.amountBaseMinor, 0);
   const keep = { window: sp.window, country };

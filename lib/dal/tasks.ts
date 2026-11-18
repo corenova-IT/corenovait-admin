@@ -22,7 +22,9 @@ import { avatarUrl } from "@/lib/avatar";
  */
 const { tasks, taskComments, users } = schema;
 
-const taskScope = (actor: Actor): SQL | undefined => scopeWhere(actor, "tasks", { owner: tasks.createdBy, assignedTo: (uid) => eq(tasks.assigneeId, uid) });
+/** Archived tasks stay in the database but drop out of every list, count and lookup. */
+const taskScope = (actor: Actor): SQL | undefined =>
+  and(scopeWhere(actor, "tasks", { owner: tasks.createdBy, assignedTo: (uid) => eq(tasks.assigneeId, uid) }), isNull(tasks.archivedAt));
 const taskAllowed = (actor: Actor, row: { createdBy: string; assigneeId: string | null }) => rowAllowed(actor, "tasks", { ownerId: row.createdBy, assigneeId: row.assigneeId });
 
 /** Today and this week (Monday to Sunday) in the company time zone. */
@@ -181,7 +183,7 @@ export async function teamProgress(actor: Actor) {
       weekDone: sql<string>`coalesce(sum(${tasks.dueDate} between ${d.weekStart} and ${d.weekEnd} and ${tasks.status} = 'done'), 0)`,
     })
     .from(users)
-    .leftJoin(tasks, eq(tasks.assigneeId, users.id))
+    .leftJoin(tasks, and(eq(tasks.assigneeId, users.id), isNull(tasks.archivedAt)))
     .where(eq(users.status, "active"))
     .groupBy(users.id, users.fullName, users.email, users.avatarKey, users.avatarUpdatedAt)
     .orderBy(asc(users.fullName));
