@@ -1,19 +1,21 @@
 import { redirect } from "next/navigation";
 import { ListEditor } from "@/components/settings/ListEditor";
+import { ShiftFlagForm } from "@/components/settings/ShiftFlagForm";
 import { TimezoneForm } from "@/components/settings/TimezoneForm";
+import { currentShiftFlagHours } from "@/lib/dal/shifts";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { requirePerm } from "@/lib/auth/session";
 import { settingsLists } from "@/lib/dal/lists";
 import { getCompanySettings, timeZones } from "@/lib/dal/settings";
-import { deleteListItem, saveListItem, saveTimezone, setListItemActive } from "./actions";
+import { deleteListItem, saveListItem, saveShiftFlagHours, saveTimezone, setListItemActive } from "./actions";
 
 export const metadata = { title: "Settings" };
 
 export default async function SettingsPage() {
   const actor = await requirePerm("settings");
   if (!actor.isAdmin) redirect("/no-access?module=settings");
-  const [l, company] = await Promise.all([settingsLists(actor), getCompanySettings(actor)]);
+  const [l, company, flagHours] = await Promise.all([settingsLists(actor), getCompanySettings(actor), currentShiftFlagHours(actor)]);
   const actions = { save: saveListItem, toggle: setListItemActive, remove: deleteListItem };
 
   return (
@@ -24,6 +26,12 @@ export default async function SettingsPage() {
           <CardHeader title="Time zone" subtitle="Used for “today” (due dates), calendar times and the marketing heatmap. Times are stored in UTC, so changing this doesn't alter any record." />
           <div className="max-w-xl">
             <TimezoneForm current={company.timezone} zones={timeZones()} action={saveTimezone} />
+          </div>
+        </Card>
+        <Card className="@min-[60rem]:col-span-2">
+          <CardHeader title="Forgotten clock-outs" subtitle="An employee shift that stays open longer than this is flagged. Its partner or an admin then corrects it, and the correction is logged." />
+          <div className="max-w-xl">
+            <ShiftFlagForm current={flagHours} action={saveShiftFlagHours} />
           </div>
         </Card>
         <Card>

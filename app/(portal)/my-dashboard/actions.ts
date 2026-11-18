@@ -5,6 +5,7 @@ import { z } from "zod";
 import { actorWithPerm, errorMessage } from "@/lib/auth/session";
 import * as emp from "@/lib/dal/partner-employees";
 import * as pay from "@/lib/dal/employee-pay";
+import * as shiftDal from "@/lib/dal/shifts";
 import * as pp from "@/lib/dal/partner-projects";
 import { payInputFromForm } from "@/lib/pay-form";
 import * as w from "@/lib/dal/partner-writes";
@@ -43,6 +44,20 @@ export async function inviteEmployee(_prev: PartnerState, fd: FormData): Promise
     const mail = await sendMail(inviteEmail(inv.email, inv.name, inv.token, g.actor.fullName || g.actor.email));
     revalidatePath("/my-dashboard", "layout");
     return mail.ok ? { ok: `Invite sent to ${inv.email}.` } : { error: `${inv.email} was added, but the email couldn't be sent. Ask an admin to re-send the invite.` };
+  } catch (e) {
+    return { error: errorMessage(e) };
+  }
+}
+
+/** Correct a shift of one of THEIR employees (a reason is required; the server checks the employee and the times again). */
+export async function correctEmployeeShift(_prev: PartnerState, fd: FormData): Promise<PartnerState> {
+  const g = await actorWithPerm("stream_partner", "edit");
+  if (!g.actor) return { error: g.error };
+  const id = uuid.safeParse(fd.get("shiftId"));
+  if (!id.success) return { error: "That no longer exists." };
+  try {
+    await shiftDal.correctShift(g.actor, id.data, { clockIn: str(fd, "clockIn"), clockOut: str(fd, "clockOut"), note: str(fd, "note") });
+    return done("Shift corrected and logged.");
   } catch (e) {
     return { error: errorMessage(e) };
   }

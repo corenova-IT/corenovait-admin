@@ -135,8 +135,8 @@ export type ChangeRow = {
 
 /** The kinds of record a partner can change themselves. Nothing about hiding or shares can ever appear here. */
 export const PARTNER_CHANGE_ENTITIES = ["expenses", "subscriptions", "tasks", "partner_projects", "users", "employee_assignments"] as const;
-/** Pay changes are shown whoever made them (the partner or an admin), because both may set pay. */
-const PAY_CHANGE_ENTITIES = ["employee_pay_plans", "employee_pay_records"] as const;
+/** Pay changes and shift corrections are shown whoever made them (the partner or an admin), because both may. */
+const PAY_CHANGE_ENTITIES = ["employee_pay_plans", "employee_pay_records", "shifts"] as const;
 
 export type PartnerDetail = {
   person: { id: string; name: string; email: string; status: "active" | "invited" | "deactivated"; lastActive: string | null };

@@ -6,6 +6,7 @@ import { actorWithPerm, errorMessage } from "@/lib/auth/session";
 import type { Actor } from "@/lib/dal/guard";
 import * as lists from "@/lib/dal/lists";
 import { updateCompanyTimezone } from "@/lib/dal/settings";
+import { setShiftFlagHours } from "@/lib/dal/shifts";
 
 /**
  * Settings lists: streams, countries, expense categories. Admin only; the
@@ -78,6 +79,19 @@ export async function deleteListItem(_prev: ListState, fd: FormData): Promise<Li
       else await lists.deleteCategory(g.actor, id);
     }
     return done("Deleted.");
+  } catch (e) {
+    return { error: errorMessage(e) };
+  }
+}
+
+export async function saveShiftFlagHours(_prev: ListState, fd: FormData): Promise<ListState> {
+  const g = await actorWithPerm("settings", "edit");
+  if (!g.actor) return { error: g.error };
+  if (!g.actor.isAdmin) return { error: "Only admins can change company settings." };
+  try {
+    await setShiftFlagHours(g.actor, Number(str(fd, "hours")));
+    revalidatePath("/settings");
+    return { ok: "Saved. Open shifts older than that are flagged as a forgotten clock-out." };
   } catch (e) {
     return { error: errorMessage(e) };
   }

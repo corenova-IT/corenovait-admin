@@ -30,6 +30,7 @@ export const NAV: NavItem[] = [
   { href: "/tasks", label: "Tasks", icon: "tasks", modules: ["tasks"], search: "Search tasks", group: "workspace" },
   { href: "/chat", label: "Team chat", icon: "chat", modules: ["chat"], search: "Search messages", group: "workspace" },
   { href: "/partners", label: "Partners", icon: "team", modules: ["team"], search: "Search partners", group: "admin" },
+  { href: "/employees", label: "Employees", icon: "team", modules: ["team"], search: "Search employees", group: "admin" },
   { href: "/partners/chats", label: "Partner chats", icon: "chat", modules: ["team"], search: "Search", group: "admin" },
   { href: "/team", label: "Team & permissions", icon: "team", modules: ["team"], search: "Search people", group: "admin" },
   { href: "/settings", label: "Settings", icon: "settings", modules: ["settings"], search: "Search settings", group: "admin" },

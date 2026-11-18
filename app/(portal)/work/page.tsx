@@ -1,3 +1,5 @@
+import { ShiftPanel } from "@/components/partner/ShiftPanel";
+import { ClockButtons } from "@/components/partner/ShiftPanel";
 import { TaskStatusSelect } from "@/components/partner/WorkForms";
 import { Badge } from "@/components/ui/Badge";
 import { Card, CardHeader } from "@/components/ui/Card";
@@ -7,8 +9,11 @@ import { StatCard } from "@/components/ui/StatCard";
 import { requirePerm } from "@/lib/auth/session";
 import { myWork } from "@/lib/dal/employee-work";
 import { companyToday } from "@/lib/dal/payments";
+import { myShifts } from "@/lib/dal/shifts";
+import { fmtMinutes } from "@/lib/hours";
+import { shiftRows } from "@/lib/shift-view";
 import { fmtDate } from "@/lib/format";
-import { setTaskStatus } from "./actions";
+import { clockIn, clockOut, setTaskStatus } from "./actions";
 
 export const metadata = { title: "My work" };
 
@@ -16,6 +21,7 @@ export const metadata = { title: "My work" };
 export default async function WorkPage() {
   const actor = await requirePerm("employee");
   const w = await myWork(actor, await companyToday());
+  const hours = w.partnerName === null ? null : await myShifts(actor);
   return (
     <>
       <PageHeader title="My work" subtitle={w.partnerName ? `Working for ${w.partnerName}` : "Your tasks, projects and hours"} />
@@ -29,6 +35,23 @@ export default async function WorkPage() {
             <StatCard label="Open tasks" value={String(w.openTasks)} detail="Assigned to you" />
             <StatCard label="Overdue" value={String(w.overdueTasks)} noteTone={w.overdueTasks ? "red" : "green"} note={w.overdueTasks ? "Needs attention" : "None overdue"} />
           </div>
+          {hours && (
+            <Card>
+              <CardHeader title="My hours" subtitle={hours.open ? `Clocked in since ${new Intl.DateTimeFormat("en-AU", { timeZone: hours.timeZone, hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(hours.open.since))}` : "You are clocked out"} />
+              <div className="flex flex-col gap-4 p-5 pt-0">
+                <ClockButtons open={!!hours.open} flagged={!!hours.open?.flagged} clockIn={clockIn} clockOut={clockOut} />
+                <dl className="grid grid-cols-3 gap-3 text-sm">
+                  <div><dt className="label-mono">Today</dt><dd className="mt-1 text-ink">{fmtMinutes(hours.todayMinutes)}</dd></div>
+                  <div><dt className="label-mono">This week</dt><dd className="mt-1 text-ink">{fmtMinutes(hours.weekMinutes)}</dd></div>
+                  <div><dt className="label-mono">This month</dt><dd className="mt-1 text-ink">{fmtMinutes(hours.monthMinutes)}</dd></div>
+                </dl>
+                <div>
+                  <h3 className="label-mono mb-2">Recent shifts</h3>
+                  <ShiftPanel shifts={shiftRows(hours.recent, hours.timeZone)} timeZone={hours.timeZone} />
+                </div>
+              </div>
+            </Card>
+          )}
           <Card>
             <CardHeader title="My tasks" subtitle="Soonest deadline first" />
             {w.tasks.length === 0 ? (

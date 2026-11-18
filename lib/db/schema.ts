@@ -47,6 +47,8 @@ export const settings = mysqlTable("settings", {
   companyName: varchar("company_name", { length: 120 }).notNull().default("CoreNovaIT"),
   baseCurrency: char("base_currency", { length: 3 }).notNull().default("AUD"),
   timezone: varchar("timezone", { length: 64 }).notNull().default("Australia/Sydney"),
+  /** an open shift older than this many hours is flagged as a forgotten clock-out */
+  shiftFlagHours: smallint("shift_flag_hours").notNull().default(12),
   updatedAt: datetime("updated_at", { mode: "date", fsp: 3 }),
   updatedBy: userRef("updated_by"),
 });
@@ -488,6 +490,37 @@ export const employeePayRecords = mysqlTable(
     uniqueIndex("pay_record_plan_period_uq").on(t.planId, t.period),
     index("pay_record_cost_idx").on(t.streamId, t.countryCode, t.costDate),
     index("pay_record_employee_idx").on(t.employeeUserId),
+  ]
+);
+
+/**
+ * An employee's clock in and clock out. Times are UTC like every other timestamp. A person can have at
+ * most ONE open shift: open_key is 1 while clock_out_at is empty (null once closed), and the unique key
+ * on (user_id, open_key) lets MySQL itself refuse a second open shift. A shift that stays open longer than
+ * settings.shift_flag_hours is flagged; the employee's partner or an admin corrects it, and every
+ * correction is recorded here (who, when, why) and in the audit log.
+ */
+export const shifts = mysqlTable(
+  "shifts",
+  {
+    id: id(),
+    userId: userRef("user_id")
+      .notNull()
+      .references(() => users.id),
+    clockInAt: datetime("clock_in_at", { mode: "date", fsp: 3 }).notNull(),
+    clockOutAt: datetime("clock_out_at", { mode: "date", fsp: 3 }),
+    openKey: tinyint("open_key").generatedAlwaysAs(sql`if(\`clock_out_at\` is null, 1, null)`, { mode: "stored" }),
+    flaggedAt: datetime("flagged_at", { mode: "date", fsp: 3 }),
+    correctedBy: userRef("corrected_by").references(() => users.id, { onDelete: "set null" }),
+    correctedAt: datetime("corrected_at", { mode: "date", fsp: 3 }),
+    correctionNote: varchar("correction_note", { length: 300 }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    uniqueIndex("shift_one_open_uq").on(t.userId, t.openKey),
+    index("shift_user_in_idx").on(t.userId, t.clockInAt),
+    check("shift_order_chk", sql`${t.clockOutAt} is null or ${t.clockOutAt} > ${t.clockInAt}`),
   ]
 );
 

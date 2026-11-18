@@ -4,11 +4,11 @@ Branch: `feature/stream-partners`. Spec: [stream-partners-spec.md](stream-partne
 
 Approval gate: Phase N+1 starts only when this file contains the line "Phase N approved by Umair".
 
-## Current status (updated end of run 5)
-- Phases 1 and 2 approved. **Phase 3 is finished** (all steps ticked; report below). I stopped at the approval gate: Phase 4 does not start until this file contains the line "Phase 3 approved by Umair".
-- Test status: typecheck clean; full suite **513 passed, 0 failed** (42 files).
-- Blockers: none. Not pushed, not deployed. The new migration `drizzle/0014_employees.sql` is a file only: it has not been run on any real database (only on throwaway test databases by the test suite).
-- Needs your eyes: the migration file, and the "What I was unsure about" list in the Phase 3 report.
+## Current status (updated end of run 6)
+- Phases 1, 2 and 3 approved. **Phase 4 is finished** (all steps ticked; report below). All four phases are now built. Nothing is waiting on an approval gate; the only thing left is your review of Phase 4, then the "Later" item (admin unarchive).
+- Test status: typecheck clean; full suite ****534 passed, 0 failed** (44 files)**.
+- Blockers: none. Not pushed, not deployed. The migrations `drizzle/0013_stream_partners.sql`, `0014_employees.sql` and `0015_shifts.sql` are files only: none has been run on a real database (only on throwaway test databases by the test suite).
+- Needs your eyes: the three migration files, and the "What I was unsure about" lists in the Phase 3 and Phase 4 reports.
 
 ## Answers received after the Phase 2 report
 1. Budgets: **skip for now** (no budgets are built or shown).
@@ -66,11 +66,11 @@ Phase 1 is **not yet approved**: the line "Phase 1 approved by Umair" is still m
 - [x] 3.6 Chat with the agreed visibility rules: lib/dal/scoped-chat.ts, /messages, /partners/chats; tests/dal/scoped-chat.test.ts
 - [x] 3.7 Phase 3 report (below)
 
-### Phase 4: shifts and admin Employees (not started)
-- [ ] 4.1 Clock in and out, hours and shift history
-- [ ] 4.2 Forgotten clock-out flag, logged corrections
-- [ ] 4.3 Admin Employees list and per-employee pages
-- [ ] 4.4 Phase 4 report
+### Phase 4: shifts and admin Employees (finished; waiting for review)
+- [x] 4.1 Clock in and out, hours and shift history: lib/dal/shifts.ts, /work; tests/dal/shifts.test.ts
+- [x] 4.2 Forgotten clock-out flag (configurable in Settings), logged corrections by partner or admin
+- [x] 4.3 Admin Employees list and per-employee pages: lib/dal/admin-employees.ts, /employees; tests/dal/admin-employees.test.ts
+- [x] 4.4 Phase 4 report (below)
 
 ---
 
@@ -246,6 +246,48 @@ Only adds things; no existing row changes. (Numbered 0014, not 0015 as the plan 
 9. **Not checked in a browser** (pages and forms are covered by tests and the type checker only).
 10. **Budgets** were skipped as you decided; **unarchive** is still scheduled after Phase 4.
 
+## Phase 4 report
+
+### What changed
+**Clock in and out** (employee page, `/work`, "My hours")
+- An employee clocks in and out with one button, and sees hours for today, this week and this month plus their recent shifts (and any correction and its reason). They see only their own.
+- A person can have only ONE open shift. The database itself enforces it, so two clicks at the same moment (or a bug) can't create two. Hours count closed shifts, attributed to the day they started in the company time zone.
+
+**Forgotten clock-outs**
+- An open shift older than a limit is flagged. The limit is configurable by an admin: **Settings, "Forgotten clock-outs"** (default 12 hours, 1 to 48; every change is logged).
+- A flagged employee can't clock out of it, or start a new shift, themselves: they are told to ask their partner. The partner (their own employee only) or an admin **corrects the shift**: both times and a required reason. A correction can't be backwards, longer than 24 hours, in the future, or overlap another shift. It is recorded on the shift (who, when, why) and in the audit log with the times before and after, and shows under "Changes made" on the partner's and the employee's admin page, whoever made it.
+- A partner sees each employee's hours this month, a "Forgot to clock out" badge, and the shifts with a Correct button on **My dashboard, My team, Hours and shifts**.
+
+**Admin Employees** (`/employees`, `/employees/[id]`, admins only)
+- List: name, partner, projects, open tasks (and overdue), hours, cost, online status or last seen, and a forgotten-clock-out badge. Filters: partner, stream, country, date range (hours and cost follow the range, default this month).
+- Employee page: partner, streams and countries, projects, task progress and the next deadlines, shifts and hours (with the correction form), online status, cost, a "Message" button, and "Changes made" (shift corrections, pay changes and partner assignments for that person). Pay itself is still set on the partner's page.
+- It respects what the Owner hid from the admin (tasks in a project hidden from that admin are left out, and so are audit rows they may not see). A person who isn't an employee gets the same "not found" as someone who doesn't exist.
+
+### Migration summary (`drizzle/0015_shifts.sql`, a file only, never run on a real database)
+Only adds things; no existing row changes.
+- New table `shifts` (clock in, clock out, a generated "open" key with a unique key on person + open flag so only one open shift is possible, flagged and correction fields).
+- New column `settings.shift_flag_hours` (default 12 for the existing settings row).
+- One index. The normal deploy runs the automatic backup before migrating.
+
+### How to test it yourself, in plain words (local database)
+1. Apply the new migration to your **local** database the way you normally do (it takes a backup first), then run the app.
+2. Sign in as an employee (linked to a partner): **My work, My hours, Clock in**. Wait a moment, **Clock out**: the shift and today's hours appear. Try Clock in twice quickly: only one shift opens.
+3. As an admin open **Settings** and set the flag time to **1** hour. Clock the employee in, then (to avoid waiting) edit that shift's start in the database or wait; the employee page then says they forgot to clock out and the buttons stop working. (Set it back to 12 afterwards.)
+4. As the partner: **My team, Hours and shifts**, **Correct this shift**: set the real times and a reason, save. The employee can clock in again. As an admin open **Employees**, then the employee: the correction is in **Changes made** with before and after, and the hours are updated. Open the **Audit log** to see it too.
+5. As an admin open **Employees**: try the filters (partner, stream, country, date range) and click a name.
+6. As a different partner or an employee, try to open another employee's shifts or correct them (change the id in the address): you get "not found" or "no access".
+
+### What I was unsure about
+1. **Hours attribution:** a shift counts for the day it **started**, in the company time zone. A shift that crosses midnight is not split between two days.
+2. **Flag check:** a flagged state is worked out whenever someone looks (employee page, partner list, admin pages) and is also saved on the shift; there is no background job or email yet, so nobody is notified. Tell me if you want a notification.
+3. **Corrections only fix a shift's two times.** There is no "add a missed shift" and no "delete a shift" (nothing is deleted). If an employee never clocked in at all, a correction can't create the shift; tell me if you want an "add a shift" option.
+4. **A correction needs a clock-out in the past** and a shift of at most 24 hours (longer work has to be split in two).
+5. **Pay isn't linked to hours.** Pay is a fixed monthly or per-project amount as decided; hours are shown separately.
+6. **Employee page for an employee with no partner** shows no clock (they must be linked to a partner first).
+7. **Admin Employees list loads everything for the period** in a few queries per page; fine for a small team, but I did not test it with hundreds of employees (no extra indexes added).
+8. **Not checked in a browser.** Pages and forms are covered by tests and the type checker only; please click through them.
+9. **Still later (agreed):** admin "unarchive" for archived expenses, tasks and cancelled subscriptions. Budgets are skipped.
+
 ## Run log
 
 ### Run 1 (2026-11-18)
@@ -267,3 +309,8 @@ Phase 2 approved by Umair
 ### Run 5 (2026-11-19)
 Phase 2 approved in chat by Umair; approval line recorded. Phase 3 started. 3.0 migration file drizzle/0014_employees.sql (employee_assignments, project_members, projects.team_visible, employee_pay_plans, employee_pay_records; additive only, not run anywhere real; numbered 0014 because Phase 2 needed no migration). 3.1 employee invites by partner and by admin done (tests/dal/employees.test.ts). Full suite 458 passed.
 Built and tested all of Phase 3 (employee invites, projects with Team visible, employee page and tasks, pay counted once, scoped chat) and wrote the Phase 3 report. Full suite 513 passed. Stopped at the approval gate: Phase 4 starts only after "Phase 3 approved by Umair".
+
+Phase 3 approved by Umair
+
+### Run 6 (2026-11-19)
+Phase 3 approved in chat by Umair ("start phase 4"); approval line recorded. Built and tested all of Phase 4 (migration file 0015, shifts, forgotten clock-out flag and logged corrections, admin Employees pages, Settings field) and wrote the Phase 4 report. One full-suite run hit database-setup timeouts on a slow machine (11 files, no assertion failures); the re-run result is in the status line above.

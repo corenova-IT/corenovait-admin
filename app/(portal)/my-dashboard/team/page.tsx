@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { PayPanel } from "@/components/partner/PayPanel";
+import { ShiftPanel } from "@/components/partner/ShiftPanel";
 import { InviteEmployeeForm } from "@/components/partner/PartnerForms";
 import { Badge } from "@/components/ui/Badge";
 import { Card, CardHeader } from "@/components/ui/Card";
@@ -10,11 +11,14 @@ import { payFormChoices, payPlansFor } from "@/lib/dal/employee-pay";
 import { myEmployees } from "@/lib/dal/partner-employees";
 import { myFormChoices } from "@/lib/dal/partner-writes";
 import { payRows } from "@/lib/pay-form";
+import { employeeShifts } from "@/lib/dal/shifts";
+import { fmtMinutes } from "@/lib/hours";
+import { shiftRows } from "@/lib/shift-view";
 import { companyToday } from "@/lib/dal/payments";
 import { myAssignments } from "@/lib/dal/stream-partners";
 import { fmtDate } from "@/lib/format";
 import { formatMoney } from "@/lib/money";
-import { addEmployeePay, inviteEmployee, markEmployeePayPaid, stopEmployeePay } from "../actions";
+import { addEmployeePay, correctEmployeeShift, inviteEmployee, markEmployeePayPaid, stopEmployeePay } from "../actions";
 
 export const metadata = { title: "My team" };
 
@@ -34,7 +38,7 @@ export default async function MyTeamPage() {
   }
   const people = await myEmployees(actor, await companyToday());
   const base = (await myFormChoices(actor)).baseCurrency;
-  const payData = await Promise.all(people.map(async (p) => ({ id: p.id, plans: await payPlansFor(actor, p.id), choices: await payFormChoices(actor, p.id) })));
+  const payData = await Promise.all(people.map(async (p) => ({ id: p.id, plans: await payPlansFor(actor, p.id), choices: await payFormChoices(actor, p.id), time: await employeeShifts(actor, p.id) })));
   return (
     <>
       <PageHeader title="My team" subtitle="Your employees, their projects and tasks" actions={<Link href="/my-dashboard" className="text-sm text-accent-text hover:underline">Back to my dashboard</Link>} />
@@ -62,10 +66,18 @@ export default async function MyTeamPage() {
                     {p.status === "invited" && <Badge tone="amber">Invite sent</Badge>}
                     {p.status === "deactivated" && <Badge tone="red">Deactivated</Badge>}
                     {p.status === "active" && (p.online ? <Badge tone="green">Online</Badge> : <Badge>{p.lastSeen ? `Seen ${fmtDate(p.lastSeen.slice(0, 10))}` : "Never signed in"}</Badge>)}
+                    <Badge>{fmtMinutes(payData.find((x) => x.id === p.id)!.time.totalMinutes)} this month</Badge>
+                    {payData.find((x) => x.id === p.id)!.time.open?.flagged && <Badge tone="red">Forgot to clock out</Badge>}
                     <Badge>{p.openTasks} open</Badge>
                     <Badge>{formatMoney(p.costMonthBaseMinor, base, { cents: false })} this month</Badge>
                     {p.overdueTasks > 0 && <Badge tone="red">{p.overdueTasks} overdue</Badge>}
                   </div>
+                  <details className="basis-full">
+                    <summary className="cursor-pointer text-sm text-accent-text">Hours and shifts</summary>
+                    <div className="mt-3">
+                      <ShiftPanel shifts={shiftRows(payData.find((x) => x.id === p.id)!.time.shifts, payData.find((x) => x.id === p.id)!.time.timeZone)} timeZone={payData.find((x) => x.id === p.id)!.time.timeZone} action={correctEmployeeShift} />
+                    </div>
+                  </details>
                   <details className="basis-full">
                     <summary className="cursor-pointer text-sm text-accent-text">Pay</summary>
                     <div className="mt-3">
