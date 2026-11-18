@@ -13,6 +13,13 @@ Approval gate: Phase N+1 starts only when this file contains the line "Phase N a
 - **Nothing was pushed, deployed or run against any real database.** The migration was applied only to throwaway test databases by the test suite.
 - **Not checked in a browser.** The new screens (invite form, user edit page, the two landing pages) are covered by tests and the type checker, but I did not open them in a running app. Please click through them (steps below) on your local database.
 
+## Answers received after run 1 (2026-11-18)
+1. Archived rows: yes, first Phase 2 task (older lists and totals must ignore archived rows).
+2. Stream field on the admin expense and subscription forms: yes, Phase 2.
+3. Hide the Employee option until Phase 3: **done** (hidden in the invite and role pickers, and refused by the server; test added).
+4. One role or the other: keep as is.
+Phase 1 is **not yet approved**: the line "Phase 1 approved by Umair" is still missing, so Phase 2 has not started.
+
 ## Checklist
 
 ### Phase 1: streams and countries, new roles, scoped helper, migration, access tests
@@ -125,3 +132,6 @@ Only adds things; nothing is dropped or rewritten, and no existing row changes.
 
 ### Run 1 (2026-11-18)
 Read spec, plan and decisions. Created this file. Baseline: 367 tests passing. Built and tested Phase 1 (commit `1195811`: 395 tests passing). Added audit labels for the new action. Wrote the Phase 1 report and stopped at the approval gate.
+
+### Run 2 (2026-11-18)
+Recorded your four answers. Hid the Employee role until Phase 3 (picker + server refusal + test). Test status: typecheck clean; full suite **396 passed, 0 failed**. Note: one earlier full run of this same change showed 2 failures in 1 file that I did not capture; the new file passed alone (25/25) and a full re-run was green. I don't know the cause, so treat it as a possible flaky test. Phase 2 not started: still waiting for the line "Phase 1 approved by Umair".

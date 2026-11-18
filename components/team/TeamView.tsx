@@ -61,7 +61,7 @@ function InviteDrawer({ open, onClose, presets, action, options }: { open: boole
         </Field>
         <Field label="Role" htmlFor="inv-role" error={e.presetId}>
           <Select id="inv-role" name="presetId" value={role} onChange={(ev) => setRole(ev.target.value)}>
-            {presets.filter((p) => p.id !== "custom").map((p) => (
+            {presets.filter((p) => p.id !== "custom" && p.id !== "employee").map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name}
               </option>
@@ -139,7 +139,7 @@ function ManageDrawer({
             <input type="hidden" name="userId" value={member.id} />
             <Field label="Apply a preset" htmlFor="mg-preset" className="min-w-56 flex-1">
               <Select id="mg-preset" name="presetId" defaultValue={member.presetId === "custom" ? "staff" : member.presetId}>
-                {presets.filter((p) => p.id !== "custom").map((p) => (
+                {presets.filter((p) => p.id !== "custom" && p.id !== "employee").map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name}
                   </option>

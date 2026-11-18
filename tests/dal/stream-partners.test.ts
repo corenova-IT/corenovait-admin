@@ -136,6 +136,15 @@ describe("the roles", () => {
   });
 });
 
+describe("the Employee role before it is ready", () => {
+  it("can't be invited or applied yet", async () => {
+    const owner = await as(ids.owner);
+    await expect(team.inviteUser(owner, { email: "early.emp@example.test", fullName: "E", jobTitle: "", presetId: "employee" })).rejects.toThrow(/isn't available yet/);
+    await expect(team.applyPreset(owner, { userId: ids.staff, presetId: "employee" })).rejects.toThrow(/isn't available yet/);
+    expect((await userRow(t, ids.staff)).presetId).toBe("staff");
+  });
+});
+
 describe("giving a stream partner streams and countries", () => {
   it("only an admin can do it; a partner can't change their own", async () => {
     for (const who of [ids.staff, ids.sp1, ids.emp, ids.oldPartner]) {

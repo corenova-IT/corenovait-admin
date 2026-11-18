@@ -50,6 +50,8 @@ export type TeamPreset = { id: string; name: string; description: string; perms:
  * (transactions, payments, tasks…) would make older code return rows outside their streams.
  */
 const LOCKED_PRESETS = new Set(["admin", "custom", ...SCOPED_PRESETS]);
+/** Employees need a partner and projects (a later phase); until then nobody can be given the role. */
+const EMPLOYEE_LATER = "The Employee role isn't available yet.";
 const isScopedModule = (m: string) => m === "stream_partner" || m === "employee";
 
 /**
@@ -115,6 +117,7 @@ export async function inviteUser(
   requireAdmin(actor);
   const email = input.email.trim().toLowerCase();
   if (input.presetId === "custom") throw new RuleError("Invite with a preset, then customise their permissions.");
+  if (input.presetId === "employee") throw new RuleError(EMPLOYEE_LATER);
   const wantsAssignments = (input.streamIds?.length ?? 0) > 0 || (input.countryCodes?.length ?? 0) > 0;
   if (wantsAssignments && input.presetId !== "stream_partner") throw new RuleError("Streams and countries are only for stream partners.");
   try {
@@ -176,6 +179,7 @@ export async function setDetails(actor: Actor, input: { userId: string; fullName
 export async function applyPreset(actor: Actor, input: { userId: string; presetId: string }) {
   requireAdmin(actor);
   if (input.presetId === "custom") throw new RuleError("Edit the permission grid to make a custom role.");
+  if (input.presetId === "employee") throw new RuleError(EMPLOYEE_LATER);
   const u = await loadTarget(input.userId);
   guardOwner(actor, u, "role");
   await getDb().transaction(async (tx) => {
