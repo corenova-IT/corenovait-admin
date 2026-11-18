@@ -189,6 +189,7 @@ describe("guarded pages, opened by a staff user", () => {
     ["/my-dashboard/expenses (stream partners only)", () => import("@/app/(portal)/my-dashboard/expenses/page"), {}],
     ["/my-dashboard/subscriptions (stream partners only)", () => import("@/app/(portal)/my-dashboard/subscriptions/page"), {}],
     ["/my-dashboard/tasks (stream partners only)", () => import("@/app/(portal)/my-dashboard/tasks/page"), {}],
+    ["/my-dashboard/team (stream partners only)", () => import("@/app/(portal)/my-dashboard/team/page"), {}],
     ["/partners (admins only)", () => import("@/app/(portal)/partners/page"), { searchParams: Promise.resolve({}) }],
     ["/partners/x (admins only)", () => import("@/app/(portal)/partners/[id]/page"), { params: Promise.resolve({ id: "x" }), searchParams: Promise.resolve({}) }],
     ["/streams/overview (owner only)", () => import("@/app/(portal)/streams/overview/page"), { searchParams: Promise.resolve({}) }],
@@ -235,7 +236,7 @@ describe("guarded pages, opened by a staff user", () => {
     await expect(home({ searchParams: Promise.resolve({}) })).rejects.toMatchObject({ url: "/my-dashboard" });
     const mine = (await import("@/app/(portal)/my-dashboard/page")).default as () => Promise<unknown>;
     await expect(mine()).resolves.toBeTruthy();
-    for (const sub of ["expenses", "subscriptions", "tasks"]) {
+    for (const sub of ["expenses", "subscriptions", "tasks", "team"]) {
       const subPage = (await import(`@/app/(portal)/my-dashboard/${sub}/page`)).default as () => Promise<unknown>;
       await expect(subPage(), sub).resolves.toBeTruthy();
     }

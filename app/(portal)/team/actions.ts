@@ -65,6 +65,8 @@ const inviteSchema = z.object({
   // only used for the Stream partner role; the data-access layer refuses them for any other role
   streamIds: z.array(z.coerce.number().int().positive()).max(200).default([]),
   countryCodes: z.array(z.string().regex(/^[A-Z]{2,8}$/)).max(300).default([]),
+  // only used for the Employee role: which stream partner they work for
+  partnerUserId: z.union([z.literal("").transform(() => undefined), z.string().uuid()]).optional(),
 });
 
 export async function inviteMember(_prev: TeamState, formData: FormData): Promise<TeamState> {

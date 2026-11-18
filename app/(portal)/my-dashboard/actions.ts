@@ -3,7 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { actorWithPerm, errorMessage } from "@/lib/auth/session";
+import * as emp from "@/lib/dal/partner-employees";
 import * as w from "@/lib/dal/partner-writes";
+import { inviteEmail, sendMail } from "@/lib/email";
 
 /**
  * A stream partner's own expenses, subscriptions and tasks. Permission first, then the form, then the
@@ -20,6 +22,28 @@ const done = (ok: string): PartnerState => {
   revalidatePath("/my-dashboard", "layout");
   return { ok };
 };
+
+const inviteSchema = z.object({
+  email: z.string().trim().toLowerCase().email("Enter a valid email address.").max(254),
+  fullName: z.string().trim().min(1, "Enter their name.").max(120),
+  jobTitle: z.string().trim().max(120),
+});
+
+/** Invites an employee for THIS partner: always the Employee role, never anything higher. */
+export async function inviteEmployee(_prev: PartnerState, fd: FormData): Promise<PartnerState> {
+  const g = await actorWithPerm("stream_partner", "create");
+  if (!g.actor) return { error: g.error };
+  const parsed = inviteSchema.safeParse({ email: str(fd, "email"), fullName: str(fd, "fullName"), jobTitle: str(fd, "jobTitle") });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Check the details and try again." };
+  try {
+    const inv = await emp.inviteMyEmployee(g.actor, parsed.data);
+    const mail = await sendMail(inviteEmail(inv.email, inv.name, inv.token, g.actor.fullName || g.actor.email));
+    revalidatePath("/my-dashboard", "layout");
+    return mail.ok ? { ok: `Invite sent to ${inv.email}.` } : { error: `${inv.email} was added, but the email couldn't be sent. Ask an admin to re-send the invite.` };
+  } catch (e) {
+    return { error: errorMessage(e) };
+  }
+}
 
 export async function saveExpense(_prev: PartnerState, fd: FormData): Promise<PartnerState> {
   const g = await actorWithPerm("stream_partner", "create");

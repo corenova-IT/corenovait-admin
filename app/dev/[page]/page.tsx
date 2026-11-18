@@ -62,6 +62,7 @@ export default async function DevPreview({ params }: { params: Promise<{ page: s
           currentUserId={previewMembers[0].id}
           assignOptions={{ streams: [], countries: [] }}
           assignments={{}}
+          partners={[]}
           actions={{ inviteMember: previewAction, saveAssignments: previewAction, resendInvite: previewAction, resetTwoFactor: previewAction, saveDetails: previewAction, applyPreset: previewAction, savePermissions: previewAction, setActive: previewAction, resetSessions: previewAction, savePreset: previewAction }}
         />
       </>

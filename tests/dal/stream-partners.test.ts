@@ -136,11 +136,11 @@ describe("the roles", () => {
   });
 });
 
-describe("the Employee role before it is ready", () => {
-  it("can't be invited or applied yet", async () => {
+describe("the Employee role", () => {
+  it("is only given by inviting someone as an employee of a stream partner", async () => {
     const owner = await as(ids.owner);
-    await expect(team.inviteUser(owner, { email: "early.emp@example.test", fullName: "E", jobTitle: "", presetId: "employee" })).rejects.toThrow(/isn't available yet/);
-    await expect(team.applyPreset(owner, { userId: ids.staff, presetId: "employee" })).rejects.toThrow(/isn't available yet/);
+    await expect(team.inviteUser(owner, { email: "early.emp@example.test", fullName: "E", jobTitle: "", presetId: "employee" })).rejects.toThrow(/choose which stream partner/i);
+    await expect(team.applyPreset(owner, { userId: ids.staff, presetId: "employee" })).rejects.toThrow(/invite them as an employee/i);
     expect((await userRow(t, ids.staff)).presetId).toBe("staff");
   });
 });

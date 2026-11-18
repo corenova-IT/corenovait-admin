@@ -38,7 +38,7 @@ function mfaBadge(m: Member) {
 }
 
 // ---------- invite ----------
-function InviteDrawer({ open, onClose, presets, action, options }: { open: boolean; onClose: () => void; presets: Preset[]; action: Action; options: AssignmentOptions }) {
+function InviteDrawer({ open, onClose, presets, action, options, partners }: { open: boolean; onClose: () => void; presets: Preset[]; action: Action; options: AssignmentOptions; partners: Array<{ id: string; name: string; email: string }> }) {
   const [state, formAction, pending] = useActionState(action, empty);
   const [formKey, setFormKey] = useState(0);
   const [role, setRole] = useState("staff");
@@ -61,7 +61,7 @@ function InviteDrawer({ open, onClose, presets, action, options }: { open: boole
         </Field>
         <Field label="Role" htmlFor="inv-role" error={e.presetId}>
           <Select id="inv-role" name="presetId" value={role} onChange={(ev) => setRole(ev.target.value)}>
-            {presets.filter((p) => p.id !== "custom" && p.id !== "employee").map((p) => (
+            {presets.filter((p) => p.id !== "custom").map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name}
               </option>
@@ -69,6 +69,16 @@ function InviteDrawer({ open, onClose, presets, action, options }: { open: boole
           </Select>
         </Field>
         {role === "stream_partner" && <AssignmentFields key={formKey} options={options} idPrefix="inv" />}
+        {role === "employee" && (
+          <Field label="Works for" htmlFor="inv-partner" hint="An employee works for exactly one stream partner.">
+            <Select id="inv-partner" name="partnerUserId" required defaultValue="">
+              <option value="" disabled>Choose a stream partner</option>
+              {partners.map((p) => (
+                <option key={p.id} value={p.id}>{p.name || p.email}</option>
+              ))}
+            </Select>
+          </Field>
+        )}
         <Button type="submit" disabled={pending}>
           {pending ? "Sending invite…" : "Send invite"}
         </Button>
@@ -309,6 +319,7 @@ export function TeamView({
   currentUserId,
   assignOptions,
   assignments,
+  partners,
 }: {
   members: Member[];
   presets: Preset[];
@@ -317,6 +328,7 @@ export function TeamView({
   currentUserId: string;
   assignOptions: AssignmentOptions;
   assignments: Record<string, PartnerAssignment>;
+  partners: Array<{ id: string; name: string; email: string }>;
 }) {
   const [inviteOpen, setInviteOpen] = useState(false);
   const [managing, setManaging] = useState<string | null>(null);
@@ -439,7 +451,7 @@ export function TeamView({
 
       {canManage && (
         <>
-          <InviteDrawer open={inviteOpen} onClose={() => setInviteOpen(false)} presets={presets} action={actions.inviteMember} options={assignOptions} />
+          <InviteDrawer open={inviteOpen} onClose={() => setInviteOpen(false)} presets={presets} action={actions.inviteMember} options={assignOptions} partners={partners} />
           <ManageDrawer
             member={members.find((m) => m.id === managing) ?? null}
             presets={presets}

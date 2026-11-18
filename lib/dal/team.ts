@@ -7,6 +7,7 @@ import type { PermMap } from "@/lib/permissions";
 import { actorRef, writeAudit } from "./audit";
 import { applyAssignments, guardedAssign, releaseAssignments } from "./assignments";
 import { createInviteToken } from "./auth";
+import { inviteEmployeeAsAdmin, releaseEmployee } from "./partner-employees";
 import { RuleError, requireAdmin, requirePerm, type Actor } from "./guard";
 import {
   SCOPED_PRESETS,
@@ -50,8 +51,8 @@ export type TeamPreset = { id: string; name: string; description: string; perms:
  * (transactions, payments, tasks…) would make older code return rows outside their streams.
  */
 const LOCKED_PRESETS = new Set(["admin", "custom", ...SCOPED_PRESETS]);
-/** Employees need a partner and projects (a later phase); until then nobody can be given the role. */
-const EMPLOYEE_LATER = "The Employee role isn't available yet.";
+/** An employee always works for one stream partner, so the role is only given by inviting them (and choosing the partner). */
+const EMPLOYEE_VIA_INVITE = "Invite them as an employee instead, so they are tied to a stream partner.";
 const isScopedModule = (m: string) => m === "stream_partner" || m === "employee";
 
 /**
@@ -112,12 +113,16 @@ async function loadTarget(userId: string) {
 
 export async function inviteUser(
   actor: Actor,
-  input: { email: string; fullName: string; jobTitle: string; presetId: string; streamIds?: number[]; countryCodes?: string[] }
+  input: { email: string; fullName: string; jobTitle: string; presetId: string; streamIds?: number[]; countryCodes?: string[]; partnerUserId?: string }
 ): Promise<{ userId: string; email: string; name: string; token: string }> {
   requireAdmin(actor);
   const email = input.email.trim().toLowerCase();
   if (input.presetId === "custom") throw new RuleError("Invite with a preset, then customise their permissions.");
-  if (input.presetId === "employee") throw new RuleError(EMPLOYEE_LATER);
+  if (input.presetId === "employee") {
+    if (!input.partnerUserId) throw new RuleError("Choose which stream partner this employee works for.");
+    return inviteEmployeeAsAdmin(actor, { email, fullName: input.fullName, jobTitle: input.jobTitle, partnerUserId: input.partnerUserId });
+  }
+  if (input.partnerUserId) throw new RuleError("A partner can only be chosen for employees.");
   const wantsAssignments = (input.streamIds?.length ?? 0) > 0 || (input.countryCodes?.length ?? 0) > 0;
   if (wantsAssignments && input.presetId !== "stream_partner") throw new RuleError("Streams and countries are only for stream partners.");
   try {
@@ -179,7 +184,7 @@ export async function setDetails(actor: Actor, input: { userId: string; fullName
 export async function applyPreset(actor: Actor, input: { userId: string; presetId: string }) {
   requireAdmin(actor);
   if (input.presetId === "custom") throw new RuleError("Edit the permission grid to make a custom role.");
-  if (input.presetId === "employee") throw new RuleError(EMPLOYEE_LATER);
+  if (input.presetId === "employee") throw new RuleError(EMPLOYEE_VIA_INVITE);
   const u = await loadTarget(input.userId);
   guardOwner(actor, u, "role");
   await getDb().transaction(async (tx) => {
@@ -189,6 +194,7 @@ export async function applyPreset(actor: Actor, input: { userId: string; presetI
     const before = permSnapshot(await loadUserPerms(tx, u.id));
     // someone who stops being a stream partner no longer holds streams or countries (logged)
     if (u.presetId === "stream_partner" && preset.id !== "stream_partner") await releaseAssignments(tx, actor, { id: u.id, email: u.email });
+    if (u.presetId === "employee" && preset.id !== "employee") await releaseEmployee(tx, actor, { id: u.id, email: u.email });
     await copyPresetToUser(tx, u.id, preset.id);
     await writeAudit(tx, actorRef(actor), {
       action: "permissions",

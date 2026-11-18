@@ -3,6 +3,7 @@ import { TeamView } from "@/components/team/TeamView";
 import { requirePerm } from "@/lib/auth/session";
 import { assignmentOverview } from "@/lib/dal/assignments";
 import { hasSampleData } from "@/lib/dal/finance";
+import { partnerChoices } from "@/lib/dal/partner-employees";
 import { listTeam } from "@/lib/dal/team";
 import { MODULES } from "@/lib/permissions";
 import { applyPreset, inviteMember, resendInvite, resetSessions, resetTwoFactor, saveAssignments, savePermissions, savePreset, saveDetails, setActive } from "./actions";
@@ -16,6 +17,7 @@ export default async function TeamPage() {
   const [{ members, presets }, sample] = await Promise.all([listTeam(actor), hasSampleData(actor)]);
   // streams and countries can only be given out by an admin
   const { options, byUser } = actor.isAdmin ? await assignmentOverview(actor) : NO_ASSIGNMENTS;
+  const partners = actor.isAdmin ? await partnerChoices(actor) : [];
 
   return (
     <>
@@ -27,6 +29,7 @@ export default async function TeamPage() {
         currentUserId={actor.userId}
         assignOptions={options}
         assignments={byUser}
+        partners={partners}
         actions={{ inviteMember, saveAssignments, resendInvite, saveDetails, applyPreset, savePermissions, setActive, resetSessions, resetTwoFactor, savePreset }}
       />
     </>

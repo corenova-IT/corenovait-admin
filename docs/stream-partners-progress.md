@@ -205,3 +205,8 @@ Phase 1 approved by Umair
 
 ### Run 4 (2026-11-19)
 Recorded your answers to the Phase 2 questions. Built partner "Mark as paid" for subscriptions in their own streams (logged, tests added). Full suite: 447 passed, 0 failed. Phase 3 not started: waiting for the line "Phase 2 approved by Umair".
+
+Phase 2 approved by Umair
+
+### Run 5 (2026-11-19)
+Phase 2 approved in chat by Umair; approval line recorded. Phase 3 started. 3.0 migration file drizzle/0014_employees.sql (employee_assignments, project_members, projects.team_visible, employee_pay_plans, employee_pay_records; additive only, not run anywhere real; numbered 0014 because Phase 2 needed no migration). 3.1 employee invites by partner and by admin done (tests/dal/employees.test.ts). Full suite 458 passed.

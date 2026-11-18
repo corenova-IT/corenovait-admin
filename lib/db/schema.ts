@@ -306,6 +306,8 @@ export const projects = mysqlTable(
       .references(() => streams.id),
     name: varchar("name", { length: 120 }).notNull(),
     active: boolean("active").notNull().default(true),
+    /** when on, employees on this project see each other's name and online status (nothing else) */
+    teamVisible: boolean("team_visible").notNull().default(false),
     createdBy: userRef("created_by")
       .notNull()
       .references(() => users.id),
@@ -378,6 +380,116 @@ const money = {
     { mode: "stored" }
   ),
 };
+
+/**
+ * Employees (the "Employee" preset): each works for exactly ONE stream partner. The primary key on
+ * employee_user_id is what enforces "one partner per employee".
+ */
+export const employeeAssignments = mysqlTable(
+  "employee_assignments",
+  {
+    employeeUserId: userRef("employee_user_id")
+      .primaryKey()
+      .references(() => users.id),
+    partnerUserId: userRef("partner_user_id")
+      .notNull()
+      .references(() => users.id),
+    createdBy: userRef("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("emp_assign_partner_idx").on(t.partnerUserId)]
+);
+
+/** Which projects an employee is on (a project is always inside one of their partner's streams). */
+export const projectMembers = mysqlTable(
+  "project_members",
+  {
+    projectId: varchar("project_id", { length: 36 })
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    userId: userRef("user_id")
+      .notNull()
+      .references(() => users.id),
+    addedBy: userRef("added_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [primaryKey({ columns: [t.projectId, t.userId] }), index("project_member_user_idx").on(t.userId)]
+);
+
+/**
+ * How an employee is paid: a fixed monthly amount, or a fixed amount for one project. Pay is a cost
+ * under the stream (and country) it names, and is NEVER also written as an expense row, so it can't be
+ * counted twice. Currency and the exchange rate are stored on the plan.
+ */
+export const employeePayPlans = mysqlTable(
+  "employee_pay_plans",
+  {
+    id: id(),
+    employeeUserId: userRef("employee_user_id")
+      .notNull()
+      .references(() => users.id),
+    kind: mysqlEnum("kind", ["monthly", "project"]).notNull(),
+    streamId: int("stream_id")
+      .notNull()
+      .references(() => streams.id),
+    countryCode: varchar("country_code", { length: 8 })
+      .notNull()
+      .references(() => countries.code),
+    /** set for 'project' pay */
+    projectId: varchar("project_id", { length: 36 }).references(() => projects.id),
+    /** first month a 'monthly' plan costs, as YYYY-MM */
+    startMonth: varchar("start_month", { length: 7 }),
+    ...money,
+    /** a stopped plan creates no further monthly records; the ones already made stay */
+    active: boolean("active").notNull().default(true),
+    createdBy: userRef("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    index("pay_plan_employee_idx").on(t.employeeUserId),
+    index("pay_plan_stream_idx").on(t.streamId, t.countryCode),
+    check("pay_plan_amount_chk", sql`${t.amountMinor} > 0`),
+    check("pay_plan_rate_chk", sql`${t.fxRateToBase} > 0`),
+    check("pay_plan_currency_chk", sql`${t.currency} regexp '^[A-Z]{3}$'`),
+  ]
+);
+
+/**
+ * One cost. Monthly pay: one record per month ('YYYY-MM'), a cost from the 1st of that month. Project
+ * pay: one record ('project'), a cost only once it is marked paid, on the day it was paid. cost_date is
+ * the day the cost counts on (null until then). The unique key stops a month being generated twice.
+ */
+export const employeePayRecords = mysqlTable(
+  "employee_pay_records",
+  {
+    id: id(),
+    planId: varchar("plan_id", { length: 36 })
+      .notNull()
+      .references(() => employeePayPlans.id),
+    employeeUserId: userRef("employee_user_id")
+      .notNull()
+      .references(() => users.id),
+    period: varchar("period", { length: 10 }).notNull(),
+    streamId: int("stream_id")
+      .notNull()
+      .references(() => streams.id),
+    countryCode: varchar("country_code", { length: 8 })
+      .notNull()
+      .references(() => countries.code),
+    ...money,
+    status: mysqlEnum("status", ["due", "paid"]).notNull().default("due"),
+    paidDate: date("paid_date", { mode: "string" }),
+    costDate: date("cost_date", { mode: "string" }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    uniqueIndex("pay_record_plan_period_uq").on(t.planId, t.period),
+    index("pay_record_cost_idx").on(t.streamId, t.countryCode, t.costDate),
+    index("pay_record_employee_idx").on(t.employeeUserId),
+  ]
+);
 
 export const incomeEntries = mysqlTable(
   "income_entries",

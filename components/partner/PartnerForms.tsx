@@ -222,6 +222,29 @@ export function MarkPaidForm({ id, action }: { id: string; action: PartnerAction
   );
 }
 
+/** Invite an employee. They always get the Employee role, for this partner only. */
+export function InviteEmployeeForm({ action }: { action: PartnerAction }) {
+  const [state, formAction, pending] = useActionState(action, {});
+  return (
+    <form action={formAction} className="grid gap-4 sm:grid-cols-2" noValidate>
+      <Field label="Email" htmlFor="emp-email">
+        <Input id="emp-email" name="email" type="email" required autoComplete="off" />
+      </Field>
+      <Field label="Full name" htmlFor="emp-name">
+        <Input id="emp-name" name="fullName" required maxLength={120} />
+      </Field>
+      <Field label="Job title" htmlFor="emp-title" hint="Optional">
+        <Input id="emp-title" name="jobTitle" maxLength={120} />
+      </Field>
+      <div className="flex flex-col gap-3 sm:col-span-2">
+        <Msg state={state} />
+        <Button type="submit" disabled={pending} className="self-start">{pending ? "Sending invite…" : "Send invite"}</Button>
+        <p className="text-xs text-muted">They get an email to choose a password. They can only see their own tasks, projects and hours, never any money.</p>
+      </div>
+    </form>
+  );
+}
+
 /** Archive keeps the record but hides it from every list. */
 export function ArchiveButton({ id, action, label }: { id: string; action: PartnerAction; label: string }) {
   const [state, formAction, pending] = useActionState(action, {});

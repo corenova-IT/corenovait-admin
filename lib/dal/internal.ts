@@ -5,7 +5,7 @@ import { ACTIONS, PRIVILEGED_MODULES, emptyPermMap, type ModulePerm, type PermMa
 import { RuleError, type ActorScope } from "./guard";
 
 /** Helpers shared by the DAL modules. Never call these from outside lib/dal. */
-const { users, userPermissions, presetPermissions, streamPartnerStreams, streamPartnerCountries } = schema;
+const { users, userPermissions, presetPermissions, streamPartnerStreams, streamPartnerCountries, employeeAssignments, projectMembers, projects } = schema;
 
 type PermRecord = typeof userPermissions.$inferSelect | typeof presetPermissions.$inferSelect;
 
@@ -37,8 +37,8 @@ export const SCOPED_PRESETS = ["stream_partner", "employee"] as const;
 
 /**
  * Which rows a Stream partner / Employee may touch. Everyone else gets null.
- * An Employee's partner and projects arrive with the employee tables (a later phase);
- * until then an Employee's scope is empty, which means they see nothing.
+ * An Employee's partner and projects come from employee_assignments and project_members;
+ * an Employee without a partner has an empty scope, which means they see nothing.
  */
 export async function loadActorScope(db: Db | Tx, userId: string, presetId: string): Promise<ActorScope | null> {
   if (presetId === "stream_partner") {
@@ -48,7 +48,18 @@ export async function loadActorScope(db: Db | Tx, userId: string, presetId: stri
     ]);
     return { kind: "stream_partner", streamIds: streamRows.map((r) => r.id), countryCodes: countryRows.map((r) => r.code) };
   }
-  if (presetId === "employee") return { kind: "employee", partnerUserId: null, projectIds: [] };
+  if (presetId === "employee") {
+    const [[assignment], memberships] = await Promise.all([
+      db.select({ partner: employeeAssignments.partnerUserId }).from(employeeAssignments).where(eq(employeeAssignments.employeeUserId, userId)),
+      db
+        .select({ id: projectMembers.projectId })
+        .from(projectMembers)
+        .innerJoin(projects, eq(projects.id, projectMembers.projectId))
+        .where(and(eq(projectMembers.userId, userId), eq(projects.active, true))),
+    ]);
+    // no partner = no projects: an employee who isn't tied to a partner sees nothing
+    return { kind: "employee", partnerUserId: assignment?.partner ?? null, projectIds: assignment ? memberships.map((m) => m.id) : [] };
+  }
   return null;
 }
 
