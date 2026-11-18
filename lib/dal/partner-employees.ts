@@ -1,6 +1,7 @@
 import "server-only";
 import { assertRealEmailInProduction } from "@/lib/sample-guard";
-import { and, asc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, isNotNull, isNull, lte, ne, sql } from "drizzle-orm";
+import { addDays, addMonths } from "@/lib/dates";
 import { getDb, schema, type Tx } from "@/lib/db";
 import { actorRef, writeAudit } from "./audit";
 import { createInviteToken } from "./auth";
@@ -19,7 +20,7 @@ import { NotFound, notHiddenFrom, partnerScope, streamRowsWhere } from "./scope"
  * - Every invite and assignment is written to the audit log.
  * - Someone else's employee, and someone who doesn't exist, look exactly the same ("That no longer exists.").
  */
-const { users, rolePresets, employeeAssignments, projectMembers, projects, tasks, userPresence, employeePayPlans } = schema;
+const { users, rolePresets, employeeAssignments, projectMembers, projects, tasks, userPresence, employeePayPlans, employeePayRecords } = schema;
 
 export type NewEmployee = { email: string; fullName: string; jobTitle: string };
 
@@ -122,6 +123,8 @@ export type MyEmployee = {
   projects: Array<{ id: string; name: string }>;
   openTasks: number;
   overdueTasks: number;
+  /** what this employee costs this month (employee pay, base currency); only their partner and admins ever see it */
+  costMonthBaseMinor: number;
 };
 
 /** The signed-in partner's own employees, with their projects, task progress and online status. */
@@ -138,7 +141,9 @@ export async function myEmployees(actor: Actor, today: string): Promise<MyEmploy
     .orderBy(asc(users.fullName), asc(users.email));
   if (!people.length) return [];
   const ids = people.map((p) => p.id);
-  const [members, counts] = await Promise.all([
+  const monthStart = `${today.slice(0, 7)}-01`;
+  const monthEnd = addDays(addMonths(monthStart, 1), -1);
+  const [members, counts, costs] = await Promise.all([
     db.select({ userId: projectMembers.userId, id: projects.id, name: projects.name }).from(projectMembers).innerJoin(projects, eq(projects.id, projectMembers.projectId)).where(and(inArray(projectMembers.userId, ids), eq(projects.active, true))).orderBy(asc(projects.name)),
     db
       .select({
@@ -150,6 +155,11 @@ export async function myEmployees(actor: Actor, today: string): Promise<MyEmploy
       // only tasks inside this partner's own streams (and not under a project hidden from them)
       .where(and(inArray(tasks.assigneeId, ids), streamRowsWhere(actor, { streamId: tasks.streamId }), notHiddenFrom(db, actor, tasks.projectId), isNull(tasks.archivedAt), ne(tasks.status, "done")))
       .groupBy(tasks.assigneeId),
+    db
+      .select({ userId: employeePayRecords.employeeUserId, total: sql<string>`coalesce(sum(${employeePayRecords.amountBaseMinor}), 0)` })
+      .from(employeePayRecords)
+      .where(and(inArray(employeePayRecords.employeeUserId, ids), isNotNull(employeePayRecords.costDate), gte(employeePayRecords.costDate, monthStart), lte(employeePayRecords.costDate, monthEnd)))
+      .groupBy(employeePayRecords.employeeUserId),
   ]);
   const now = Date.now();
   return people.map((p) => ({
@@ -163,6 +173,7 @@ export async function myEmployees(actor: Actor, today: string): Promise<MyEmploy
     projects: members.filter((m) => m.userId === p.id).map((m) => ({ id: m.id, name: m.name })),
     openTasks: Number(counts.find((c) => c.userId === p.id)?.open ?? 0),
     overdueTasks: Number(counts.find((c) => c.userId === p.id)?.overdue ?? 0),
+    costMonthBaseMinor: Number(costs.find((c) => c.userId === p.id)?.total ?? 0),
   }));
 }
 

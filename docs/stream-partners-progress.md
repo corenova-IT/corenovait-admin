@@ -4,12 +4,11 @@ Branch: `feature/stream-partners`. Spec: [stream-partners-spec.md](stream-partne
 
 Approval gate: Phase N+1 starts only when this file contains the line "Phase N approved by Umair".
 
-## Current status (updated end of run 3)
-- Phase 1 approved. **Phase 2 is finished** (all steps ticked; report below). I stopped at the approval gate: Phase 3 does not start until this file contains the line "Phase 2 approved by Umair".
-- Test status: typecheck clean; full suite **447 passed, 0 failed** (37 files).
-- Blockers: none. Not pushed, not deployed, no migration run on any real database (Phase 2 adds no migration).
-- Your answers to the Phase 2 questions are recorded below ("Answers received after the Phase 2 report"). Partners can now mark their own subscriptions paid (done, tested). Budgets: skipped for now. Unarchive: later, after Phase 4.
-- Test status after the mark-paid change: partner-writes tests 17/17; full suite result is in the last line of the run log.
+## Current status (updated end of run 5)
+- Phases 1 and 2 approved. **Phase 3 is finished** (all steps ticked; report below). I stopped at the approval gate: Phase 4 does not start until this file contains the line "Phase 3 approved by Umair".
+- Test status: typecheck clean; full suite **513 passed, 0 failed** (42 files).
+- Blockers: none. Not pushed, not deployed. The new migration `drizzle/0014_employees.sql` is a file only: it has not been run on any real database (only on throwaway test databases by the test suite).
+- Needs your eyes: the migration file, and the "What I was unsure about" list in the Phase 3 report.
 
 ## Answers received after the Phase 2 report
 1. Budgets: **skip for now** (no budgets are built or shown).
@@ -58,14 +57,14 @@ Phase 1 is **not yet approved**: the line "Phase 1 approved by Umair" is still m
 - [x] 2.4 Partner writes: expenses, subscriptions, tasks (audited, archive only): lib/dal/partner-writes.ts, pages under /my-dashboard, tests/dal/partner-writes.test.ts
 - [x] 2.5 Phase 2 report (below)
 
-### Phase 3: employees, projects, pay, Team visible, chat (not started)
-- [ ] 3.1 Employee invites (by partner and by admin)
-- [ ] 3.2 Project assignment and partner project management
-- [ ] 3.3 Tasks for employees
-- [ ] 3.4 Pay records and cost under the stream (counted once)
-- [ ] 3.5 Per-project "Team visible"
-- [ ] 3.6 Chat with the agreed visibility rules
-- [ ] 3.7 Phase 3 report
+### Phase 3: employees, projects, pay, Team visible, chat (finished; waiting for approval)
+- [x] 3.1 Employee invites (by partner and by admin): lib/dal/partner-employees.ts, /my-dashboard/team, Team invite form; tests/dal/employees.test.ts
+- [x] 3.2 Project assignment and partner project management: lib/dal/partner-projects.ts, /my-dashboard/projects; tests/dal/partner-projects.test.ts
+- [x] 3.3 Tasks for employees and the employee page: lib/dal/employee-work.ts, /work; tests/dal/employee-work.test.ts
+- [x] 3.4 Pay records and cost under the stream (counted once): lib/dal/employee-pay.ts; tests/dal/employee-pay.test.ts
+- [x] 3.5 Per-project "Team visible" (done with 3.2/3.3)
+- [x] 3.6 Chat with the agreed visibility rules: lib/dal/scoped-chat.ts, /messages, /partners/chats; tests/dal/scoped-chat.test.ts
+- [x] 3.7 Phase 3 report (below)
 
 ### Phase 4: shifts and admin Employees (not started)
 - [ ] 4.1 Clock in and out, hours and shift history
@@ -190,6 +189,63 @@ Only adds things; nothing is dropped or rewritten, and no existing row changes.
 9. **Not checked in a browser.** Pages and forms are covered by tests and the type checker only; please click through them.
 10. One earlier full test run had a one-off unexplained failure (see the run log); the full suite has been green since.
 
+## Phase 3 report
+
+### What changed
+**Employees**
+- The Employee role is now real. A **stream partner** invites employees from **My dashboard, My team** (always the Employee role, only for themselves, never anything higher). An **admin** can invite one from Team and permissions (the invite form asks "Works for" and lists stream partners), or move an employee to another partner. Each employee works for exactly ONE partner (the database enforces it). Every invite and assignment is logged. Someone who stops being an Employee leaves their partner and every project, and their pay stops.
+- The Employee option is back in the Team invite list (it was hidden until now).
+
+**Projects and "Team visible"** (`/my-dashboard/projects`)
+- A partner sees, adds, renames and archives projects inside their own streams, and chooses which of their own employees are on each. Hiding, shares, deleting and the Owner's Projects page stay Owner-only; a project the Owner hid from the partner does not exist for them. Changes are logged as `partner_projects` (so admins see them on the partner's page).
+- Per project **Team visible** (off by default): when on, people on it see each other's name and online status only.
+- An admin can also set who is on a project (data layer only, no screen yet; see "unsure").
+
+**Employee page** (`/work`)
+- An employee sees only: their own tasks (and only in their partner's streams; a task in a project only while they are on it), the projects they are on (just the name), the name of their partner, and, on projects with Team visible switched on, the NAME and ONLINE status of the others. They can move their own tasks along (to do, in progress, review, done); every change is logged.
+- Never any money, other streams or partners, other projects, other people's tasks, chats or hours (tests check this).
+- Partners assign tasks to their own employees (one of theirs; if the task has a project, that employee must be on it).
+
+**Employee pay, counted exactly once**
+- Set by the partner OR an admin: a fixed monthly amount, or a fixed amount for one project, with currency and exchange rate stored. It always lands under one of the partner's own streams and countries (project pay uses the project's stream). Every set, change, stop and "mark paid" is logged and shows on the partner's page under "Changes made".
+- Monthly pay creates one record per month, automatically and never twice; project pay is a cost only once marked paid, on the day it was paid; marking twice changes nothing.
+- Pay lives only in its own tables and is never an expense row, so: the partner's costs and the admin Partners pages add expenses + pay (each once); company profit subtracts pay once on its own line (Home and Finances say "employee pay is on top"; the Finances CSV has an `employee_pay` column); the Finances expense list has none of it. A test builds an expense, a paid subscription, a monthly and a project pay record and checks all four places.
+- Employees never see pay. A partner sees only their own employees' pay.
+- The partner's team list shows each employee's cost this month; the admin partner page lists employees with their cost and has the same pay editor.
+
+**Chat** (`/messages`, admin `/partners/chats`)
+- Direct messages only. Allowed: employee with their own partner or any admin; partner with their own employees or any admin; an admin with any partner or employee. Everything else (partner to partner, employee to employee, employee to another partner) gives the same "That no longer exists." as someone who doesn't exist, and creates nothing.
+- Partners and employees are never in #general or any channel, never appear in anyone's people list, and can't be reached through the older Team chat. The older chat code is untouched.
+- An admin can start a conversation from a partner's page ("Message") and then use the normal Team chat. Admins can also read any conversation that includes a partner or employee that they are not in (Partner chats in the admin menu); every read is written to the audit log (who and when, never the messages). Conversations between two admins stay private and can't be opened there.
+- If an employee moves to another partner, their old conversation with the old partner disappears for both of them (admins can still read it).
+
+### Migration summary (`drizzle/0014_employees.sql`, a file only, never run on a real database)
+Only adds things; no existing row changes. (Numbered 0014, not 0015 as the plan said, because Phase 2 needed no migration.)
+- New tables: `employee_assignments` (primary key on the employee = one partner each), `project_members`, `employee_pay_plans`, `employee_pay_records` (unique on plan + period, so a month can't be created twice).
+- New column: `projects.team_visible`, default off for every existing project.
+- Indexes for the above. The normal deploy runs the automatic backup before migrating.
+
+### How to test it yourself, in plain words (local database)
+1. Run the local database and app. Apply the new migration the way you normally do on your **local** database (`npm run db:local` applies pending migrations and takes a backup first).
+2. As a Stream partner (with a stream and a country): **My team, Invite an employee**. Also from the admin side: **Team, Invite person, Employee, choose "Works for"**.
+3. As the partner: **Projects**: add a project, open it, tick the employee, switch **Team visible** on, save.
+4. As the partner: **Tasks**: add a task, set **Assigned to** your employee (and the project).
+5. Sign in as the employee (invite link): **My work** shows only that task and project; change the task's status. Add a second employee to the same project: with Team visible on, each sees the other's name and online dot; switch it off and they disappear. The employee should see no money anywhere.
+6. As the partner: **My team**, open **Pay** on the employee, add monthly pay and a project pay; mark the project pay paid. **My dashboard** costs go up by the pay. As the Owner open **Partners, the partner**: employees and their cost, and **Changes made**. On **Home / Finances** profit goes down by the pay (it says "employee pay is on top"). **Transactions, Expenses** shows no pay rows.
+7. **Messages**: the employee messages their partner or an admin; the partner replies. As an admin open **Partner chats**, read it; open the **Audit log**: a "Read" row appears. Try messaging between two employees or two partners: not possible.
+
+### What I was unsure about
+1. **Admin project assignment has no screen.** An admin can set who is on a project (and invite/assign employees), but only the partner has the project screen. Tell me if you want an admin screen.
+2. **Hours** on the partner's employee list arrive in Phase 4 (with shifts); tasks, progress, online status and cost are there now.
+3. **A project name that is "taken"** gives the same message whether a visible or an Owner-hidden project has it, so names of hidden projects can't be probed, but a partner can tell a name is unusable.
+4. **Pay edits:** changing an amount applies from the next month that has no record yet (the month already created keeps its amount). Stopping keeps history. There is no "delete pay" (nothing is deleted).
+5. **Company pay appears for people who can see ALL finances** (admins). Finance viewers limited to their own entries don't see pay in profit.
+6. **Chat limits:** no file attachments, no editing or deleting messages, no live updates for partners and employees (they see new messages when they open or reload the page), no email or in-app notifications for them.
+7. **Online status** is kept fresh as a partner or employee moves around the portal (not only on chat).
+8. **Employee invites by a partner can't be re-sent** by the partner (an admin can use Resend invite). Partners also can't deactivate an employee (an admin does on the Team page).
+9. **Not checked in a browser** (pages and forms are covered by tests and the type checker only).
+10. **Budgets** were skipped as you decided; **unarchive** is still scheduled after Phase 4.
+
 ## Run log
 
 ### Run 1 (2026-11-18)
@@ -210,3 +266,4 @@ Phase 2 approved by Umair
 
 ### Run 5 (2026-11-19)
 Phase 2 approved in chat by Umair; approval line recorded. Phase 3 started. 3.0 migration file drizzle/0014_employees.sql (employee_assignments, project_members, projects.team_visible, employee_pay_plans, employee_pay_records; additive only, not run anywhere real; numbered 0014 because Phase 2 needed no migration). 3.1 employee invites by partner and by admin done (tests/dal/employees.test.ts). Full suite 458 passed.
+Built and tested all of Phase 3 (employee invites, projects with Team visible, employee page and tasks, pay counted once, scoped chat) and wrote the Phase 3 report. Full suite 513 passed. Stopped at the approval gate: Phase 4 starts only after "Phase 3 approved by Umair".

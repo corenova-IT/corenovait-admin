@@ -226,6 +226,8 @@ describe("pay is counted exactly once", () => {
     expect(mine.overall.costsMonthBaseMinor).toBe(1000 + 2000 + 7000); // expenses + employee pay, each once
     expect(mine.overall.netMonthBaseMinor).toBe(20000 - 10000);
 
+    // the partner's own team list shows what each employee costs this month
+    expect((await emp.myEmployees(p, today())).find((x) => x.id === emp1)?.costMonthBaseMinor).toBe(7000);
     // the admin's Partners page shows the same cost and profit, and the employee's own cost
     const row = (await ap.listPartners(owner)).rows.find((r) => r.id === e.id)!;
     expect(row.profitBaseMinor).toBe(10000);

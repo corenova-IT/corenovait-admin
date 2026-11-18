@@ -13,6 +13,7 @@ import { payRows } from "@/lib/pay-form";
 import { companyToday } from "@/lib/dal/payments";
 import { myAssignments } from "@/lib/dal/stream-partners";
 import { fmtDate } from "@/lib/format";
+import { formatMoney } from "@/lib/money";
 import { addEmployeePay, inviteEmployee, markEmployeePayPaid, stopEmployeePay } from "../actions";
 
 export const metadata = { title: "My team" };
@@ -62,6 +63,7 @@ export default async function MyTeamPage() {
                     {p.status === "deactivated" && <Badge tone="red">Deactivated</Badge>}
                     {p.status === "active" && (p.online ? <Badge tone="green">Online</Badge> : <Badge>{p.lastSeen ? `Seen ${fmtDate(p.lastSeen.slice(0, 10))}` : "Never signed in"}</Badge>)}
                     <Badge>{p.openTasks} open</Badge>
+                    <Badge>{formatMoney(p.costMonthBaseMinor, base, { cents: false })} this month</Badge>
                     {p.overdueTasks > 0 && <Badge tone="red">{p.overdueTasks} overdue</Badge>}
                   </div>
                   <details className="basis-full">
