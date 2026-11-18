@@ -1,6 +1,17 @@
 # Stream partners, employees and admin overview: plan
 
-Status: PLAN ONLY. No feature code, no migrations run, nothing deployed or pushed.
+Status: PLAN ONLY, with the owner's answers to section 8 recorded below. No feature code, no migrations run, nothing deployed or pushed.
+
+## Decisions (answers received)
+
+1. Projects and tasks match on **stream only** (a partner with no countries still sees nothing).
+2. Narrower admin chat oversight **accepted**: an admin may read only chats that include a stream partner or employee; every read is logged; admin-to-admin DMs stay private.
+3. **Both** the partner and the admin can set employee pay. Every change is logged and visible to the admin.
+4. Employee pay stays **out of the Finances expenses list**, but is **counted exactly once** in each partner's costs and in company profit. A test proves it (see C10 and section 5).
+5. Partner writes for expenses, subscriptions and tasks in **Phase 2**; projects and employees in **Phase 3**.
+6. **Not answered** (the reply still contained the template text). Working assumption until you say otherwise: **no, one role or the other for now**. This is the safe default and is easy to loosen later.
+7. Revenue = **paid income only**; pending income is shown separately.
+8. **No file attachments** for stream partners and employees for now.
 Branch: `feature/stream-partners` (from `feature/owner-overview` at `d451248`, which equals `main`).
 Spec: [stream-partners-spec.md](stream-partners-spec.md) (saved exactly as given).
 Baseline: 367 tests pass on the three finished revenue-privacy phases.
@@ -45,13 +56,13 @@ Fix:
 - **Money rows (income, expenses, subscriptions): a partner sees a row only if stream AND country both match.** A row with no country (today's "shared cost") never matches, so it stays admin-only.
 - **Non-money rows (projects, tasks): the stream must match**, and the partner must have at least one country assigned (otherwise nothing at all, per the spec). Projects and tasks have no country to compare, so I do not invent one.
 - All existing rows keep `stream_id = NULL`, so they stay admin-only until an admin assigns them (the admin expense and subscription forms get a Stream field).
-**ASK 1:** is "projects and tasks need the stream only" right, or do you want a country on projects and tasks too?
+**Decided (1):** projects and tasks need the stream only (plus the "at least one country" gate).
 
 **C5. Chat: "the admin can see all chats" contradicts a rule built on purpose.** Today nobody, admins included, can read a conversation they aren't in (`SECURITY.md`: "Admins can't read DMs they aren't in"; the code says "no admin override"). Also `#general` automatically adds every active user, and `chatPeople` lists everyone with chat access, so an employee or partner would see every other partner's name.
 Fix:
 - Scoped roles are never auto-joined to `#general` and never appear in other people's pickers. A DM involving a scoped role is allowed only between employee and own partner, employee and any admin, partner and own employee, partner and any admin.
 - Admin oversight is narrow: an admin may read only conversations that include at least one stream partner or employee. Admin-to-admin DMs stay private. Every such read writes an `audit_log` row and the conversation header says "Admins can read this conversation".
-**ASK 2:** do you accept this narrower version of "admin sees all chats" (admin-to-admin DMs stay private, every oversight read is logged)?
+**Decided (2):** accepted. Admin-to-admin DMs stay private, every oversight read is logged.
 
 **C6. "Deletes are archives" but today tasks, subscriptions and income are hard-deleted.** There is no `archived_at` on tasks or expenses.
 Fix: add `archived_at` (nullable) to `tasks` and `expenses`. Partners can only archive, never delete (their roles don't get the `delete` action at all). Subscriptions already have a `cancelled` status, which I reuse as "archived". **Risk:** every existing read of tasks and expenses must then exclude archived rows, including company totals. Only four files read `expenses` (`finance.ts`, `analytics.ts`, `payments.ts`, `lists.ts`) and two read `tasks` (`tasks.ts`, `notifications.ts`), so this is small, and a test will walk every read path (see section 5).
@@ -70,8 +81,12 @@ Exactly what changes (Phase 3):
 
 **C10. Employee pay "counts as a cost under that partner's stream", but an employee can work in several streams, and pay has no country.**
 Fix: every pay record carries one `stream_id` (chosen when set; project pay uses the project's stream) and a `country_code`, so it can follow the same stream AND country rule as other costs. Currency and the FX rate to base are stored on each record (same `money` columns as expenses). Monthly pay creates one record per month (idempotent), shown as a cost for that month; project pay becomes a cost when marked paid.
-**ASK 3:** who sets an employee's pay: the partner, the admin, or both? (The spec doesn't say; I propose both, and the employee sees nothing about it.)
-**ASK 4:** employee pay lives in its own tables and is included in the partner's profit and the admin pages, but it is **not** added to the company-wide Finances page expenses. Is that right?
+**Decided (3):** both the partner and the admin can set pay; the employee sees nothing about it. Every create, change and stop writes `audit_log` (before/after) and shows on the admin's Partner and Employee pages.
+**Decided (4):** employee pay lives in its own tables and is **not** a row in the Finances expenses list. To keep it counted exactly once:
+- One single source: `employee_pay_records`. A pay amount is never also written as an `expenses` row, so it cannot be counted twice.
+- One shared function (in `lib/dal/scope.ts`'s costs helper) returns a partner's total costs as `expenses + subscriptions paid + employee pay`, and every screen that shows a partner's costs, net or profit calls it (partner dashboard, admin Partners list and detail, admin Employees).
+- **Company profit** (the Finances page and Owner overview) must still subtract pay once. Today those pages only know `expenses`, so they get one extra, separate "Employee pay" line fed by the same pay records. The expenses *list* stays pay-free; the profit figure shows the extra line so it still reconciles. This touches `analytics.ts` and `overview.ts`, which I list as a risk below.
+- Test: create an expense, a subscription payment, a monthly pay record and a project pay record; assert that each partner's costs, the company profit, and the company-wide total each equal the sum with every item counted once, and that the Finances expenses list contains none of the pay.
 
 **C11. Hours need history; `user_presence` only keeps one "last seen" time per person.** It is fine for the online dot, not for hours worked.
 Fix (Phase 4): a new `shifts` table (clock in, clock out, who corrected it). Online status keeps using `user_presence`.
@@ -82,9 +97,9 @@ Fix: no file attachments for stream partners or employees in these four phases. 
 **C13. The existing search, calendar and notifications assume company-wide modules.** Search and Calendar require `home` / `calendar` modules the new roles don't have, so they get neither (matches "no global search outside their scope"). Task and payment deadlines appear on the new dashboards instead. The notification scheduler targets the assignee or responsible person, so it doesn't leak; a test checks it.
 
 **C14. Spec leaves two build-order gaps.** The four phases don't say when partners can add expenses, subscriptions and tasks.
-Proposal: Phase 2 includes partner create/edit/archive of **expenses and subscriptions** (they feed the dashboard costs) and **tasks** in own streams. Phase 3 adds **projects** and employees. **ASK 5:** OK, or do you want partner writes later?
+Proposal: Phase 2 includes partner create/edit/archive of **expenses and subscriptions** (they feed the dashboard costs) and **tasks** in own streams. Phase 3 adds **projects** and employees. **Decided (5):** partner writes for expenses, subscriptions and tasks in Phase 2; projects and employees in Phase 3.
 
-**C15. A person can be both a stream partner and an old-style revenue partner.** Hamza could have a share on a project (`project_partners`) *and* run the Upwork stream. These are separate things: the stream dashboard shows the stream's revenue, costs and net (spec); the existing "My earnings" shows a share. A login has one preset, so one person gets one or the other. **ASK 6:** do you need one person to have both? If so I'd add a "My earnings" link on their dashboard, not merge them.
+**C15. A person can be both a stream partner and an old-style revenue partner.** Hamza could have a share on a project (`project_partners`) *and* run the Upwork stream. These are separate things: the stream dashboard shows the stream's revenue, costs and net (spec); the existing "My earnings" shows a share. A login has one preset, so one person gets one or the other. **Open (6):** no answer yet. Working assumption: one or the other for now. If you later want both, I'd add a "My earnings" link on their dashboard rather than merge them.
 
 ---------------------------------------------------------------------------
 
@@ -183,6 +198,9 @@ Every item from the spec's access rules, plus the leaks I'd worry about:
 - A boundary test that scoped DAL code only reads company tables through `scope.ts`.
 - Chat: scoped roles never in `#general`, can't open a DM outside the allowed pairs, admin oversight read is logged.
 - Presets can't be hand-edited for these two roles.
+- **Employee pay counted exactly once** (decision 4): with one expense, one paid subscription, one monthly pay record and one project pay record, each partner's costs, the company profit and the company-wide cost total equal the sum with each item once; the Finances expenses list contains no pay; marking a pay record paid twice, or generating a month twice, changes nothing.
+- Revenue is paid income only: a pending entry shows only in the "pending" figure (decision 7).
+- Pay changes by either the partner or the admin write an audit row visible on the admin's pages (decision 3).
 - 2FA required for stream partners.
 
 ---------------------------------------------------------------------------
@@ -196,7 +214,8 @@ Every item from the spec's access rules, plus the leaks I'd worry about:
 5. **Hours and time zones.** Shifts are stored in UTC and shown in the company time zone; "this month" uses the company time zone like the rest of the panel.
 6. **Performance of the admin list pages.** Per-partner revenue/profit/open-task counts are aggregated queries; I'll check the plans and add indexes in `0014` if needed.
 7. **Hostinger's 120-process limit.** The new migrations are quick additive ones, but each push triggers one build; I will not push without your say-so, and I'll batch phases sensibly.
-8. **Staying on the shared design.** No new design system; new screens reuse existing components.
+8. **Company profit changes** (decision 4): `analytics.ts` and `overview.ts` get an extra "Employee pay" line so profit subtracts pay once while the expenses list stays pay-free. Mitigated by the counted-once test above and by leaving every existing figure unchanged when there are no pay records.
+9. **Staying on the shared design.** No new design system; new screens reuse existing components.
 
 ---------------------------------------------------------------------------
 
@@ -213,15 +232,12 @@ All migrations are tested on a fresh, throwaway MySQL (the existing test setup) 
 
 ---------------------------------------------------------------------------
 
-## 8. Questions that change what I build (short)
+## 8. Decisions and what is still open
 
-1. **ASK 1:** projects and tasks match on stream only (country gate = at least one country)?
-2. **ASK 2:** narrower admin chat oversight (only chats involving a partner or employee, logged), keeping admin-to-admin DMs private?
-3. **ASK 3:** who sets employee pay: partner, admin, or both?
-4. **ASK 4:** employee pay stays out of the company-wide Finances expenses?
-5. **ASK 5:** partner writes (expenses, subscriptions, tasks) in Phase 2, projects and employees in Phase 3?
-6. **ASK 6:** does any one person need both a stream dashboard and the old "My earnings"?
-7. **Revenue definition:** should "revenue" on dashboards mean paid income only, with pending shown separately? (I propose yes, matching how shares work today.)
-8. **Receipts:** OK to leave file attachments out for partners and employees for now (C12)?
+See "Decisions (answers received)" at the top. Effects on the build:
+- **Revenue (7):** every dashboard and admin list shows revenue = paid income only, with a separate "pending" figure beside it. "Profit this month" = paid revenue minus costs for the month.
+- **Attachments (8):** no upload fields for stream partners and employees (C12).
+- **Chat (2):** C5 applies as written.
+- **Open (6):** one person gets one role, not both, until you say otherwise.
 
-When you have answered these, I will start Phase 1 and stop for your review at the end of each phase, as before.
+Next: Phase 1 in a new session, stopping for your review at the end of each phase.
