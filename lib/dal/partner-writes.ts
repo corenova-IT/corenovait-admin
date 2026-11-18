@@ -8,6 +8,7 @@ import { checkExpenseRefs, expenseValues, moneyValues, type ExpenseInput } from 
 import { RuleError, requirePerm, type Actor } from "./guard";
 import { CYCLE_LABEL, companyToday, subscriptionInput, type SubscriptionInput } from "./payments";
 import { nextCycleDate } from "@/lib/dates";
+import { ownEmployee } from "./partner-employees";
 import { NotFound, assertCountryAllowed, assertStreamAllowed, moneyRowsWhere, notHiddenFrom, partnerScope, streamRowsWhere } from "./scope";
 
 /**
@@ -22,7 +23,7 @@ import { NotFound, assertCountryAllowed, assertStreamAllowed, moneyRowsWhere, no
  * - Every add, edit and archive writes the audit log (shown to the admin as "Changes made").
  * - No file attachments for partners (a plan decision).
  */
-const { expenses, subscriptions, tasks, projects, streams } = schema;
+const { expenses, subscriptions, tasks, projects, streams, projectMembers, employeeAssignments, users } = schema;
 
 function ensure(actor: Actor, action: "view" | "create" | "edit") {
   requirePerm(actor, "stream_partner", action);
@@ -213,6 +214,8 @@ export const myTaskInput = z.object({
     .or(z.literal("").transform(() => null)),
   streamId: z.coerce.number().int().positive("Choose a stream."),
   projectId: z.preprocess((v) => (v === "" || v === undefined ? null : v), z.string().uuid().nullable()).optional(),
+  /** one of THEIR employees, or nobody */
+  assigneeId: z.preprocess((v) => (v === "" || v === undefined ? null : v), z.string().uuid().nullable()).optional(),
 });
 export type MyTaskInput = z.input<typeof myTaskInput>;
 
@@ -237,7 +240,14 @@ async function taskValues(db: Db | Tx, actor: Actor, input: MyTaskInput) {
       .where(and(eq(projects.id, v.projectId), eq(projects.streamId, v.streamId), streamRowsWhere(actor, { streamId: projects.streamId }), notHiddenFrom(db, actor, projects.id)));
     if (!p) throw new NotFound();
   }
-  return { title: v.title, description: v.description || null, status: v.status, priority: v.priority, dueDate: v.dueDate ?? null, streamId: v.streamId, projectId: v.projectId ?? null };
+  if (v.assigneeId) {
+    await ownEmployee(db, actor, v.assigneeId); // someone else's employee = not found
+    if (v.projectId) {
+      const [on] = await db.select({ u: projectMembers.userId }).from(projectMembers).where(and(eq(projectMembers.projectId, v.projectId), eq(projectMembers.userId, v.assigneeId)));
+      if (!on) throw new RuleError("Put them on that project first (on the Projects page).");
+    }
+  }
+  return { title: v.title, description: v.description || null, status: v.status, priority: v.priority, dueDate: v.dueDate ?? null, streamId: v.streamId, projectId: v.projectId ?? null, assigneeId: v.assigneeId ?? null };
 }
 
 export async function createMyTask(actor: Actor, input: MyTaskInput): Promise<string> {
@@ -291,13 +301,19 @@ export async function myFormChoices(actor: Actor) {
   ensure(actor, "view");
   const scope = partnerScope(actor);
   const db = getDb();
-  const [streamChoices, countryRows, categoryRows, projectRows] = await Promise.all([
+  const [streamChoices, countryRows, categoryRows, projectRows, employeeRows] = await Promise.all([
     myStreamChoices(actor),
     scope.countryCodes.length ? db.select({ code: schema.countries.code, name: schema.countries.name }).from(schema.countries).orderBy(asc(schema.countries.sort)) : [],
     db.select({ name: schema.expenseCategories.name, active: schema.expenseCategories.active }).from(schema.expenseCategories).orderBy(asc(schema.expenseCategories.sort), asc(schema.expenseCategories.name)),
     scope.hasData
       ? db.select({ id: projects.id, name: projects.name, streamId: projects.streamId }).from(projects).where(and(streamRowsWhere(actor, { streamId: projects.streamId }), notHiddenFrom(db, actor, projects.id), eq(projects.active, true))).orderBy(asc(projects.name))
       : [],
+    db
+      .select({ id: users.id, name: users.fullName, email: users.email })
+      .from(employeeAssignments)
+      .innerJoin(users, eq(users.id, employeeAssignments.employeeUserId))
+      .where(and(eq(employeeAssignments.partnerUserId, actor.userId), ne(users.status, "deactivated")))
+      .orderBy(asc(users.fullName)),
   ]);
   const base = (await db.select({ c: schema.settings.baseCurrency }).from(schema.settings).where(eq(schema.settings.id, 1)))[0]?.c ?? "AUD";
   return {
@@ -305,6 +321,7 @@ export async function myFormChoices(actor: Actor) {
     countries: countryRows.filter((c) => scope.countryCodes.includes(c.code)),
     categories: categoryRows.filter((c) => c.active).map((c) => c.name),
     projects: projectRows,
+    employees: employeeRows.map((e) => ({ id: e.id, name: e.name || e.email })),
     baseCurrency: base,
     hasData: scope.hasData,
   };

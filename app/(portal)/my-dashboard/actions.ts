@@ -196,6 +196,7 @@ export async function saveTask(_prev: PartnerState, fd: FormData): Promise<Partn
     dueDate: str(fd, "dueDate") || null,
     streamId: str(fd, "streamId"),
     projectId: str(fd, "projectId") || null,
+    assigneeId: str(fd, "assigneeId") || null,
   };
   try {
     if (id) await w.updateMyTask(g.actor, id, input);

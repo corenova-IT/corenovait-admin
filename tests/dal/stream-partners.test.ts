@@ -462,7 +462,7 @@ describe("the code", () => {
       expect(src, f).toMatch(/from "\.\/scope"/);
       // company tables are only ever filtered through the helper's conditions
       if (/schema\.(incomeEntries|expenses|subscriptions|tasks|projects)|(incomeEntries|expenses|subscriptions|tasks|projects).*from\(/.test(src) || /\.from\((incomeEntries|expenses|subscriptions|tasks|projects)\)/.test(src)) {
-        expect(src, f).toMatch(/moneyRowsWhere|streamRowsWhere/);
+        expect(src, f).toMatch(/moneyRowsWhere|streamRowsWhere|employeeProjectsWhere/);
       }
     }
   });

@@ -12,6 +12,7 @@ export type Choices = {
   countries: Array<{ code: string; name: string }>;
   categories: string[];
   projects: Array<{ id: string; name: string; streamId: number }>;
+  employees: Array<{ id: string; name: string }>;
   baseCurrency: string;
 };
 
@@ -147,7 +148,7 @@ export function SubscriptionForm({ c, row, action, idPrefix }: { c: Choices; row
   );
 }
 
-export type TaskRow = { id: string; title: string; description: string; status: string; priority: string; dueDate: string | null; streamId: number | null; projectId: string | null };
+export type TaskRow = { id: string; title: string; description: string; status: string; priority: string; dueDate: string | null; streamId: number | null; projectId: string | null; assigneeId: string | null };
 
 export function TaskForm({ c, row, action, idPrefix }: { c: Choices; row?: TaskRow; action: PartnerAction; idPrefix: string }) {
   const [state, formAction, pending] = useActionState(action, {});
@@ -185,6 +186,16 @@ export function TaskForm({ c, row, action, idPrefix }: { c: Choices; row?: TaskR
           {c.streams.map((s) => (
             <option key={s.id} value={s.id}>
               {s.name}
+            </option>
+          ))}
+        </Select>
+      </Field>
+      <Field label="Assigned to" htmlFor={`${p}-assignee`} hint="One of your employees. If the task has a project, they must be on it." className="sm:col-span-2">
+        <Select id={`${p}-assignee`} name="assigneeId" defaultValue={row?.assigneeId ?? ""}>
+          <option value="">Nobody</option>
+          {c.employees.map((e) => (
+            <option key={e.id} value={e.id}>
+              {e.name}
             </option>
           ))}
         </Select>

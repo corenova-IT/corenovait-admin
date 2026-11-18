@@ -49,7 +49,7 @@ export default async function MyTasksPage() {
                           c={c}
                           action={saveTask}
                           idPrefix={`task-${r.id}`}
-                          row={{ id: r.id, title: r.title, description: r.description ?? "", status: r.status, priority: r.priority, dueDate: r.dueDate, streamId: r.streamId, projectId: r.projectId }}
+                          row={{ id: r.id, title: r.title, description: r.description ?? "", status: r.status, priority: r.priority, dueDate: r.dueDate, streamId: r.streamId, projectId: r.projectId, assigneeId: r.assigneeId }}
                         />
                         <ArchiveButton id={r.id} action={archiveTask} label="Archive this task" />
                       </div>
