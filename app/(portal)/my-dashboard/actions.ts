@@ -88,6 +88,19 @@ export async function saveSubscription(_prev: PartnerState, fd: FormData): Promi
   }
 }
 
+export async function markSubscriptionPaid(_prev: PartnerState, fd: FormData): Promise<PartnerState> {
+  const g = await actorWithPerm("stream_partner", "edit");
+  if (!g.actor) return { error: g.error };
+  const id = uuid.safeParse(fd.get("id"));
+  if (!id.success) return { error: "That no longer exists." };
+  try {
+    const r = await w.markMySubscriptionPaid(g.actor, id.data, { paidDate: str(fd, "paidDate") || undefined });
+    return done(r.nextDueDate ? `Marked paid. Next due ${r.nextDueDate}.` : "Marked paid. This one-off subscription is now complete.");
+  } catch (e) {
+    return { error: errorMessage(e) };
+  }
+}
+
 export async function archiveSubscription(_prev: PartnerState, fd: FormData): Promise<PartnerState> {
   const g = await actorWithPerm("stream_partner", "edit");
   if (!g.actor) return { error: g.error };

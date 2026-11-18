@@ -207,6 +207,21 @@ export function TaskForm({ c, row, action, idPrefix }: { c: Choices; row?: TaskR
   );
 }
 
+/** Records this payment as a cost and moves the due date on. The date defaults to today. */
+export function MarkPaidForm({ id, action }: { id: string; action: PartnerAction }) {
+  const [state, formAction, pending] = useActionState(action, {});
+  return (
+    <form action={formAction} className="flex flex-wrap items-end gap-3">
+      <input type="hidden" name="id" value={id} />
+      <Field label="Paid on" htmlFor={`paid-${id}`} hint="Leave blank for today">
+        <Input id={`paid-${id}`} name="paidDate" type="date" />
+      </Field>
+      <Button type="submit" disabled={pending}>{pending ? "Recording…" : "Mark as paid"}</Button>
+      <div className="basis-full"><Msg state={state} /></div>
+    </form>
+  );
+}
+
 /** Archive keeps the record but hides it from every list. */
 export function ArchiveButton({ id, action, label }: { id: string; action: PartnerAction; label: string }) {
   const [state, formAction, pending] = useActionState(action, {});

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArchiveButton, SubscriptionForm } from "@/components/partner/PartnerForms";
+import { ArchiveButton, MarkPaidForm, SubscriptionForm } from "@/components/partner/PartnerForms";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { EmptyState } from "@/components/ui/States";
@@ -7,7 +7,7 @@ import { requirePerm } from "@/lib/auth/session";
 import { myFormChoices, mySubscriptions } from "@/lib/dal/partner-writes";
 import { fmtDate } from "@/lib/format";
 import { formatMoney, minorToInput, rateToInput } from "@/lib/money";
-import { archiveSubscription, saveSubscription } from "../actions";
+import { archiveSubscription, markSubscriptionPaid, saveSubscription } from "../actions";
 
 export const metadata = { title: "My subscriptions" };
 
@@ -73,6 +73,7 @@ export default async function MySubscriptionsPage() {
                             countryCode: r.countryCode,
                           }}
                         />
+                        {r.status === "active" && <MarkPaidForm id={r.id} action={markSubscriptionPaid} />}
                         <ArchiveButton id={r.id} action={archiveSubscription} label="Archive (cancel) this subscription" />
                       </div>
                     </details>

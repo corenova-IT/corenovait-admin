@@ -6,9 +6,20 @@ Approval gate: Phase N+1 starts only when this file contains the line "Phase N a
 
 ## Current status (updated end of run 3)
 - Phase 1 approved. **Phase 2 is finished** (all steps ticked; report below). I stopped at the approval gate: Phase 3 does not start until this file contains the line "Phase 2 approved by Umair".
-- Test status: typecheck clean; full suite **443 passed, 0 failed** (37 files).
+- Test status: typecheck clean; full suite **447 passed, 0 failed** (37 files).
 - Blockers: none. Not pushed, not deployed, no migration run on any real database (Phase 2 adds no migration).
-- Needs your decision: budgets (what is a budget?), and whether partners should be able to mark a subscription paid. See "What I was unsure about" in the Phase 2 report.
+- Your answers to the Phase 2 questions are recorded below ("Answers received after the Phase 2 report"). Partners can now mark their own subscriptions paid (done, tested). Budgets: skipped for now. Unarchive: later, after Phase 4.
+- Test status after the mark-paid change: partner-writes tests 17/17; full suite result is in the last line of the run log.
+
+## Answers received after the Phase 2 report
+1. Budgets: **skip for now** (no budgets are built or shown).
+2. Partners marking subscriptions paid: **yes**, for subscriptions in their own streams (and countries), every change logged. It only records the cost and moves the due date on. **Done** (`markMySubscriptionPaid` in lib/dal/partner-writes.ts, "Mark as paid" button on /my-dashboard/subscriptions, 4 new tests).
+3. Rows need a stream and a country; rows with the "Shared" country stay admin-only: **confirmed, no change**.
+4. Unarchive: **later, after Phase 4** (see "Later" below).
+Phase 2 is **not yet approved**: the line "Phase 2 approved by Umair" is still missing, so Phase 3 has not started.
+
+## Later (agreed, not started)
+- Admin "unarchive" for archived expenses and tasks (and cancelled subscriptions), logged. After Phase 4.
 
 ## Status at the end of run 1 (2026-11-18)
 
@@ -191,3 +202,6 @@ Recorded your four answers. Hid the Employee role until Phase 3 (picker + server
 Phase 1 approved in chat by Umair ("approve the test 1 go for the second phase"); approval line recorded below. Did Phase 2 steps 2.0a and 2.0b (above). Then continued: 2.1 to 2.4 built and tested; Phase 2 report written; stopped at the approval gate.
 
 Phase 1 approved by Umair
+
+### Run 4 (2026-11-19)
+Recorded your answers to the Phase 2 questions. Built partner "Mark as paid" for subscriptions in their own streams (logged, tests added). Full suite: 447 passed, 0 failed. Phase 3 not started: waiting for the line "Phase 2 approved by Umair".

@@ -6,7 +6,8 @@ import { TASK_PRIORITIES, TASK_STATUSES } from "@/lib/work";
 import { actorRef, writeAudit } from "./audit";
 import { checkExpenseRefs, expenseValues, moneyValues, type ExpenseInput } from "./finance";
 import { RuleError, requirePerm, type Actor } from "./guard";
-import { subscriptionInput, type SubscriptionInput } from "./payments";
+import { CYCLE_LABEL, companyToday, subscriptionInput, type SubscriptionInput } from "./payments";
+import { nextCycleDate } from "@/lib/dates";
 import { NotFound, assertCountryAllowed, assertStreamAllowed, moneyRowsWhere, notHiddenFrom, partnerScope, streamRowsWhere } from "./scope";
 
 /**
@@ -148,6 +149,53 @@ export async function archiveMySubscription(actor: Actor, id: string) {
     if (!before) throw new NotFound();
     await tx.update(subscriptions).set({ status: "cancelled" }).where(eq(subscriptions.id, id));
     await writeAudit(tx, actorRef(actor), { action: "archive", entity: "subscriptions", entityId: id, summary: `Archived subscription: ${before.vendor}`, before: { status: before.status }, after: { status: "cancelled" } });
+  });
+}
+
+/**
+ * A partner marks one of THEIR subscriptions as paid. It only records the cost (an expense under the
+ * same stream and country) and moves the due date on one cycle, exactly like the admin's version in
+ * lib/dal/payments.ts. Nothing else changes. Both changes are logged.
+ */
+export async function markMySubscriptionPaid(actor: Actor, id: string, opts: { paidDate?: string } = {}): Promise<{ expenseId: string; nextDueDate: string | null }> {
+  ensure(actor, "edit");
+  const db = getDb();
+  const paidDate = opts.paidDate || (await companyToday(db));
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(paidDate)) throw new RuleError("Choose the date it was paid.");
+  return db.transaction(async (tx) => {
+    const [before] = await tx.select().from(subscriptions).where(and(eq(subscriptions.id, id), subOwn(actor), ne(subscriptions.status, "cancelled"))).for("update");
+    if (!before) throw new NotFound();
+    if (before.status !== "active") throw new RuleError("Only an active subscription can be marked as paid.");
+    const expenseId = crypto.randomUUID();
+    await tx.insert(expenses).values({
+      id: expenseId,
+      expenseDate: paidDate,
+      category: before.category,
+      vendor: before.vendor,
+      description: before.description || `${CYCLE_LABEL[before.billingCycle]} payment`,
+      amountMinor: before.amountMinor,
+      currency: before.currency,
+      fxRateToBase: before.fxRateToBase,
+      isRecurring: before.billingCycle !== "once",
+      countryCode: before.countryCode,
+      streamId: before.streamId,
+      subscriptionId: id,
+      notes: before.paidFrom ? `Paid from ${before.paidFrom}` : null,
+      createdBy: actor.userId,
+    });
+    const next = nextCycleDate(before.nextDueDate, before.billingCycle);
+    await tx.update(subscriptions).set(next ? { nextDueDate: next } : { status: "completed" }).where(eq(subscriptions.id, id));
+    const [expense] = await tx.select().from(expenses).where(eq(expenses.id, expenseId));
+    await writeAudit(tx, actorRef(actor), { action: "create", entity: "expenses", entityId: expenseId, summary: `Added expense: paid ${before.vendor} (due ${before.nextDueDate})`, after: expense });
+    await writeAudit(tx, actorRef(actor), {
+      action: "update",
+      entity: "subscriptions",
+      entityId: id,
+      summary: `Edited subscription: ${before.vendor} marked paid`,
+      before: { nextDueDate: before.nextDueDate, status: before.status },
+      after: next ? { nextDueDate: next, status: before.status } : { status: "completed" },
+    });
+    return { expenseId, nextDueDate: next };
   });
 }
 

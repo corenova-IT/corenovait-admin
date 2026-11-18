@@ -191,6 +191,61 @@ describe("tasks", () => {
   });
 });
 
+describe("marking a subscription paid", () => {
+  it("records the cost under the same stream and country, moves the due date on, shows on the dashboard, and is logged", async () => {
+    const a = await as(ids.a);
+    const due = addDays(today(), 4);
+    const id = await w.createMySubscription(a, sub({ vendor: "PaidTool", amount: "25", nextDueDate: due }));
+    const costsBefore = (await dash.myDashboard(a)).overall.costsMonthBaseMinor;
+    const r = await w.markMySubscriptionPaid(a, id);
+    expect(r.nextDueDate).toBeTruthy();
+    const paid = await row("expenses", r.expenseId);
+    expect(paid).toMatchObject({ vendor: "PaidTool", amountMinor: 2500, streamId: S.upwork, countryCode: "GB", createdBy: ids.a, subscriptionId: id, archivedAt: null });
+    expect((await row("subscriptions", id)).nextDueDate).toBe(r.nextDueDate);
+    expect((await row("subscriptions", id)).nextDueDate > due).toBe(true);
+    expect((await dash.myDashboard(a)).overall.costsMonthBaseMinor).toBe(costsBefore + 2500);
+    expect((await auditFor(r.expenseId)).map((x) => x.action)).toEqual(["create"]);
+    expect((await auditFor(id)).some((x) => x.action === "update" && /marked paid/.test(x.summary ?? ""))).toBe(true);
+    // the admin's own Transactions list shows it too
+    expect((await fin.listExpenses(await as(ids.owner), {})).rows.map((e) => e.id)).toContain(r.expenseId);
+  });
+
+  it("completes a one-off subscription, and refuses a paused or cancelled one", async () => {
+    const a = await as(ids.a);
+    const once = await w.createMySubscription(a, sub({ billingCycle: "once" }));
+    const r = await w.markMySubscriptionPaid(a, once);
+    expect(r.nextDueDate).toBeNull();
+    expect((await row("subscriptions", once)).status).toBe("completed");
+    await expect(w.markMySubscriptionPaid(a, once)).rejects.toThrow(/active/i);
+    const gone = await w.createMySubscription(a, sub());
+    await w.archiveMySubscription(a, gone);
+    await expect(w.markMySubscriptionPaid(a, gone)).rejects.toThrow(/no longer exists/);
+    await expect(w.markMySubscriptionPaid(a, (await w.createMySubscription(a, sub())), { paidDate: "tomorrow" })).rejects.toThrow(/date/i);
+  });
+
+  it("can't be used on another partner's or a company-wide subscription, and changes nothing when refused", async () => {
+    const [a, b] = [await as(ids.a), await as(ids.b)];
+    const theirs = await w.createMySubscription(b, sub({ streamId: S.fiverr, countryCode: "AU" }));
+    const companyWide = crypto.randomUUID();
+    await t.db.insert(t.schema.subscriptions).values({ id: companyWide, vendor: "Company", category: "Software", amountMinor: 100, currency: "AUD", fxRateToBase: "1", nextDueDate: today(), createdBy: ids.owner });
+    const expensesBefore = (await t.db.select().from(t.schema.expenses)).length;
+    const snapshot = JSON.stringify(await row("subscriptions", theirs));
+    await expect(w.markMySubscriptionPaid(a, theirs)).rejects.toThrow(/no longer exists/);
+    await expect(w.markMySubscriptionPaid(a, companyWide)).rejects.toThrow(/no longer exists/);
+    expect(await msg(w.markMySubscriptionPaid(a, theirs))).toBe(await msg(w.markMySubscriptionPaid(a, crypto.randomUUID())));
+    expect((await t.db.select().from(t.schema.expenses)).length).toBe(expensesBefore);
+    expect(JSON.stringify(await row("subscriptions", theirs))).toBe(snapshot);
+  });
+
+  it("is only for stream partners", async () => {
+    const a = await as(ids.a);
+    const id = await w.createMySubscription(a, sub());
+    for (const who of [ids.owner, ids.staff, ids.oldPartner, ids.emp]) {
+      await expect(w.markMySubscriptionPaid(await as(who), id), who).rejects.toThrow(/permission/i);
+    }
+  });
+});
+
 describe("what a partner still can't do", () => {
   it("nobody but a stream partner can use these functions", async () => {
     for (const who of [ids.owner, ids.staff, ids.oldPartner, ids.emp]) {
