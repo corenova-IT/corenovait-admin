@@ -1,9 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { z } from "zod";
 import { actorWithPerm, errorMessage } from "@/lib/auth/session";
 import * as pay from "@/lib/dal/employee-pay";
+import { startDmAsAdmin } from "@/lib/dal/scoped-chat";
 import { payInputFromForm } from "@/lib/pay-form";
 
 /** An admin sets pay for any stream partner's employee. Permission first, then the form, then the data-access layer. */
@@ -14,6 +16,21 @@ const done = (ok: string): AdminPayState => {
   revalidatePath("/partners", "layout");
   return { ok };
 };
+
+/** An admin opens a conversation with a stream partner or employee (it then shows in their normal Team chat). */
+export async function messageUser(_prev: AdminPayState, fd: FormData): Promise<AdminPayState> {
+  const g = await actorWithPerm("team", "edit");
+  if (!g.actor) return { error: g.error };
+  const who = uuid.safeParse(fd.get("userId"));
+  if (!who.success) return { error: "That no longer exists." };
+  let id: string;
+  try {
+    id = await startDmAsAdmin(g.actor, who.data);
+  } catch (e) {
+    return { error: errorMessage(e) };
+  }
+  redirect(`/chat?c=${id}`);
+}
 
 export async function addEmployeePay(_prev: AdminPayState, fd: FormData): Promise<AdminPayState> {
   const g = await actorWithPerm("team", "edit");

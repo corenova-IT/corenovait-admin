@@ -31,6 +31,7 @@ export const AUDIT_ACTIONS = [
   "recovery_codes_regenerated",
   "assign",
   "archive",
+  "read",
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 

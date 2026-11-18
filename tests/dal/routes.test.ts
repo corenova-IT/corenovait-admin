@@ -191,6 +191,9 @@ describe("guarded pages, opened by a staff user", () => {
     ["/my-dashboard/tasks (stream partners only)", () => import("@/app/(portal)/my-dashboard/tasks/page"), {}],
     ["/my-dashboard/team (stream partners only)", () => import("@/app/(portal)/my-dashboard/team/page"), {}],
     ["/my-dashboard/projects (stream partners only)", () => import("@/app/(portal)/my-dashboard/projects/page"), {}],
+    ["/messages (stream partners and employees only)", () => import("@/app/(portal)/messages/page"), { searchParams: Promise.resolve({}) }],
+    ["/partners/chats (admins only)", () => import("@/app/(portal)/partners/chats/page"), {}],
+    ["/partners/chats/x (admins only)", () => import("@/app/(portal)/partners/chats/[id]/page"), { params: Promise.resolve({ id: "x" }) }],
     ["/partners (admins only)", () => import("@/app/(portal)/partners/page"), { searchParams: Promise.resolve({}) }],
     ["/partners/x (admins only)", () => import("@/app/(portal)/partners/[id]/page"), { params: Promise.resolve({ id: "x" }), searchParams: Promise.resolve({}) }],
     ["/streams/overview (owner only)", () => import("@/app/(portal)/streams/overview/page"), { searchParams: Promise.resolve({}) }],
@@ -237,6 +240,8 @@ describe("guarded pages, opened by a staff user", () => {
     await expect(home({ searchParams: Promise.resolve({}) })).rejects.toMatchObject({ url: "/my-dashboard" });
     const mine = (await import("@/app/(portal)/my-dashboard/page")).default as () => Promise<unknown>;
     await expect(mine()).resolves.toBeTruthy();
+    const messagesPage = (await import("@/app/(portal)/messages/page")).default as (p: unknown) => Promise<unknown>;
+    await expect(messagesPage({ searchParams: Promise.resolve({}) })).resolves.toBeTruthy();
     for (const sub of ["expenses", "subscriptions", "tasks", "team", "projects"]) {
       const subPage = (await import(`@/app/(portal)/my-dashboard/${sub}/page`)).default as () => Promise<unknown>;
       await expect(subPage(), sub).resolves.toBeTruthy();
@@ -245,7 +250,7 @@ describe("guarded pages, opened by a staff user", () => {
     await expect(searchPage({ searchParams: Promise.resolve({ q: "Gamma" }) })).rejects.toMatchObject({ url: expect.stringMatching(/^\/no-access/) });
     for (const [route, load, props] of pages) {
       const page = (await load()).default;
-      if (route.startsWith("/my-dashboard")) continue; // their own pages (the dashboard and its three sub-pages)
+      if (route.startsWith("/my-dashboard") || route.startsWith("/messages")) continue; // their own pages (the dashboard, its sub-pages and Messages)
       await expect(page(props as never), route).rejects.toMatchObject({ url: expect.stringMatching(/^\/no-access/) });
     }
   });
@@ -258,9 +263,11 @@ describe("guarded pages, opened by a staff user", () => {
     await expect(home({ searchParams: Promise.resolve({}) })).rejects.toMatchObject({ url: "/work" });
     const mine = (await import("@/app/(portal)/work/page")).default as () => Promise<unknown>;
     await expect(mine()).resolves.toBeTruthy();
+    const messagesPage = (await import("@/app/(portal)/messages/page")).default as (p: unknown) => Promise<unknown>;
+    await expect(messagesPage({ searchParams: Promise.resolve({}) })).resolves.toBeTruthy();
     for (const [route, load, props] of pages) {
       const page = (await load()).default;
-      if (route.startsWith("/work")) continue;
+      if (route.startsWith("/work") || route.startsWith("/messages")) continue;
       await expect(page(props as never), route).rejects.toMatchObject({ url: expect.stringMatching(/^\/no-access/) });
     }
   });

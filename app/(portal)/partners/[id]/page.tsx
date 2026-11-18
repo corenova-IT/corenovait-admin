@@ -12,7 +12,8 @@ import { PayPanel } from "@/components/partner/PayPanel";
 import { partnerDetail, partnerFilters } from "@/lib/dal/admin-partners";
 import { payFormChoices, payPlansFor } from "@/lib/dal/employee-pay";
 import { payRows } from "@/lib/pay-form";
-import { addEmployeePay, markEmployeePayPaid, stopEmployeePay } from "../actions";
+import { MessageUserButton } from "@/components/partner/MessageForms";
+import { addEmployeePay, markEmployeePayPaid, messageUser, stopEmployeePay } from "../actions";
 import type { DashboardData, StreamFigures } from "@/lib/dal/partner-dashboard";
 import { NotFound } from "@/lib/dal/scope";
 import { dueLabel, fmtDate } from "@/lib/format";
@@ -60,7 +61,7 @@ export default async function PartnerPage({ params, searchParams }: { params: Pr
 
   return (
     <>
-      <PageHeader title={d.person.name} subtitle={`${d.person.email} · ${d.from} to ${d.to} · in ${base}`} actions={<Link href="/partners" className="text-sm text-accent-text hover:underline">All partners</Link>} />
+      <PageHeader title={d.person.name} subtitle={`${d.person.email} · ${d.from} to ${d.to} · in ${base}`} actions={<><MessageUserButton userId={d.person.id} action={messageUser} /><Link href="/partners" className="text-sm text-accent-text hover:underline">All partners</Link></>} />
 
       <Card className="mb-6">
         <dl className="grid gap-4 p-5 sm:grid-cols-3">
@@ -128,7 +129,8 @@ export default async function PartnerPage({ params, searchParams }: { params: Pr
                         {e.status !== "active" && <Badge tone={e.status === "invited" ? "amber" : "red"}>{e.status === "invited" ? "Invite sent" : "Deactivated"}</Badge>}
                         <span className="text-ink">{money(e.costBaseMinor)}</span>
                       </summary>
-                      <div className="mt-4">
+                      <div className="mt-4 flex flex-col gap-4">
+                        <MessageUserButton userId={e.id} action={messageUser} label={`Message ${e.name}`} />
                         <PayPanel employeeId={e.id} plans={payRows(pd.plans, pd.choices.streams, base)} choices={{ ...pd.choices, baseCurrency: base }} actions={{ add: addEmployeePay, stop: stopEmployeePay, markPaid: markEmployeePayPaid }} />
                       </div>
                     </details>
