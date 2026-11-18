@@ -248,7 +248,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
             value={whole(cur.expensesBaseMinor)}
             note={exp.note}
             noteTone={exp.tone}
-            detail={country ? `${COUNTRY_NAME[country]} costs · shared ${whole(s.sharedExpensesExcludedBaseMinor)} not included` : `${scope} · vs prior year`}
+            detail={(country ? `${COUNTRY_NAME[country]} costs · shared ${whole(s.sharedExpensesExcludedBaseMinor)} not included` : `${scope} · vs prior year`) + (cur.employeePayBaseMinor ? ` · employee pay ${whole(cur.employeePayBaseMinor)} on top` : "")}
             trend={done.map((m) => m.expensesBaseMinor)}
           />
         </div>

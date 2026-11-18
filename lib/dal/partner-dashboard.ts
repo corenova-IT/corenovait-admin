@@ -1,8 +1,9 @@
 import "server-only";
-import { and, asc, eq, isNull, ne, sql, type SQL } from "drizzle-orm";
+import { and, asc, eq, isNotNull, isNull, ne, sql, type SQL } from "drizzle-orm";
 import { getDb, schema, type Db, type Tx } from "@/lib/db";
-import { daysBetween } from "@/lib/dates";
+import { addDays, addMonths, daysBetween } from "@/lib/dates";
 import type { Actor } from "./guard";
+import { ensureMonthlyPay } from "./employee-pay";
 import { companyToday } from "./payments";
 import { moneyRowsWhere, notHiddenFrom, partnerScope, streamRowsWhere, type PartnerScope } from "./scope";
 
@@ -19,7 +20,7 @@ import { moneyRowsWhere, notHiddenFrom, partnerScope, streamRowsWhere, type Part
  * - Nothing here ever reads the company's share, other partners, or company-wide totals.
  * - Employee pay and the employees panel arrive with the employee tables (a later phase).
  */
-const { incomeEntries, expenses, subscriptions, tasks, streams, settings } = schema;
+const { incomeEntries, expenses, subscriptions, tasks, streams, settings, employeePayRecords: pay } = schema;
 
 export type StreamFigures = {
   streamId: number;
@@ -27,8 +28,12 @@ export type StreamFigures = {
   revenueMonthBaseMinor: number;
   revenueTotalBaseMinor: number;
   pendingBaseMinor: number;
+  /** all costs: expenses (subscriptions paid are expenses) plus employee pay, each counted once */
   costsMonthBaseMinor: number;
   costsTotalBaseMinor: number;
+  /** the employee-pay part of the costs above */
+  payMonthBaseMinor: number;
+  payTotalBaseMinor: number;
   netMonthBaseMinor: number;
   netTotalBaseMinor: number;
 };
@@ -64,7 +69,7 @@ export type DashboardData = {
 const num = (v: unknown) => Number(v ?? 0);
 const sumIf = (amount: ReturnType<typeof sql>, cond: ReturnType<typeof sql>) => sql<string>`coalesce(sum(case when ${cond} then ${amount} else 0 end), 0)`;
 
-export type DashboardConds = { income: SQL | undefined; expense: SQL | undefined; subscription: SQL | undefined; task: SQL | undefined };
+export type DashboardConds = { income: SQL | undefined; expense: SQL | undefined; subscription: SQL | undefined; task: SQL | undefined; pay: SQL | undefined };
 
 /** The signed-in partner's own dashboard. */
 export async function myDashboard(actor: Actor): Promise<DashboardData> {
@@ -75,6 +80,7 @@ export async function myDashboard(actor: Actor): Promise<DashboardData> {
     expense: and(moneyRowsWhere(actor, { streamId: expenses.streamId, countryCode: expenses.countryCode }), isNull(expenses.archivedAt)),
     subscription: and(moneyRowsWhere(actor, { streamId: subscriptions.streamId, countryCode: subscriptions.countryCode }), eq(subscriptions.status, "active")),
     task: and(streamRowsWhere(actor, { streamId: tasks.streamId }), notHiddenFrom(db, actor, tasks.projectId), isNull(tasks.archivedAt)),
+    pay: and(moneyRowsWhere(actor, { streamId: pay.streamId, countryCode: pay.countryCode }), isNotNull(pay.costDate)),
   });
 }
 
@@ -87,10 +93,12 @@ export async function computeDashboard(db: Db | Tx, scope: PartnerScope, conds: 
   const [settingsRow] = await db.select({ base: settings.baseCurrency }).from(settings).where(eq(settings.id, 1));
   const baseCurrency = settingsRow?.base ?? "AUD";
   const today = await companyToday(db);
+  await ensureMonthlyPay(db, today); // this month's monthly pay exists before anything is added up
   const monthStart = range?.from ?? `${today.slice(0, 7)}-01`;
-  const monthEnd = range?.to ?? "9999-12-31";
+  // "this month" stops at the end of this month, so nothing dated later is counted in it
+  const monthEnd = range?.to ?? addDays(addMonths(monthStart, 1), -1);
 
-  const empty = { revenueMonthBaseMinor: 0, revenueTotalBaseMinor: 0, pendingBaseMinor: 0, costsMonthBaseMinor: 0, costsTotalBaseMinor: 0, netMonthBaseMinor: 0, netTotalBaseMinor: 0 };
+  const empty = { revenueMonthBaseMinor: 0, revenueTotalBaseMinor: 0, pendingBaseMinor: 0, costsMonthBaseMinor: 0, costsTotalBaseMinor: 0, payMonthBaseMinor: 0, payTotalBaseMinor: 0, netMonthBaseMinor: 0, netTotalBaseMinor: 0 };
   const base: DashboardData = { baseCurrency, today, monthLabel: range ? `${range.from} to ${range.to}` : today.slice(0, 7), hasData: scope.hasData, perStream: [], overall: empty, upcomingPayments: [], dueWithin30DaysBaseMinor: 0, tasks: { open: 0, overdue: 0, upcoming: [] } };
   if (!scope.hasData) return base;
 
@@ -103,7 +111,8 @@ export async function computeDashboard(db: Db | Tx, scope: PartnerScope, conds: 
 
   const incAmount = sql`${incomeEntries.amountBaseMinor}`;
   const expAmount = sql`${expenses.amountBaseMinor}`;
-  const [incomeRows, expenseRows, subRows, [taskCounts], upcomingTasks] = await Promise.all([
+  const payAmount = sql`${pay.amountBaseMinor}`;
+  const [incomeRows, expenseRows, payRows, subRows, [taskCounts], upcomingTasks] = await Promise.all([
     db
       .select({
         streamId: incomeEntries.streamId,
@@ -123,6 +132,15 @@ export async function computeDashboard(db: Db | Tx, scope: PartnerScope, conds: 
       .from(expenses)
       .where(expenseWhere)
       .groupBy(expenses.streamId),
+    db
+      .select({
+        streamId: pay.streamId,
+        month: sumIf(payAmount, sql`${pay.costDate} >= ${monthStart} and ${pay.costDate} <= ${monthEnd}`),
+        all: sql<string>`coalesce(sum(${payAmount}), 0)`,
+      })
+      .from(pay)
+      .where(conds.pay)
+      .groupBy(pay.streamId),
     db
       .select({
         id: subscriptions.id,
@@ -157,12 +175,16 @@ export async function computeDashboard(db: Db | Tx, scope: PartnerScope, conds: 
   const perStream: StreamFigures[] = [...streamNames].map(([streamId, stream]) => {
     const inc = incomeRows.find((r) => r.streamId === streamId);
     const exp = expenseRows.find((r) => r.streamId === streamId);
+    const emp = payRows.find((r) => r.streamId === streamId);
     const f = {
       revenueMonthBaseMinor: num(inc?.paidMonth),
       revenueTotalBaseMinor: num(inc?.paidAll),
       pendingBaseMinor: num(inc?.pending),
-      costsMonthBaseMinor: num(exp?.month),
-      costsTotalBaseMinor: num(exp?.all),
+      // expenses and employee pay are separate records, so adding them counts each once
+      costsMonthBaseMinor: num(exp?.month) + num(emp?.month),
+      costsTotalBaseMinor: num(exp?.all) + num(emp?.all),
+      payMonthBaseMinor: num(emp?.month),
+      payTotalBaseMinor: num(emp?.all),
     };
     return { streamId, stream, ...f, netMonthBaseMinor: f.revenueMonthBaseMinor - f.costsMonthBaseMinor, netTotalBaseMinor: f.revenueTotalBaseMinor - f.costsTotalBaseMinor };
   });
@@ -173,6 +195,8 @@ export async function computeDashboard(db: Db | Tx, scope: PartnerScope, conds: 
       pendingBaseMinor: a.pendingBaseMinor + s.pendingBaseMinor,
       costsMonthBaseMinor: a.costsMonthBaseMinor + s.costsMonthBaseMinor,
       costsTotalBaseMinor: a.costsTotalBaseMinor + s.costsTotalBaseMinor,
+      payMonthBaseMinor: a.payMonthBaseMinor + s.payMonthBaseMinor,
+      payTotalBaseMinor: a.payTotalBaseMinor + s.payTotalBaseMinor,
       netMonthBaseMinor: a.netMonthBaseMinor + s.netMonthBaseMinor,
       netTotalBaseMinor: a.netTotalBaseMinor + s.netTotalBaseMinor,
     }),

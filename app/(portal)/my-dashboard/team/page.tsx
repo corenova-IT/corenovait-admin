@@ -1,15 +1,19 @@
 import Link from "next/link";
+import { PayPanel } from "@/components/partner/PayPanel";
 import { InviteEmployeeForm } from "@/components/partner/PartnerForms";
 import { Badge } from "@/components/ui/Badge";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { EmptyState } from "@/components/ui/States";
 import { requirePerm } from "@/lib/auth/session";
+import { payFormChoices, payPlansFor } from "@/lib/dal/employee-pay";
 import { myEmployees } from "@/lib/dal/partner-employees";
+import { myFormChoices } from "@/lib/dal/partner-writes";
+import { payRows } from "@/lib/pay-form";
 import { companyToday } from "@/lib/dal/payments";
 import { myAssignments } from "@/lib/dal/stream-partners";
 import { fmtDate } from "@/lib/format";
-import { inviteEmployee } from "../actions";
+import { addEmployeePay, inviteEmployee, markEmployeePayPaid, stopEmployeePay } from "../actions";
 
 export const metadata = { title: "My team" };
 
@@ -28,6 +32,8 @@ export default async function MyTeamPage() {
     );
   }
   const people = await myEmployees(actor, await companyToday());
+  const base = (await myFormChoices(actor)).baseCurrency;
+  const payData = await Promise.all(people.map(async (p) => ({ id: p.id, plans: await payPlansFor(actor, p.id), choices: await payFormChoices(actor, p.id) })));
   return (
     <>
       <PageHeader title="My team" subtitle="Your employees, their projects and tasks" actions={<Link href="/my-dashboard" className="text-sm text-accent-text hover:underline">Back to my dashboard</Link>} />
@@ -58,6 +64,15 @@ export default async function MyTeamPage() {
                     <Badge>{p.openTasks} open</Badge>
                     {p.overdueTasks > 0 && <Badge tone="red">{p.overdueTasks} overdue</Badge>}
                   </div>
+                  <details className="basis-full">
+                    <summary className="cursor-pointer text-sm text-accent-text">Pay</summary>
+                    <div className="mt-3">
+                      {(() => {
+                        const d = payData.find((x) => x.id === p.id)!;
+                        return <PayPanel employeeId={p.id} plans={payRows(d.plans, d.choices.streams, base)} choices={{ ...d.choices, baseCurrency: base }} actions={{ add: addEmployeePay, stop: stopEmployeePay, markPaid: markEmployeePayPaid }} />;
+                      })()}
+                    </div>
+                  </details>
                 </li>
               ))}
             </ul>

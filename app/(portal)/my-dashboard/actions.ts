@@ -4,7 +4,9 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { actorWithPerm, errorMessage } from "@/lib/auth/session";
 import * as emp from "@/lib/dal/partner-employees";
+import * as pay from "@/lib/dal/employee-pay";
 import * as pp from "@/lib/dal/partner-projects";
+import { payInputFromForm } from "@/lib/pay-form";
 import * as w from "@/lib/dal/partner-writes";
 import { inviteEmail, sendMail } from "@/lib/email";
 
@@ -41,6 +43,44 @@ export async function inviteEmployee(_prev: PartnerState, fd: FormData): Promise
     const mail = await sendMail(inviteEmail(inv.email, inv.name, inv.token, g.actor.fullName || g.actor.email));
     revalidatePath("/my-dashboard", "layout");
     return mail.ok ? { ok: `Invite sent to ${inv.email}.` } : { error: `${inv.email} was added, but the email couldn't be sent. Ask an admin to re-send the invite.` };
+  } catch (e) {
+    return { error: errorMessage(e) };
+  }
+}
+
+/** Pay for one of THEIR employees. The server checks the employee, stream, country and project again. */
+export async function addEmployeePay(_prev: PartnerState, fd: FormData): Promise<PartnerState> {
+  const g = await actorWithPerm("stream_partner", "edit");
+  if (!g.actor) return { error: g.error };
+  try {
+    await pay.addPayPlan(g.actor, payInputFromForm(fd));
+    return done("Pay saved.");
+  } catch (e) {
+    return { error: errorMessage(e) };
+  }
+}
+
+export async function stopEmployeePay(_prev: PartnerState, fd: FormData): Promise<PartnerState> {
+  const g = await actorWithPerm("stream_partner", "edit");
+  if (!g.actor) return { error: g.error };
+  const id = uuid.safeParse(fd.get("planId"));
+  if (!id.success) return { error: "That no longer exists." };
+  try {
+    await pay.stopPayPlan(g.actor, id.data);
+    return done("Pay stopped.");
+  } catch (e) {
+    return { error: errorMessage(e) };
+  }
+}
+
+export async function markEmployeePayPaid(_prev: PartnerState, fd: FormData): Promise<PartnerState> {
+  const g = await actorWithPerm("stream_partner", "edit");
+  if (!g.actor) return { error: g.error };
+  const id = uuid.safeParse(fd.get("planId"));
+  if (!id.success) return { error: "That no longer exists." };
+  try {
+    await pay.markProjectPayPaid(g.actor, id.data, str(fd, "paidDate") || undefined);
+    return done("Marked paid.");
   } catch (e) {
     return { error: errorMessage(e) };
   }

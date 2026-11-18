@@ -120,8 +120,8 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
       {/* five cards: 1 → 2 (+1 wide) → 3 + 2 → 5 across, by the width of the content area, so none sits alone */}
       <div className="mb-[var(--space-gap)] grid grid-cols-1 gap-cards @min-[34rem]:grid-cols-2 @min-[52rem]:grid-cols-6 @min-[80rem]:grid-cols-5">
         <StatCard className={KPI.third} label="Revenue" value={whole(cur.revenueBaseMinor)} note={<Pct value={s.totals.change.revenue} />} detail={`${scope} · vs previous 12 months`} />
-        <StatCard className={KPI.third} label="Expenses" value={whole(cur.expensesBaseMinor)} note={<Pct value={s.totals.change.expenses} upIsGood={false} />} detail={country ? `${COUNTRY_NAME[country]} costs only` : "All costs"} />
-        <StatCard className={KPI.third} label="Profit" value={whole(cur.profitBaseMinor)} note={<Pct value={s.totals.change.profit} />} detail="Revenue − expenses" />
+        <StatCard className={KPI.third} label="Expenses" value={whole(cur.expensesBaseMinor)} note={<Pct value={s.totals.change.expenses} upIsGood={false} />} detail={(country ? `${COUNTRY_NAME[country]} costs only` : "All costs") + (cur.employeePayBaseMinor ? ` · employee pay ${whole(cur.employeePayBaseMinor)} is on top` : "")} />
+        <StatCard className={KPI.third} label="Profit" value={whole(cur.profitBaseMinor)} note={<Pct value={s.totals.change.profit} />} detail={cur.employeePayBaseMinor ? "Revenue − expenses − employee pay" : "Revenue − expenses"} />
         <StatCard
           className={KPI.half}
           label="Margin"

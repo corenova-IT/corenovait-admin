@@ -8,7 +8,11 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { EmptyState } from "@/components/ui/States";
 import { StatCard } from "@/components/ui/StatCard";
 import { requirePerm } from "@/lib/auth/session";
+import { PayPanel } from "@/components/partner/PayPanel";
 import { partnerDetail, partnerFilters } from "@/lib/dal/admin-partners";
+import { payFormChoices, payPlansFor } from "@/lib/dal/employee-pay";
+import { payRows } from "@/lib/pay-form";
+import { addEmployeePay, markEmployeePayPaid, stopEmployeePay } from "../actions";
 import type { DashboardData, StreamFigures } from "@/lib/dal/partner-dashboard";
 import { NotFound } from "@/lib/dal/scope";
 import { dueLabel, fmtDate } from "@/lib/format";
@@ -32,6 +36,7 @@ export default async function PartnerPage({ params, searchParams }: { params: Pr
     throw e;
   }
   const base = d.dashboard.baseCurrency;
+  const payData = await Promise.all(d.employees.map(async (e) => ({ id: e.id, plans: await payPlansFor(actor, e.id), choices: await payFormChoices(actor, e.id) })));
   const money = (n: number) => formatMoney(n, base, { cents: false });
   const o = d.dashboard.overall;
 
@@ -105,8 +110,33 @@ export default async function PartnerPage({ params, searchParams }: { params: Pr
           {d.dashboard.tasks.upcoming.length === 0 ? <EmptyState title="No open tasks">Open tasks in this partner&apos;s streams will appear here.</EmptyState> : <DataTable caption="Open tasks" columns={taskColumns} rows={d.dashboard.tasks.upcoming} rowKey={(t) => t.id} />}
         </Card>
         <Card>
-          <CardHeader title="Employees and their cost" subtitle="Employees arrive in a later update" />
-          <EmptyState title="No employees yet">This partner has no employees.</EmptyState>
+          <CardHeader title="Employees and their cost" subtitle="Employee pay is a cost under this partner's streams, counted once. Admins and the partner can set it." />
+          {d.employees.length === 0 ? (
+            <EmptyState title="No employees yet">This partner has no employees.</EmptyState>
+          ) : (
+            <ul className="flex flex-col">
+              {d.employees.map((e) => {
+                const pd = payData.find((x) => x.id === e.id)!;
+                return (
+                  <li key={e.id} className="border-b border-line/70 px-5 py-4 last:border-b-0">
+                    <details>
+                      <summary className="flex cursor-pointer flex-wrap items-center gap-3">
+                        <span className="min-w-0 flex-1">
+                          <span className="font-semibold text-ink">{e.name}</span>
+                          <span className="ml-2 text-sm text-muted">{e.email}</span>
+                        </span>
+                        {e.status !== "active" && <Badge tone={e.status === "invited" ? "amber" : "red"}>{e.status === "invited" ? "Invite sent" : "Deactivated"}</Badge>}
+                        <span className="text-ink">{money(e.costBaseMinor)}</span>
+                      </summary>
+                      <div className="mt-4">
+                        <PayPanel employeeId={e.id} plans={payRows(pd.plans, pd.choices.streams, base)} choices={{ ...pd.choices, baseCurrency: base }} actions={{ add: addEmployeePay, stop: stopEmployeePay, markPaid: markEmployeePayPaid }} />
+                      </div>
+                    </details>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
         </Card>
         <Card>
           <CardHeader title="Changes made" subtitle="What this partner added, edited or archived (newest first)" />

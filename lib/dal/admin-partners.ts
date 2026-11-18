@@ -1,5 +1,5 @@
 import "server-only";
-import { and, asc, count, desc, eq, inArray, isNull, max } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, inArray, isNotNull, isNull, lte, max, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { getDb, schema, type Db, type Tx } from "@/lib/db";
 import { assignmentOverview, type AssignmentOptions, type PartnerAssignment } from "./assignments";
@@ -18,7 +18,7 @@ import { auditVisible } from "./visibility";
  * hid from them), exactly like everywhere else in the portal. Revenue is paid income only.
  * Admin only (an admin with two-factor done).
  */
-const { users, streams, countries, auditLog, sessions, tasks, streamPartnerStreams, streamPartnerCountries } = schema;
+const { users, streams, countries, auditLog, sessions, tasks, streamPartnerStreams, streamPartnerCountries, employeeAssignments, employeePayRecords } = schema;
 
 export const partnerFilters = z.object({
   stream: z.coerce.number().int().positive().optional().catch(undefined),
@@ -43,12 +43,13 @@ export type PartnerRow = {
 };
 
 function adminConds(db: Db | Tx, actor: Actor, a: Assignment): DashboardConds {
-  const { incomeEntries, expenses, subscriptions } = schema;
+  const { incomeEntries, expenses, subscriptions, employeePayRecords: pay } = schema;
   return {
     income: and(moneyRowsFor(a, { streamId: incomeEntries.streamId, countryCode: incomeEntries.countryCode }), notHiddenFrom(db, actor, incomeEntries.projectId)),
     expense: and(moneyRowsFor(a, { streamId: expenses.streamId, countryCode: expenses.countryCode }), isNull(expenses.archivedAt)),
     subscription: and(moneyRowsFor(a, { streamId: subscriptions.streamId, countryCode: subscriptions.countryCode }), eq(subscriptions.status, "active")),
     task: and(streamRowsFor(a, { streamId: tasks.streamId }), notHiddenFrom(db, actor, tasks.projectId), isNull(tasks.archivedAt)),
+    pay: and(moneyRowsFor(a, { streamId: pay.streamId, countryCode: pay.countryCode }), isNotNull(pay.costDate)),
   };
 }
 
@@ -133,7 +134,9 @@ export type ChangeRow = {
 };
 
 /** The kinds of record a partner can change themselves. Nothing about hiding or shares can ever appear here. */
-export const PARTNER_CHANGE_ENTITIES = ["expenses", "subscriptions", "tasks", "partner_projects", "users"] as const;
+export const PARTNER_CHANGE_ENTITIES = ["expenses", "subscriptions", "tasks", "partner_projects", "users", "employee_assignments"] as const;
+/** Pay changes are shown whoever made them (the partner or an admin), because both may set pay. */
+const PAY_CHANGE_ENTITIES = ["employee_pay_plans", "employee_pay_records"] as const;
 
 export type PartnerDetail = {
   person: { id: string; name: string; email: string; status: "active" | "invited" | "deactivated"; lastActive: string | null };
@@ -144,8 +147,8 @@ export type PartnerDetail = {
   timeZone: string;
   dashboard: DashboardData;
   taskProgress: { open: number; overdue: number; done: number };
-  /** employees and what they cost arrive with the employee tables (a later phase) */
-  employees: Array<{ id: string; name: string }>;
+  /** this partner's employees and what they cost in the period (employee pay, counted once) */
+  employees: Array<{ id: string; name: string; email: string; status: "invited" | "active" | "deactivated"; costBaseMinor: number }>;
   changes: ChangeRow[];
 };
 
@@ -161,10 +164,32 @@ export async function partnerDetail(actor: Actor, userId: string, raw: PartnerFi
   const conds = adminConds(db, actor, a);
   const dashboard = await computeDashboard(db, scope, conds, { from, to });
   const [done] = await db.select({ n: count() }).from(tasks).where(and(conds.task, eq(tasks.status, "done")));
+  const staff = await db
+    .select({ id: users.id, name: users.fullName, email: users.email, status: users.status })
+    .from(employeeAssignments)
+    .innerJoin(users, eq(users.id, employeeAssignments.employeeUserId))
+    .where(eq(employeeAssignments.partnerUserId, userId))
+    .orderBy(asc(users.fullName), asc(users.email));
+  const staffIds = staff.map((s) => s.id);
+  const costs = staffIds.length
+    ? await db
+        .select({ employeeId: employeePayRecords.employeeUserId, total: sql<string>`coalesce(sum(${employeePayRecords.amountBaseMinor}), 0)` })
+        .from(employeePayRecords)
+        .where(and(inArray(employeePayRecords.employeeUserId, staffIds), isNotNull(employeePayRecords.costDate), gte(employeePayRecords.costDate, from), lte(employeePayRecords.costDate, to)))
+        .groupBy(employeePayRecords.employeeUserId)
+    : [];
   const changes = await db
     .select({ id: auditLog.id, at: auditLog.at, actorEmail: auditLog.actorEmail, action: auditLog.action, entity: auditLog.entity, entityId: auditLog.entityId, summary: auditLog.summary, before: auditLog.before, after: auditLog.after })
     .from(auditLog)
-    .where(and(eq(auditLog.actorId, userId), inArray(auditLog.entity, [...PARTNER_CHANGE_ENTITIES]), auditVisible(db, actor)))
+    .where(
+      and(
+        or(
+          and(eq(auditLog.actorId, userId), inArray(auditLog.entity, [...PARTNER_CHANGE_ENTITIES])),
+          staffIds.length ? and(inArray(auditLog.entity, [...PAY_CHANGE_ENTITIES]), inArray(auditLog.entityId, staffIds)) : undefined
+        ),
+        auditVisible(db, actor)
+      )
+    )
     .orderBy(desc(auditLog.at), desc(auditLog.id))
     .limit(100);
   return {
@@ -176,7 +201,7 @@ export async function partnerDetail(actor: Actor, userId: string, raw: PartnerFi
     timeZone: (await db.select({ tz: schema.settings.timezone }).from(schema.settings).where(eq(schema.settings.id, 1)))[0]?.tz ?? "Australia/Sydney",
     dashboard,
     taskProgress: { open: dashboard.tasks.open, overdue: dashboard.tasks.overdue, done: done?.n ?? 0 },
-    employees: [],
+    employees: staff.map((s) => ({ id: s.id, name: s.name || s.email, email: s.email, status: s.status, costBaseMinor: Number(costs.find((c) => c.employeeId === s.id)?.total ?? 0) })),
     changes: changes.map(({ actorEmail, entityId, at, before, after, ...c }) => ({ ...c, at: at.toISOString(), actor_email: actorEmail, entity_id: entityId, before: before as ChangeRow["before"], after: after as ChangeRow["after"] })),
   };
 }

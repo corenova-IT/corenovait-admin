@@ -1,10 +1,11 @@
 import "server-only";
-import { and, desc, eq, gte, isNull, lte, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, gte, isNotNull, isNull, lte, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 import { getDb, schema, type Db, type Tx } from "@/lib/db";
 import { minorToDecimal, toCsv } from "@/lib/csv";
 import { addDays, addMonths, monthsBetween } from "@/lib/dates";
 import { actorRef, writeAudit } from "./audit";
+import { ensureMonthlyPay } from "./employee-pay";
 import { baseCurrency } from "./finance";
 import { requirePerm, scopeWhere, type Actor } from "./guard";
 import { companyToday } from "./payments";
@@ -20,7 +21,7 @@ import { incomeScopeFor, outstandingSum, paidCount, paidSum, topClients } from "
  * - With a country chosen, revenue is that country's invoices and expenses are
  *   costs tagged to that country; shared (untagged) costs are reported separately.
  */
-const { incomeEntries, expenses, streams, countries } = schema;
+const { incomeEntries, expenses, streams, countries, employeePayRecords: pay } = schema;
 
 export const COUNTRY_FILTERS = ["GB", "AU"] as const;
 export const countryFilter = z.enum(COUNTRY_FILTERS).optional().catch(undefined);
@@ -30,6 +31,7 @@ const n = (v: unknown) => Number(v ?? 0);
 const incMonth = sql<string>`date_format(${incomeEntries.entryDate}, '%Y-%m')`;
 const expMonth = sql<string>`date_format(${expenses.expenseDate}, '%Y-%m')`;
 const expSum = sql<string>`coalesce(sum(${expenses.amountBaseMinor}), 0)`;
+const payMonth = sql<string>`date_format(${pay.costDate}, '%Y-%m')`;
 
 /** Percentage change, one decimal, or null when there's nothing to compare with. */
 export function pctChange(current: number, previous: number): number | null {
@@ -42,13 +44,17 @@ export function marginPct(profit: number, revenue: number): number | null {
   return Math.round((profit / revenue) * 1000) / 10;
 }
 
-type Filters = { income: SQL | undefined; expense: SQL | undefined; sharedExpense: SQL | undefined };
+type Filters = { income: SQL | undefined; expense: SQL | undefined; sharedExpense: SQL | undefined; pay: SQL | undefined };
 
 function filtersFor(db: Db | Tx, actor: Actor, country: CountryFilter): Filters {
   const incScope = incomeScopeFor(db, actor, "finances");
   // archived expenses never count towards a total
   const expScope = and(scopeWhere(actor, "finances", { owner: expenses.createdBy }), isNull(expenses.archivedAt));
+  // Employee pay is its own set of records (never an expense row). It is part of company costs, so profit
+  // subtracts it once, on a separate "Employee pay" line. Only people who can see ALL finances see it.
+  const payScope = actor.perms.finances.scope === "all" ? isNotNull(pay.costDate) : sql`false`;
   return {
+    pay: and(payScope, country ? eq(pay.countryCode, country) : undefined),
     income: and(incScope, country ? eq(incomeEntries.countryCode, country) : undefined),
     expense: and(expScope, country ? eq(expenses.countryCode, country) : undefined),
     sharedExpense: country ? and(expScope, isNull(expenses.countryCode)) : undefined,
@@ -56,7 +62,7 @@ function filtersFor(db: Db | Tx, actor: Actor, country: CountryFilter): Filters 
 }
 
 async function totalsBetween(db: Db | Tx, f: Filters, from: string, to: string) {
-  const [[inc], [exp]] = await Promise.all([
+  const [[inc], [exp], [emp]] = await Promise.all([
     db
       .select({ revenue: paidSum, outstanding: outstandingSum, deals: paidCount })
       .from(incomeEntries)
@@ -65,10 +71,16 @@ async function totalsBetween(db: Db | Tx, f: Filters, from: string, to: string) 
       .select({ total: expSum })
       .from(expenses)
       .where(and(f.expense, gte(expenses.expenseDate, from), lte(expenses.expenseDate, to))),
+    db
+      .select({ total: sql<string>`coalesce(sum(${pay.amountBaseMinor}), 0)` })
+      .from(pay)
+      .where(and(f.pay, gte(pay.costDate, from), lte(pay.costDate, to))),
   ]);
   const revenue = n(inc.revenue);
   const spent = n(exp.total);
-  return { revenueBaseMinor: revenue, outstandingBaseMinor: n(inc.outstanding), deals: n(inc.deals), expensesBaseMinor: spent, profitBaseMinor: revenue - spent };
+  const employeePay = n(emp.total);
+  // profit = revenue - expenses - employee pay (each counted once; pay is never also an expense)
+  return { revenueBaseMinor: revenue, outstandingBaseMinor: n(inc.outstanding), deals: n(inc.deals), expensesBaseMinor: spent, employeePayBaseMinor: employeePay, profitBaseMinor: revenue - spent - employeePay };
 }
 type Totals = Awaited<ReturnType<typeof totalsBetween>>;
 
@@ -78,6 +90,7 @@ const compare = (cur: Totals, prev: Totals) => ({
   change: {
     revenue: pctChange(cur.revenueBaseMinor, prev.revenueBaseMinor),
     expenses: pctChange(cur.expensesBaseMinor, prev.expensesBaseMinor),
+    employeePay: pctChange(cur.employeePayBaseMinor, prev.employeePayBaseMinor),
     profit: pctChange(cur.profitBaseMinor, prev.profitBaseMinor),
   },
 });
@@ -104,7 +117,8 @@ export async function financeSummary(actor: Actor, opts: { country?: CountryFilt
   const prevQStart = addMonths(qStart, -3);
   const ytdStart = `${thisMonth.slice(0, 4)}-01-01`;
 
-  const [cur, prev, incByMonth, expByMonth, byStream, byCountry, clients, matrix, byCategory, sharedRows, mNow, mPrev, qNow, qPrev, yNow, yPrev, base, streamMonths, countryMonths] = await Promise.all([
+  await ensureMonthlyPay(db, today);
+  const [cur, prev, incByMonth, expByMonth, payByMonth, byStream, byCountry, clients, matrix, byCategory, sharedRows, mNow, mPrev, qNow, qPrev, yNow, yPrev, base, streamMonths, countryMonths] = await Promise.all([
     totalsBetween(db, f, from, today),
     totalsBetween(db, f, prevFrom, prevTo),
     db
@@ -117,6 +131,11 @@ export async function financeSummary(actor: Actor, opts: { country?: CountryFilt
       .from(expenses)
       .where(and(f.expense, gte(expenses.expenseDate, from), lte(expenses.expenseDate, today)))
       .groupBy(expMonth),
+    db
+      .select({ month: payMonth, total: sql<string>`coalesce(sum(${pay.amountBaseMinor}), 0)` })
+      .from(pay)
+      .where(and(f.pay, gte(pay.costDate, from), lte(pay.costDate, today)))
+      .groupBy(payMonth),
     db
       .select({ id: streams.id, name: streams.name, total: paidSum, deals: paidCount })
       .from(incomeEntries)
@@ -172,7 +191,8 @@ export async function financeSummary(actor: Actor, opts: { country?: CountryFilt
     const e = expByMonth.find((x) => x.month === m);
     const revenue = n(i?.revenue);
     const spent = n(e?.total);
-    return { month: m, revenueBaseMinor: revenue, outstandingBaseMinor: n(i?.outstanding), expensesBaseMinor: spent, profitBaseMinor: revenue - spent };
+    const employeePay = n(payByMonth.find((x) => x.month === m)?.total);
+    return { month: m, revenueBaseMinor: revenue, outstandingBaseMinor: n(i?.outstanding), expensesBaseMinor: spent, employeePayBaseMinor: employeePay, profitBaseMinor: revenue - spent - employeePay };
   });
 
   const streamTotal = byStream.reduce((a, s) => a + n(s.total), 0);
@@ -229,8 +249,8 @@ export async function exportFinanceCsv(actor: Actor, opts: { country?: CountryFi
   const s = await financeSummary(actor, opts);
   const cur = s.baseCurrency.toLowerCase();
   const csv = toCsv(
-    ["month", `revenue_paid_${cur}`, `outstanding_${cur}`, `expenses_${cur}`, `profit_${cur}`],
-    s.monthly.map((m) => [m.month, minorToDecimal(m.revenueBaseMinor), minorToDecimal(m.outstandingBaseMinor), minorToDecimal(m.expensesBaseMinor), minorToDecimal(m.profitBaseMinor)])
+    ["month", `revenue_paid_${cur}`, `outstanding_${cur}`, `expenses_${cur}`, `employee_pay_${cur}`, `profit_${cur}`],
+    s.monthly.map((m) => [m.month, minorToDecimal(m.revenueBaseMinor), minorToDecimal(m.outstandingBaseMinor), minorToDecimal(m.expensesBaseMinor), minorToDecimal(m.employeePayBaseMinor), minorToDecimal(m.profitBaseMinor)])
   );
   const filename = `finances-${s.country ?? "all"}-${s.today}.csv`;
   await writeAudit(getDb(), actorRef(actor), { action: "export", entity: "finances", summary: `${filename}: monthly revenue, expenses and profit` });
