@@ -41,7 +41,7 @@ Phase 1 is **not yet approved**: the line "Phase 1 approved by Umair" is still m
 ### Phase 2: partner dashboard, admin Partners, partner writes (not started: waiting for approval of Phase 1)
 - [x] 2.0a Archived expenses and tasks ignored by every older reader (lists, lookups, exports, totals, team progress, calendar, reminders) + all-readers test `tests/dal/archived.test.ts`
 - [x] 2.0b Stream field on the admin expense and subscription forms ("Company-wide" by default); marking a subscription paid keeps its stream; `tests/dal/cost-streams.test.ts`
-- [ ] 2.1 Partner "My dashboard"
+- [x] 2.1 Partner "My dashboard" (data: lib/dal/partner-dashboard.ts; page: app/(portal)/my-dashboard; tests/dal/partner-dashboard.test.ts). Budgets: the system has no budgets concept yet, so none shown. Employees panel arrives in Phase 3/4.
 - [ ] 2.2 Admin Partners list
 - [ ] 2.3 Admin per-partner page with "Changes made"
 - [ ] 2.4 Partner writes: expenses, subscriptions, tasks (audited, archive only)

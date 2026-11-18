@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { and, eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -451,6 +451,20 @@ describe("the code", () => {
     expect(src).toMatch(/from "\.\/scope"/);
     // it never touches a company table itself
     expect(src).not.toMatch(/incomeEntries|expenses\b|subscriptions|tasks\b|projects\b|incomePayments/);
+  });
+
+  it("every data file written for stream partners and employees goes through the shared helper", () => {
+    const dir = path.resolve(import.meta.dirname, "../../lib/dal");
+    const scoped = readdirSync(dir).filter((f) => /^(stream-partners|partner-|employee-)/.test(f));
+    expect(scoped).toEqual(expect.arrayContaining(["stream-partners.ts", "partner-dashboard.ts"]));
+    for (const f of scoped) {
+      const src = readFileSync(path.join(dir, f), "utf8");
+      expect(src, f).toMatch(/from "\.\/scope"/);
+      // company tables are only ever filtered through the helper's conditions
+      if (/schema\.(incomeEntries|expenses|subscriptions|tasks|projects)|(incomeEntries|expenses|subscriptions|tasks|projects).*from\(/.test(src) || /\.from\((incomeEntries|expenses|subscriptions|tasks|projects)\)/.test(src)) {
+        expect(src, f).toMatch(/moneyRowsWhere|streamRowsWhere/);
+      }
+    }
   });
 
   it("keeps the Actor's scope out of the database layer's reach", () => {
