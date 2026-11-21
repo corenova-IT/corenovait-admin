@@ -10,7 +10,7 @@ import { NotFound, moneyRowsFor, notHiddenFrom, streamRowsFor, type Assignment }
 import { auditVisible } from "./visibility";
 
 /**
- * The admin's "Partners" pages: every stream partner, and one page per partner.
+ * The admin's "Partners" pages: every partner, and one page per partner.
  *
  * What a partner's assignment covers is decided by the SAME rules the partner's own dashboard
  * uses (moneyRowsFor / streamRowsFor in lib/dal/scope.ts). On top of that, the admin's own
@@ -158,7 +158,7 @@ export async function partnerDetail(actor: Actor, userId: string, raw: PartnerFi
   const db = getDb();
   const [{ from, to }, partners] = await Promise.all([period(db, f), loadPartners(db)]);
   const p = partners.find((x) => x.id === userId);
-  if (!p) throw new NotFound(); // not a stream partner, or no such person: the same answer
+  if (!p) throw new NotFound(); // not a partner, or no such person: the same answer
   const a: PartnerAssignment = p.assignment;
   const scope = { ...a, hasData: a.streamIds.length > 0 && a.countryCodes.length > 0 };
   const conds = adminConds(db, actor, a);

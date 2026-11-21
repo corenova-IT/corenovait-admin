@@ -7,13 +7,13 @@ import { AccessDenied, RuleError, assertCaller, requireAdmin, requirePerm, type 
 import { NotFound } from "./scope";
 
 /**
- * Chat for Stream partners and Employees (their own module; the older Team chat code is untouched and
+ * Chat for Partners and Employees (their own module; the older Team chat code is untouched and
  * refuses them, since they hold no chat permission).
  *
  * Who may talk to whom (direct messages only):
  *   - an employee: their own partner, and any admin;
- *   - a stream partner: their own employees, and any admin;
- *   - an admin: any stream partner or employee.
+ *   - a partner: their own employees, and any admin;
+ *   - an admin: any partner or employee.
  * Never partner to partner, employee to employee, or an employee to another partner. Scoped people are
  * never in #general or any channel, and never appear in anyone else's people lists. A person who isn't
  * an allowed contact, and a person who doesn't exist, look exactly the same ("That no longer exists.").
@@ -106,7 +106,7 @@ export async function startScopedDm(actor: Actor, otherId: string): Promise<stri
   return openOrCreateDm(db, actor, otherId);
 }
 
-/** An admin starts a conversation with a stream partner or employee (it then shows in their normal Team chat). */
+/** An admin starts a conversation with a partner or employee (it then shows in their normal Team chat). */
 export async function startDmAsAdmin(actor: Actor, otherId: string): Promise<string> {
   requireAdmin(actor);
   const db = getDb();
@@ -206,7 +206,7 @@ export async function sendScopedMessage(actor: Actor, channelId: string, body: s
 // ---------------------------------------------------------------- admin oversight
 export type OversightRow = { id: string; people: string[]; lastAt: Date | null; messages: number };
 
-/** Conversations an admin is NOT in that include at least one stream partner or employee. Never admin-to-admin chats, never message text. */
+/** Conversations an admin is NOT in that include at least one partner or employee. Never admin-to-admin chats, never message text. */
 export async function oversightConversations(actor: Actor): Promise<OversightRow[]> {
   requireAdmin(actor);
   const db = getDb();
@@ -232,7 +232,7 @@ export async function oversightConversations(actor: Actor): Promise<OversightRow
 }
 
 /**
- * An admin reads a conversation they are not part of. Only when it includes a stream partner or employee;
+ * An admin reads a conversation they are not part of. Only when it includes a partner or employee;
  * the read itself is written to the audit log (never the messages). Anything else is "not found".
  */
 export async function oversightRead(actor: Actor, channelId: string) {

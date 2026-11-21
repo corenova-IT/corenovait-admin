@@ -7,7 +7,7 @@ import { actorForAction, errorMessage } from "@/lib/auth/session";
 import { hasPerm } from "@/lib/dal/guard";
 import * as chat from "@/lib/dal/scoped-chat";
 
-/** Messages for stream partners and employees. Permission first, then the form, then the data-access layer. */
+/** Messages for partners and employees. Permission first, then the form, then the data-access layer. */
 export type MessageState = { ok?: string; error?: string };
 
 const uuid = z.string().uuid();

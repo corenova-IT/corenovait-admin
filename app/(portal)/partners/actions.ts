@@ -8,7 +8,7 @@ import * as pay from "@/lib/dal/employee-pay";
 import { startDmAsAdmin } from "@/lib/dal/scoped-chat";
 import { payInputFromForm } from "@/lib/pay-form";
 
-/** An admin sets pay for any stream partner's employee. Permission first, then the form, then the data-access layer. */
+/** An admin sets pay for any partner's employee. Permission first, then the form, then the data-access layer. */
 export type AdminPayState = { ok?: string; error?: string };
 
 const uuid = z.string().uuid();
@@ -17,7 +17,7 @@ const done = (ok: string): AdminPayState => {
   return { ok };
 };
 
-/** An admin opens a conversation with a stream partner or employee (it then shows in their normal Team chat). */
+/** An admin opens a conversation with a partner or employee (it then shows in their normal Team chat). */
 export async function messageUser(_prev: AdminPayState, fd: FormData): Promise<AdminPayState> {
   const g = await actorWithPerm("team", "edit");
   if (!g.actor) return { error: g.error };

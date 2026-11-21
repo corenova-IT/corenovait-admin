@@ -104,7 +104,7 @@ export default async function EmployeesPage({ searchParams }: { searchParams: Pr
       <Card>
         <CardHeader title="Employees" subtitle="Click a name for their page. Hours count closed shifts by the day they started." />
         {rows.length === 0 ? (
-          <EmptyState title="No employees">Stream partners invite employees from their My team page, or you can invite one on the Team page.</EmptyState>
+          <EmptyState title="No employees">Partners invite employees from their My team page, or you can invite one on the Team page.</EmptyState>
         ) : (
           <DataTable caption="Employees" columns={columns} rows={rows} rowKey={(p) => p.id} />
         )}

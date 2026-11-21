@@ -12,7 +12,7 @@ import { sendMessage, startConversation } from "./actions";
 
 export const metadata = { title: "Messages" };
 
-/** Messages for stream partners and employees: only the people they are allowed to talk to. */
+/** Messages for partners and employees: only the people they are allowed to talk to. */
 export default async function MessagesPage({ searchParams }: { searchParams: Promise<{ c?: string }> }) {
   const actor = await requireUser();
   if (!hasPerm(actor, "stream_partner", "view") && !hasPerm(actor, "employee", "view")) redirect("/no-access?module=chat");

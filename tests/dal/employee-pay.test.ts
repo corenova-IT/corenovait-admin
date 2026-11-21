@@ -4,7 +4,7 @@ import { addMonths, todayIn } from "@/lib/dates";
 import { actorFor, createPerson, setupTestDatabase } from "./db";
 
 /**
- * Employee pay. Set by the employee's stream partner OR an admin, always logged, never seen by the employee,
+ * Employee pay. Set by the employee's partner OR an admin, always logged, never seen by the employee,
  * and counted EXACTLY ONCE in a partner's costs and in company profit.
  */
 let t: Awaited<ReturnType<typeof setupTestDatabase>>;

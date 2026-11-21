@@ -4,7 +4,7 @@ import type { MySqlColumn } from "drizzle-orm/mysql-core";
 import { can, type AppAction, type AppModule, type PermMap } from "@/lib/permissions";
 
 /**
- * Which ROWS a "Stream partner" or "Employee" may touch (the permission matrix only decides
+ * Which ROWS a "Partner" or "Employee" may touch (the permission matrix only decides
  * which ACTIONS). Loaded with the session and read only through lib/dal/scope.ts.
  */
 export type ActorScope =
@@ -34,7 +34,7 @@ export type Actor = Readonly<{
   mfaVerified: boolean;
   sessionId: string;
   perms: PermMap;
-  /** null for everyone except the Stream partner and Employee presets */
+  /** null for everyone except the Partner and Employee presets */
   scoped: ActorScope | null;
 }>;
 

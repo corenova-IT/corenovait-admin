@@ -5,7 +5,7 @@ import { actorRef, writeAudit } from "./audit";
 import { RuleError, requireAdmin, type Actor } from "./guard";
 
 /**
- * Admin side of Stream partners: which streams and countries a partner is assigned.
+ * Admin side of Partners: which streams and countries a partner is assigned.
  * Only an admin with two-factor done can change them. Every change writes the audit log
  * (before and after). The rows themselves are READ for the partner through lib/dal/scope.ts.
  *
@@ -119,19 +119,19 @@ export async function applyAssignments(tx: Tx, actor: Actor, target: { id: strin
   }
 }
 
-/** Used when someone stops being a Stream partner: their streams and countries are freed (logged); nothing else is touched. */
+/** Used when someone stops being a Partner: their streams and countries are freed (logged); nothing else is touched. */
 export async function releaseAssignments(tx: Tx, actor: Actor, target: { id: string; email: string }): Promise<void> {
   await applyAssignments(tx, actor, target, { streamIds: [], countryCodes: [] });
 }
 
-/** Admin: replace a stream partner's streams and countries. */
+/** Admin: replace a partner's streams and countries. */
 export async function setAssignments(actor: Actor, input: { userId: string } & AssignInput): Promise<void> {
   requireAdmin(actor);
   await guardedAssign(() =>
     getDb().transaction(async (tx) => {
       const [u] = await tx.select().from(users).where(eq(users.id, input.userId)).for("update");
       if (!u) throw new RuleError("That person no longer exists. Refresh the page.");
-      if (u.presetId !== "stream_partner") throw new RuleError("Only stream partners have streams and countries.");
+      if (u.presetId !== "stream_partner") throw new RuleError("Only partners have streams and countries.");
       await applyAssignments(tx, actor, { id: u.id, email: u.email }, input);
     })
   );

@@ -6,7 +6,7 @@ import { AccessDenied, RuleError, assertCaller, callerOk, type Actor } from "./g
 import { can } from "@/lib/permissions";
 
 /**
- * THE shared scoped-query helper for Stream partners and Employees.
+ * THE shared scoped-query helper for Partners and Employees.
  *
  * The permission matrix only says which ACTIONS these roles have (view / create / edit on
  * their own module). WHICH ROWS they may touch is decided here, once, and nowhere else:
@@ -38,13 +38,13 @@ const NOTHING = sql`false`;
 
 export type PartnerScope = { streamIds: number[]; countryCodes: string[]; hasData: boolean };
 
-/** True for a signed-in Stream partner (by preset; a custom role can never be one). */
+/** True for a signed-in Partner (by preset; a custom role can never be one). */
 export function isStreamPartner(actor: Actor): boolean {
   return actor.presetId === "stream_partner" && actor.scoped?.kind === "stream_partner";
 }
 
 /**
- * The caller's streams and countries. Throws unless they are a Stream partner who has
+ * The caller's streams and countries. Throws unless they are a Partner who has
  * passed two-factor. `hasData` is false when either list is empty: that is the one place
  * the "no countries assigned = nothing" rule lives.
  */

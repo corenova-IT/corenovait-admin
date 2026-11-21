@@ -4,7 +4,7 @@ import { addDays, todayIn } from "@/lib/dates";
 import { actorFor, createPerson, setupTestDatabase } from "./db";
 
 /**
- * What a stream partner may add, edit and archive. Partner A runs Upwork in GB; partner B runs
+ * What a partner may add, edit and archive. Partner A runs Upwork in GB; partner B runs
  * Fiverr in AU; partner C has a stream but no country.
  */
 let t: Awaited<ReturnType<typeof setupTestDatabase>>;
@@ -237,7 +237,7 @@ describe("marking a subscription paid", () => {
     expect(JSON.stringify(await row("subscriptions", theirs))).toBe(snapshot);
   });
 
-  it("is only for stream partners", async () => {
+  it("is only for partners", async () => {
     const a = await as(ids.a);
     const id = await w.createMySubscription(a, sub());
     for (const who of [ids.owner, ids.staff, ids.oldPartner, ids.emp]) {
@@ -247,7 +247,7 @@ describe("marking a subscription paid", () => {
 });
 
 describe("what a partner still can't do", () => {
-  it("nobody but a stream partner can use these functions", async () => {
+  it("nobody but a partner can use these functions", async () => {
     for (const who of [ids.owner, ids.staff, ids.oldPartner, ids.emp]) {
       const actor = await as(who);
       await expect(w.createMyExpense(actor, exp()), who).rejects.toThrow(/permission/i);

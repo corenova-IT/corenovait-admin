@@ -4,7 +4,7 @@ import { getDb, schema } from "@/lib/db";
 import { partnerScope } from "./scope";
 
 /**
- * A Stream partner's own view of their assignment. Everything here is decided by
+ * A Partner's own view of their assignment. Everything here is decided by
  * lib/dal/scope.ts: this file never reads a company table on its own.
  */
 const { streams, countries } = schema;
@@ -16,7 +16,7 @@ export type MyAssignments = {
   hasData: boolean;
 };
 
-/** Which streams and countries the signed-in Stream partner runs (names only, no figures). */
+/** Which streams and countries the signed-in Partner runs (names only, no figures). */
 export async function myAssignments(actor: Parameters<typeof partnerScope>[0]): Promise<MyAssignments> {
   const scope = partnerScope(actor);
   const db = getDb();

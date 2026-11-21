@@ -30,7 +30,7 @@ export type Preset = {
   memberCount: number;
 };
 
-/** Streams and countries a stream partner can be given (a stream shows who it already belongs to). */
+/** Streams and countries a partner can be given (a stream shows who it already belongs to). */
 export type AssignmentOptions = {
   streams: Array<{ id: number; name: string; active: boolean; partnerUserId: string | null; partnerName: string | null }>;
   countries: Array<{ code: string; name: string }>;

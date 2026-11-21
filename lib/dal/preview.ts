@@ -110,7 +110,7 @@ export async function previewAccess(owner: Actor, userId: string): Promise<Acces
   if (ledger?.scope === "own") notes.push("Their Transactions show only entries they created themselves.");
   if (ledger?.scope === "assigned") notes.push("Their Transactions show entries they created and deals credited to their own representative record.");
   if (partner) notes.push("A partner only ever sees their own share on My earnings: never the gross amount, the client, other partners or the company's share.");
-  if (target.presetId === "stream_partner") notes.push("A stream partner sees only data that matches BOTH an assigned stream and an assigned country, and nothing at all until a country is assigned. They never see other partners, other streams, company totals or anything hidden from them.");
+  if (target.presetId === "stream_partner") notes.push("A partner sees only data that matches BOTH an assigned stream and an assigned country, and nothing at all until a country is assigned. They never see other partners, other streams, company totals or anything hidden from them.");
   if (target.presetId === "employee") notes.push("An employee sees only their own work. They never see any money, other partners, other streams or projects they are not on.");
   if (!ledger && !streamTotals && !partner) notes.push("They can't open any page that shows revenue.");
   if (hidden.length) notes.push(`${hidden.length} ${hidden.length === 1 ? "project is" : "projects are"} hidden from them, so that money is missing from every total, list, export, search and the audit log they can open.`);

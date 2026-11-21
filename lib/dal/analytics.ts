@@ -8,6 +8,7 @@ import { actorRef, writeAudit } from "./audit";
 import { ensureMonthlyPay } from "./employee-pay";
 import { baseCurrency } from "./finance";
 import { requirePerm, scopeWhere, type Actor } from "./guard";
+import { notHiddenFrom } from "./scope";
 import { companyToday } from "./payments";
 import { incomeScopeFor, outstandingSum, paidCount, paidSum, topClients } from "./revenue";
 
@@ -32,6 +33,8 @@ const incMonth = sql<string>`date_format(${incomeEntries.entryDate}, '%Y-%m')`;
 const expMonth = sql<string>`date_format(${expenses.expenseDate}, '%Y-%m')`;
 const expSum = sql<string>`coalesce(sum(${expenses.amountBaseMinor}), 0)`;
 const payMonth = sql<string>`date_format(${pay.costDate}, '%Y-%m')`;
+/** taxes and fees taken off PAID income, in the base currency */
+const dedSum = sql<string>`coalesce(sum(case when ${incomeEntries.status} = 'paid' then ${incomeEntries.amountBaseMinor} - ${incomeEntries.netBaseMinor} else 0 end), 0)`;
 
 /** Percentage change, one decimal, or null when there's nothing to compare with. */
 export function pctChange(current: number, previous: number): number | null {
@@ -49,7 +52,7 @@ type Filters = { income: SQL | undefined; expense: SQL | undefined; sharedExpens
 function filtersFor(db: Db | Tx, actor: Actor, country: CountryFilter): Filters {
   const incScope = incomeScopeFor(db, actor, "finances");
   // archived expenses never count towards a total
-  const expScope = and(scopeWhere(actor, "finances", { owner: expenses.createdBy }), isNull(expenses.archivedAt));
+  const expScope = and(scopeWhere(actor, "finances", { owner: expenses.createdBy }), isNull(expenses.archivedAt), notHiddenFrom(db, actor, expenses.projectId));
   // Employee pay is its own set of records (never an expense row). It is part of company costs, so profit
   // subtracts it once, on a separate "Employee pay" line. Only people who can see ALL finances see it.
   const payScope = actor.perms.finances.scope === "all" ? isNotNull(pay.costDate) : sql`false`;
@@ -64,7 +67,7 @@ function filtersFor(db: Db | Tx, actor: Actor, country: CountryFilter): Filters 
 async function totalsBetween(db: Db | Tx, f: Filters, from: string, to: string) {
   const [[inc], [exp], [emp]] = await Promise.all([
     db
-      .select({ revenue: paidSum, outstanding: outstandingSum, deals: paidCount })
+      .select({ revenue: paidSum, outstanding: outstandingSum, deals: paidCount, deductions: dedSum })
       .from(incomeEntries)
       .where(and(f.income, gte(incomeEntries.entryDate, from), lte(incomeEntries.entryDate, to))),
     db
@@ -79,8 +82,9 @@ async function totalsBetween(db: Db | Tx, f: Filters, from: string, to: string) 
   const revenue = n(inc.revenue);
   const spent = n(exp.total);
   const employeePay = n(emp.total);
-  // profit = revenue - expenses - employee pay (each counted once; pay is never also an expense)
-  return { revenueBaseMinor: revenue, outstandingBaseMinor: n(inc.outstanding), deals: n(inc.deals), expensesBaseMinor: spent, employeePayBaseMinor: employeePay, profitBaseMinor: revenue - spent - employeePay };
+  const deductions = n(inc.deductions);
+  // profit = revenue - taxes and fees - expenses - employee pay (each counted once; pay is never also an expense)
+  return { revenueBaseMinor: revenue, outstandingBaseMinor: n(inc.outstanding), deals: n(inc.deals), deductionsBaseMinor: deductions, expensesBaseMinor: spent, employeePayBaseMinor: employeePay, profitBaseMinor: revenue - deductions - spent - employeePay };
 }
 type Totals = Awaited<ReturnType<typeof totalsBetween>>;
 
@@ -91,6 +95,7 @@ const compare = (cur: Totals, prev: Totals) => ({
     revenue: pctChange(cur.revenueBaseMinor, prev.revenueBaseMinor),
     expenses: pctChange(cur.expensesBaseMinor, prev.expensesBaseMinor),
     employeePay: pctChange(cur.employeePayBaseMinor, prev.employeePayBaseMinor),
+    deductions: pctChange(cur.deductionsBaseMinor, prev.deductionsBaseMinor),
     profit: pctChange(cur.profitBaseMinor, prev.profitBaseMinor),
   },
 });
@@ -122,7 +127,7 @@ export async function financeSummary(actor: Actor, opts: { country?: CountryFilt
     totalsBetween(db, f, from, today),
     totalsBetween(db, f, prevFrom, prevTo),
     db
-      .select({ month: incMonth, revenue: paidSum, outstanding: outstandingSum })
+      .select({ month: incMonth, revenue: paidSum, outstanding: outstandingSum, deductions: dedSum })
       .from(incomeEntries)
       .where(and(f.income, gte(incomeEntries.entryDate, from), lte(incomeEntries.entryDate, today)))
       .groupBy(incMonth),
@@ -192,7 +197,8 @@ export async function financeSummary(actor: Actor, opts: { country?: CountryFilt
     const revenue = n(i?.revenue);
     const spent = n(e?.total);
     const employeePay = n(payByMonth.find((x) => x.month === m)?.total);
-    return { month: m, revenueBaseMinor: revenue, outstandingBaseMinor: n(i?.outstanding), expensesBaseMinor: spent, employeePayBaseMinor: employeePay, profitBaseMinor: revenue - spent - employeePay };
+    const deductions = n(i?.deductions);
+    return { month: m, revenueBaseMinor: revenue, outstandingBaseMinor: n(i?.outstanding), deductionsBaseMinor: deductions, expensesBaseMinor: spent, employeePayBaseMinor: employeePay, profitBaseMinor: revenue - deductions - spent - employeePay };
   });
 
   const streamTotal = byStream.reduce((a, s) => a + n(s.total), 0);
@@ -249,8 +255,8 @@ export async function exportFinanceCsv(actor: Actor, opts: { country?: CountryFi
   const s = await financeSummary(actor, opts);
   const cur = s.baseCurrency.toLowerCase();
   const csv = toCsv(
-    ["month", `revenue_paid_${cur}`, `outstanding_${cur}`, `expenses_${cur}`, `employee_pay_${cur}`, `profit_${cur}`],
-    s.monthly.map((m) => [m.month, minorToDecimal(m.revenueBaseMinor), minorToDecimal(m.outstandingBaseMinor), minorToDecimal(m.expensesBaseMinor), minorToDecimal(m.employeePayBaseMinor), minorToDecimal(m.profitBaseMinor)])
+    ["month", `revenue_paid_${cur}`, `outstanding_${cur}`, `expenses_${cur}`, `taxes_and_fees_${cur}`, `employee_pay_${cur}`, `profit_${cur}`],
+    s.monthly.map((m) => [m.month, minorToDecimal(m.revenueBaseMinor), minorToDecimal(m.outstandingBaseMinor), minorToDecimal(m.expensesBaseMinor), minorToDecimal(m.deductionsBaseMinor), minorToDecimal(m.employeePayBaseMinor), minorToDecimal(m.profitBaseMinor)])
   );
   const filename = `finances-${s.country ?? "all"}-${s.today}.csv`;
   await writeAudit(getDb(), actorRef(actor), { action: "export", entity: "finances", summary: `${filename}: monthly revenue, expenses and profit` });

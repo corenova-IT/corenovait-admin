@@ -66,6 +66,7 @@ const expenseView = (r: ExpenseRow): ExpenseView => ({
   isRecurring: r.isRecurring,
   countryCode: r.countryCode,
   streamId: r.streamId,
+  projectId: r.projectId,
   receiptFileId: r.receiptFileId,
   notes: r.notes,
 });

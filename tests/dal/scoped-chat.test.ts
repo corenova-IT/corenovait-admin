@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { actorFor, createPerson, setupTestDatabase } from "./db";
 
 /**
- * Chat for stream partners and employees. Partner A has employees eA1 and eA2; partner B has eB1.
+ * Chat for partners and employees. Partner A has employees eA1 and eA2; partner B has eB1.
  * Allowed: employee-partner, employee-admin, partner-admin. Nothing else. Admins can read (and log) any
  * conversation that includes a partner or employee; admin-to-admin chats stay private.
  */
@@ -85,7 +85,7 @@ describe("who each person may talk to", () => {
     expect(await dmCount()).toBe(before);
   });
 
-  it("is only for stream partners, employees and (to start) admins", async () => {
+  it("is only for partners, employees and (to start) admins", async () => {
     await expect(sc.scopedContacts(await as(ids.staff))).rejects.toThrow(/permission/i);
     await expect(sc.scopedContacts(await as(ids.owner))).rejects.toThrow(/permission/i);
     await expect(sc.startScopedDm(await as(ids.staff), ids.a)).rejects.toThrow(/permission/i);

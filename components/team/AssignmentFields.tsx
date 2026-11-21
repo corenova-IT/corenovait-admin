@@ -5,7 +5,7 @@ import { FormMessage } from "@/components/ui/Field";
 import type { AssignmentOptions } from "./types";
 
 /**
- * The streams and countries a stream partner runs. Streams that already belong to another
+ * The streams and countries a partner runs. Streams that already belong to another
  * partner are shown but can't be ticked (the server refuses them too). The warning appears
  * whenever the form would leave the partner able to see nothing.
  */

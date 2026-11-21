@@ -299,6 +299,39 @@ export const files = mysqlTable(
  * those people never see its income in totals, charts, lists, exports, search,
  * invoice downloads or the audit log.
  */
+/**
+ * Kinds of work: a niche (Motion graphics, Web development, App development, 3D) and its sub-categories
+ * (WordPress, Shopify, CRM, SaaS...). A project picks one of each. Anyone who can add a project can also add
+ * their own sub-category ("custom"); admins tidy the lists in Settings.
+ */
+export const niches = mysqlTable(
+  "niches",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    name: varchar("name", { length: 80 }).notNull(),
+    sort: smallint("sort").notNull().default(100),
+    active: boolean("active").notNull().default(true),
+  },
+  (t) => [uniqueIndex("niches_name_uq").on(t.name)]
+);
+
+export const subNiches = mysqlTable(
+  "sub_niches",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    nicheId: int("niche_id")
+      .notNull()
+      .references(() => niches.id),
+    name: varchar("name", { length: 80 }).notNull(),
+    sort: smallint("sort").notNull().default(100),
+    /** added by a person typing it in, not one of the starting list */
+    isCustom: boolean("is_custom").notNull().default(false),
+    active: boolean("active").notNull().default(true),
+    createdBy: userRef("created_by").references(() => users.id, { onDelete: "set null" }),
+  },
+  (t) => [uniqueIndex("sub_niches_uq").on(t.nicheId, t.name)]
+);
+
 export const projects = mysqlTable(
   "projects",
   {
@@ -308,6 +341,11 @@ export const projects = mysqlTable(
       .references(() => streams.id),
     name: varchar("name", { length: 120 }).notNull(),
     active: boolean("active").notNull().default(true),
+    /** the kind of work (niche and sub-category) */
+    nicheId: int("niche_id").references(() => niches.id),
+    subNicheId: int("sub_niche_id").references(() => subNiches.id),
+    /** who leads the project: its partner, or one of the partner's employees */
+    leadUserId: userRef("lead_user_id").references(() => users.id, { onDelete: "set null" }),
     /** when on, employees on this project see each other's name and online status (nothing else) */
     teamVisible: boolean("team_visible").notNull().default(false),
     createdBy: userRef("created_by")
@@ -336,7 +374,7 @@ export const projectHiddenFrom = mysqlTable(
 );
 
 /**
- * Stream partners (the "Stream partner" preset): which streams a partner runs.
+ * Partners (the "Partner" preset): which streams a partner runs.
  * The primary key on stream_id is what makes "one stream belongs to at most one
  * partner" true even if two admins assign it at the same moment.
  */
@@ -355,7 +393,7 @@ export const streamPartnerStreams = mysqlTable(
   (t) => [index("sps_user_idx").on(t.userId)]
 );
 
-/** Which countries a stream partner may see. No rows = they see nothing at all. */
+/** Which countries a partner may see. No rows = they see nothing at all. */
 export const streamPartnerCountries = mysqlTable(
   "stream_partner_countries",
   {
@@ -384,7 +422,29 @@ const money = {
 };
 
 /**
- * Employees (the "Employee" preset): each works for exactly ONE stream partner. The primary key on
+ * Taxes and fees taken off an income entry: the platform's cut (Upwork, Fiverr...), a withdrawal tax, VAT or a
+ * transfer charge, or anything else (labelled). Amounts are in the entry's own currency. income_entries.deductions_minor
+ * always equals the sum of its rows here (changed in one transaction).
+ */
+export const incomeDeductions = mysqlTable(
+  "income_deductions",
+  {
+    id: id(),
+    incomeEntryId: varchar("income_entry_id", { length: 36 })
+      .notNull()
+      .references(() => incomeEntries.id, { onDelete: "cascade" }),
+    kind: mysqlEnum("kind", ["platform", "withdrawal", "vat_transfer", "other"]).notNull(),
+    /** what "other" is, e.g. "Bank charge" */
+    label: varchar("label", { length: 80 }).notNull().default(""),
+    amountMinor: bigint("amount_minor", { mode: "number" }).notNull(),
+    createdBy: userRef("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("income_deduction_entry_idx").on(t.incomeEntryId), check("income_deduction_amount_chk", sql`${t.amountMinor} > 0`)]
+);
+
+/**
+ * Employees (the "Employee" preset): each works for exactly ONE partner. The primary key on
  * employee_user_id is what enforces "one partner per employee".
  */
 export const employeeAssignments = mysqlTable(
@@ -539,6 +599,10 @@ export const incomeEntries = mysqlTable(
     description: varchar("description", { length: 500 }).notNull().default(""),
     ...money,
     invoiceRef: varchar("invoice_ref", { length: 80 }),
+    /** the total of this entry's income_deductions rows (taxes and fees), in the entry's own currency */
+    deductionsMinor: bigint("deductions_minor", { mode: "number" }).notNull().default(0),
+    /** computed by MySQL: what is left after taxes and fees, in the base currency */
+    netBaseMinor: bigint("net_base_minor", { mode: "number" }).generatedAlwaysAs(sql`round((\`amount_minor\` - \`deductions_minor\`) * \`fx_rate_to_base\`)`, { mode: "stored" }),
     status: mysqlEnum("status", ["pending", "paid", "overdue"]).notNull().default("pending"),
     representativeId: varchar("representative_id", { length: 36 }).references(() => representatives.id, {
       onDelete: "set null",
@@ -565,6 +629,7 @@ export const incomeEntries = mysqlTable(
     index("income_country_date_idx").on(t.countryCode, t.entryDate),
     index("income_stream_date_idx").on(t.streamId, t.entryDate),
     check("income_commission_chk", sql`${t.commissionRate} is null or (${t.commissionRate} >= 0 and ${t.commissionRate} <= 1)`),
+    check("income_deductions_chk", sql`${t.deductionsMinor} >= 0 and ${t.deductionsMinor} <= ${t.amountMinor}`),
     check("income_amount_chk", sql`${t.amountMinor} > 0`),
     check("income_rate_chk", sql`${t.fxRateToBase} > 0`),
     check("income_currency_chk", sql`${t.currency} regexp '^[A-Z]{3}$'`),
@@ -633,8 +698,10 @@ export const expenses = mysqlTable(
     /** set when the expense was created by "mark as paid" on a subscription */
     subscriptionId: varchar("subscription_id", { length: 36 }).references(() => subscriptions.id, { onDelete: "set null" }),
     receiptFileId: varchar("receipt_file_id", { length: 36 }).references(() => files.id, { onDelete: "set null" }),
-    /** the stream it belongs to; null = company-wide, visible to admins only (never to a stream partner) */
+    /** the stream it belongs to; null = company-wide, visible to admins only (never to a partner) */
     streamId: int("stream_id").references(() => streams.id),
+    /** the project this cost belongs to (null = none): it counts towards what that project cost us */
+    projectId: varchar("project_id", { length: 36 }).references(() => projects.id),
     /** archived rows stay in the database but drop out of every list and total */
     archivedAt: datetime("archived_at", { mode: "date", fsp: 3 }),
     isRecurring: boolean("is_recurring").notNull().default(false),
@@ -649,6 +716,7 @@ export const expenses = mysqlTable(
   (t) => [
     index("expense_date_idx").on(t.expenseDate),
     index("expense_stream_country_idx").on(t.streamId, t.countryCode),
+    index("expense_project_idx").on(t.projectId),
     index("expense_created_by_idx").on(t.createdBy),
     index("expense_category_idx").on(t.category),
     index("expense_country_date_idx").on(t.countryCode, t.expenseDate),

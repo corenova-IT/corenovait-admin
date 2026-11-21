@@ -8,7 +8,7 @@ import { companyToday } from "./payments";
 import { moneyRowsWhere, notHiddenFrom, partnerScope, streamRowsWhere, type PartnerScope } from "./scope";
 
 /**
- * "My dashboard": a Stream partner's own revenue, costs, net, upcoming payments and tasks.
+ * "My dashboard": a Partner's own revenue, costs, net, upcoming payments and tasks.
  * Every query here is restricted by lib/dal/scope.ts, so a partner only ever sees rows that
  * match an assigned stream AND an assigned country (tasks: the stream), never rows from an
  * archived record, and never anything under a project the Owner hid from them.
@@ -28,6 +28,9 @@ export type StreamFigures = {
   revenueMonthBaseMinor: number;
   revenueTotalBaseMinor: number;
   pendingBaseMinor: number;
+  /** taxes and fees taken off paid income (platform fees, withdrawal tax, VAT or transfer charges, other) */
+  deductionsMonthBaseMinor: number;
+  deductionsTotalBaseMinor: number;
   /** all costs: expenses (subscriptions paid are expenses) plus employee pay, each counted once */
   costsMonthBaseMinor: number;
   costsTotalBaseMinor: number;
@@ -98,7 +101,7 @@ export async function computeDashboard(db: Db | Tx, scope: PartnerScope, conds: 
   // "this month" stops at the end of this month, so nothing dated later is counted in it
   const monthEnd = range?.to ?? addDays(addMonths(monthStart, 1), -1);
 
-  const empty = { revenueMonthBaseMinor: 0, revenueTotalBaseMinor: 0, pendingBaseMinor: 0, costsMonthBaseMinor: 0, costsTotalBaseMinor: 0, payMonthBaseMinor: 0, payTotalBaseMinor: 0, netMonthBaseMinor: 0, netTotalBaseMinor: 0 };
+  const empty = { revenueMonthBaseMinor: 0, revenueTotalBaseMinor: 0, pendingBaseMinor: 0, deductionsMonthBaseMinor: 0, deductionsTotalBaseMinor: 0, costsMonthBaseMinor: 0, costsTotalBaseMinor: 0, payMonthBaseMinor: 0, payTotalBaseMinor: 0, netMonthBaseMinor: 0, netTotalBaseMinor: 0 };
   const base: DashboardData = { baseCurrency, today, monthLabel: range ? `${range.from} to ${range.to}` : today.slice(0, 7), hasData: scope.hasData, perStream: [], overall: empty, upcomingPayments: [], dueWithin30DaysBaseMinor: 0, tasks: { open: 0, overdue: 0, upcoming: [] } };
   if (!scope.hasData) return base;
 
@@ -119,6 +122,8 @@ export async function computeDashboard(db: Db | Tx, scope: PartnerScope, conds: 
         paidMonth: sumIf(incAmount, sql`${incomeEntries.status} = 'paid' and ${incomeEntries.entryDate} >= ${monthStart} and ${incomeEntries.entryDate} <= ${monthEnd}`),
         paidAll: sumIf(incAmount, sql`${incomeEntries.status} = 'paid'`),
         pending: sumIf(incAmount, sql`${incomeEntries.status} <> 'paid'`),
+        dedMonth: sumIf(sql`${incomeEntries.amountBaseMinor} - ${incomeEntries.netBaseMinor}`, sql`${incomeEntries.status} = 'paid' and ${incomeEntries.entryDate} >= ${monthStart} and ${incomeEntries.entryDate} <= ${monthEnd}`),
+        dedAll: sumIf(sql`${incomeEntries.amountBaseMinor} - ${incomeEntries.netBaseMinor}`, sql`${incomeEntries.status} = 'paid'`),
       })
       .from(incomeEntries)
       .where(incomeWhere)
@@ -180,19 +185,23 @@ export async function computeDashboard(db: Db | Tx, scope: PartnerScope, conds: 
       revenueMonthBaseMinor: num(inc?.paidMonth),
       revenueTotalBaseMinor: num(inc?.paidAll),
       pendingBaseMinor: num(inc?.pending),
+      deductionsMonthBaseMinor: num(inc?.dedMonth),
+      deductionsTotalBaseMinor: num(inc?.dedAll),
       // expenses and employee pay are separate records, so adding them counts each once
       costsMonthBaseMinor: num(exp?.month) + num(emp?.month),
       costsTotalBaseMinor: num(exp?.all) + num(emp?.all),
       payMonthBaseMinor: num(emp?.month),
       payTotalBaseMinor: num(emp?.all),
     };
-    return { streamId, stream, ...f, netMonthBaseMinor: f.revenueMonthBaseMinor - f.costsMonthBaseMinor, netTotalBaseMinor: f.revenueTotalBaseMinor - f.costsTotalBaseMinor };
+    return { streamId, stream, ...f, netMonthBaseMinor: f.revenueMonthBaseMinor - f.deductionsMonthBaseMinor - f.costsMonthBaseMinor, netTotalBaseMinor: f.revenueTotalBaseMinor - f.deductionsTotalBaseMinor - f.costsTotalBaseMinor };
   });
   const overall = perStream.reduce(
     (a, s) => ({
       revenueMonthBaseMinor: a.revenueMonthBaseMinor + s.revenueMonthBaseMinor,
       revenueTotalBaseMinor: a.revenueTotalBaseMinor + s.revenueTotalBaseMinor,
       pendingBaseMinor: a.pendingBaseMinor + s.pendingBaseMinor,
+      deductionsMonthBaseMinor: a.deductionsMonthBaseMinor + s.deductionsMonthBaseMinor,
+      deductionsTotalBaseMinor: a.deductionsTotalBaseMinor + s.deductionsTotalBaseMinor,
       costsMonthBaseMinor: a.costsMonthBaseMinor + s.costsMonthBaseMinor,
       costsTotalBaseMinor: a.costsTotalBaseMinor + s.costsTotalBaseMinor,
       payMonthBaseMinor: a.payMonthBaseMinor + s.payMonthBaseMinor,

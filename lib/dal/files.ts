@@ -9,7 +9,8 @@ import { sniffType } from "@/lib/file-types";
 import type { AppModule } from "@/lib/permissions";
 import { actorRef, writeAudit } from "./audit";
 import { RuleError, hasPerm, requirePerm, rowAllowed, type Actor } from "./guard";
-import { financeRecordVisible, incomeRecordHidden } from "./finance";
+import { expenseRecordHidden, financeRecordVisible, incomeRecordHidden } from "./finance";
+import { partnerExpenseFileVisible } from "./partner-files";
 
 /**
  * Uploads live in UPLOAD_DIR, outside the app folder and the public web root,
@@ -82,7 +83,13 @@ export async function saveUpload(
 export async function getFileForDownload(actor: Actor, id: string) {
   if (!/^[0-9a-f-]{36}$/.test(id)) return null;
   const [f] = await getDb().select().from(schema.files).where(eq(schema.files.id, id));
-  if (!f || !hasPerm(actor, f.module, "view")) return null;
+  if (!f) return null;
+  // a partner's expense documents: that partner (own expense) and admins who can see it, nobody else
+  if (f.module === "stream_partner") {
+    if (f.entityType !== "expenses" || !f.entityId || !KEY.test(f.storageKey) || !(await partnerExpenseFileVisible(actor, f.entityId))) return null;
+    return { name: f.originalName, mimeType: f.mimeType, bytes: await readFile(path.join(uploadDir(), f.storageKey)) };
+  }
+  if (!hasPerm(actor, f.module, "view")) return null;
   // chat attachments: only members of that channel or DM, never the uploader or an admin outside it
   if (f.module === "chat") {
     if (f.entityType !== "chat_messages" || !f.entityId || !(await chatAttachmentVisible(actor, f.entityId, f.id))) return null;
@@ -91,6 +98,7 @@ export async function getFileForDownload(actor: Actor, id: string) {
   }
   // an invoice in a project hidden from this person is gone for them, whatever else would let them have it
   if (f.module === "transactions" && f.entityType === "income_entries" && f.entityId && (await incomeRecordHidden(actor, f.entityId))) return null;
+  if (f.module === "transactions" && f.entityType === "expenses" && f.entityId && (await expenseRecordHidden(actor, f.entityId))) return null;
   const linkedOk = f.entityType && f.entityId && f.module === "transactions" ? await financeRecordVisible(actor, f.entityType, f.entityId) : false;
   if (!linkedOk && !rowAllowed(actor, f.module, { ownerId: f.uploadedBy })) return null;
   if (!KEY.test(f.storageKey)) return null;

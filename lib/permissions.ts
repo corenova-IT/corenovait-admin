@@ -41,7 +41,7 @@ export const MODULE_LABELS: Record<AppModule, string> = {
   settings: "Settings",
   audit: "Audit log",
   partner: "My earnings (partners)",
-  stream_partner: "My dashboard (stream partners)",
+  stream_partner: "My dashboard (partners)",
   employee: "My work (employees)",
 };
 

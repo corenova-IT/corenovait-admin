@@ -95,6 +95,7 @@ export async function saveExpense(_prev: LedgerState, fd: FormData): Promise<Led
     isRecurring: fd.get("isRecurring") === "on",
     countryCode: str(fd, "countryCode") || null,
     streamId: str(fd, "streamId") || null,
+    projectId: str(fd, "projectId") || null,
     notes: str(fd, "notes"),
   };
   try {

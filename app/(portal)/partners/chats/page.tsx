@@ -8,7 +8,7 @@ import { oversightConversations } from "@/lib/dal/scoped-chat";
 
 export const metadata = { title: "Partner chats" };
 
-/** Admin only: conversations that include a stream partner or employee. Reading one is written to the audit log. */
+/** Admin only: conversations that include a partner or employee. Reading one is written to the audit log. */
 export default async function PartnerChatsPage() {
   const actor = await requirePerm("team");
   if (!actor.isAdmin) redirect("/no-access?module=team");
@@ -16,7 +16,7 @@ export default async function PartnerChatsPage() {
   const fmt = new Intl.DateTimeFormat("en-AU", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: false });
   return (
     <>
-      <PageHeader title="Partner chats" subtitle="Conversations with stream partners and employees that you are not in" />
+      <PageHeader title="Partner chats" subtitle="Conversations with partners and employees that you are not in" />
       <Card>
         <CardHeader title="Conversations" subtitle="Opening one is recorded in the audit log (who read it and when, never the messages). Conversations between two admins stay private and are not listed." />
         {rows.length === 0 ? (

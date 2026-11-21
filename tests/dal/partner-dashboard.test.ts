@@ -3,7 +3,7 @@ import { addDays, todayIn } from "@/lib/dates";
 import { actorFor, createPerson, setupTestDatabase } from "./db";
 
 /**
- * The stream partner dashboard: only rows matching an assigned stream AND country, paid
+ * The partner dashboard: only rows matching an assigned stream AND country, paid
  * income only, base-currency sums using each row's stored rate, nothing archived, nothing
  * under a project the Owner hid, nothing about other partners or the company.
  */
@@ -147,7 +147,7 @@ describe("My dashboard", () => {
     expect(d.overall.revenueTotalBaseMinor).toBe(0);
   });
 
-  it("is refused to everyone who isn't a stream partner", async () => {
+  it("is refused to everyone who isn't a partner", async () => {
     for (const who of [ids.owner, ids.admin, ids.staff, ids.emp]) {
       await expect(dash.myDashboard(await as(who))).rejects.toThrow(/permission/i);
     }

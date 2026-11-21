@@ -42,6 +42,7 @@ export type ExpenseView = {
   isRecurring: boolean;
   countryCode: string | null;
   streamId: number | null;
+  projectId: string | null;
   receiptFileId: string | null;
   notes: string | null;
 };

@@ -11,7 +11,7 @@ import { archiveTask, saveTask } from "../actions";
 
 export const metadata = { title: "My tasks" };
 
-/** A stream partner's tasks in their own streams. Archiving hides one; nothing is deleted. */
+/** A partner's tasks in their own streams. Archiving hides one; nothing is deleted. */
 export default async function MyTasksPage() {
   const actor = await requirePerm("stream_partner");
   const [rows, c] = await Promise.all([myTasks(actor), myFormChoices(actor)]);

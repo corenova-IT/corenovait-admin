@@ -1,14 +1,15 @@
 import "server-only";
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { getDb, schema, type Tx } from "@/lib/db";
 import { actorRef, writeAudit } from "./audit";
 import { mysqlCode } from "./assignments";
 import { RuleError, requireAdmin, requirePerm, type Actor } from "./guard";
+import { checkNichePair, findOrAddSubNiche, nicheNames } from "./niches";
 import { ownEmployee } from "./partner-employees";
 import { NotFound, assertStreamAllowed, notHiddenFrom, partnerScope, streamRowsWhere } from "./scope";
 
 /**
- * Projects for a Stream partner, inside their own streams only.
+ * Projects for a Partner, inside their own streams only.
  *
  * What a partner CAN do: see, create, rename and archive projects in their streams, switch "Team visible"
  * on or off, and put their own employees on a project. What stays Owner-only, untouched: who a project's
@@ -29,6 +30,13 @@ export type MyProject = {
   streamId: number;
   active: boolean;
   teamVisible: boolean;
+  nicheId: number | null;
+  subNicheId: number | null;
+  niche: string | null;
+  subNiche: string | null;
+  /** who leads the project: the partner or one of their employees */
+  leadId: string | null;
+  leadName: string | null;
   members: Array<{ id: string; name: string }>;
 };
 
@@ -43,7 +51,7 @@ export async function myProjects(actor: Actor): Promise<MyProject[]> {
   ensure(actor, "view");
   const db = getDb();
   const rows = await db
-    .select({ id: projects.id, name: projects.name, streamId: projects.streamId, stream: streams.name, active: projects.active, teamVisible: projects.teamVisible })
+    .select({ id: projects.id, name: projects.name, streamId: projects.streamId, stream: streams.name, active: projects.active, teamVisible: projects.teamVisible, nicheId: projects.nicheId, subNicheId: projects.subNicheId, leadId: projects.leadUserId })
     .from(projects)
     .innerJoin(streams, eq(streams.id, projects.streamId))
     .where(own(db, actor))
@@ -55,7 +63,16 @@ export async function myProjects(actor: Actor): Promise<MyProject[]> {
     .innerJoin(users, eq(users.id, projectMembers.userId))
     .where(inArray(projectMembers.projectId, rows.map((r) => r.id)))
     .orderBy(asc(users.fullName));
-  return rows.map((r) => ({ ...r, members: members.filter((m) => m.projectId === r.id).map((m) => ({ id: m.id, name: m.name || m.email })) }));
+  const names = await nicheNames(db, [...new Set(rows.map((r) => r.nicheId).filter((x): x is number => x !== null))], [...new Set(rows.map((r) => r.subNicheId).filter((x): x is number => x !== null))]);
+  const leadIds = [...new Set(rows.map((r) => r.leadId).filter((x): x is string => !!x))];
+  const leads = leadIds.length ? await db.select({ id: users.id, name: users.fullName, email: users.email }).from(users).where(inArray(users.id, leadIds)) : [];
+  return rows.map((r) => ({
+    ...r,
+    niche: r.nicheId ? names.niche.get(r.nicheId) ?? null : null,
+    subNiche: r.subNicheId ? names.sub.get(r.subNicheId) ?? null : null,
+    leadName: r.leadId ? (leads.find((l) => l.id === r.leadId)?.name || leads.find((l) => l.id === r.leadId)?.email) ?? null : null,
+    members: members.filter((m) => m.projectId === r.id).map((m) => ({ id: m.id, name: m.name || m.email })),
+  }));
 }
 
 async function loadMine(tx: Tx, actor: Actor, id: string) {
@@ -80,7 +97,39 @@ async function guardedName<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
-export async function createMyProject(actor: Actor, input: { streamId: number; name: string }): Promise<string> {
+export type ProjectDetailsInput = {
+  nicheId?: number | string | null;
+  subNicheId?: number | string | null;
+  /** a sub-category typed in by the partner ("add your own"); it is created (or reused) under the chosen niche */
+  newSubNiche?: string | null;
+  /** the lead: the partner themselves (default) or one of their employees */
+  leadUserId?: string | null;
+};
+
+const asId = (v: number | string | null | undefined) => (v === null || v === undefined || v === "" ? null : Number(v) || null);
+
+/** Works out the niche, sub-category and lead from a form, checking each one against what this partner may use. */
+async function resolveDetails(tx: Tx, actor: Actor, input: ProjectDetailsInput) {
+  const nicheId = asId(input.nicheId);
+  let subNicheId = asId(input.subNicheId);
+  const typed = (input.newSubNiche ?? "").trim();
+  if (typed) {
+    if (!nicheId) throw new RuleError("Choose a niche before adding your own sub-category.");
+    subNicheId = await findOrAddSubNiche(tx, actor, nicheId, typed);
+  }
+  await checkNichePair(tx, nicheId, subNicheId);
+  const lead = input.leadUserId || actor.userId;
+  if (lead !== actor.userId) await ownEmployee(tx, actor, lead); // someone else's employee = not found
+  return { nicheId, subNicheId: nicheId ? subNicheId : null, leadUserId: lead };
+}
+
+/** An employee who leads a project is also on it (so they can see it). The partner as lead needs no membership. */
+async function leadIsMember(tx: Tx, actor: Actor, projectId: string, leadUserId: string) {
+  if (leadUserId === actor.userId) return;
+  await tx.insert(projectMembers).values({ projectId, userId: leadUserId, addedBy: actor.userId }).onDuplicateKeyUpdate({ set: { projectId: sql`${projectMembers.projectId}` } });
+}
+
+export async function createMyProject(actor: Actor, input: { streamId: number; name: string } & ProjectDetailsInput): Promise<string> {
   ensure(actor, "create");
   const name = cleanName(input.name);
   const streamId = Number(input.streamId);
@@ -88,11 +137,33 @@ export async function createMyProject(actor: Actor, input: { streamId: number; n
   const id = crypto.randomUUID();
   await guardedName(() =>
     getDb().transaction(async (tx) => {
-      await tx.insert(projects).values({ id, streamId, name, createdBy: actor.userId });
-      await writeAudit(tx, actorRef(actor), { action: "create", entity: "partner_projects", entityId: id, summary: `Added project: ${name}`, after: { name, streamId, active: true, teamVisible: false } });
+      const d = await resolveDetails(tx, actor, input);
+      await tx.insert(projects).values({ id, streamId, name, createdBy: actor.userId, ...d });
+      await leadIsMember(tx, actor, id, d.leadUserId);
+      await writeAudit(tx, actorRef(actor), { action: "create", entity: "partner_projects", entityId: id, summary: `Added project: ${name}`, after: { name, streamId, active: true, teamVisible: false, ...d } });
     })
   );
   return id;
+}
+
+/** Changes a project's niche, sub-category and lead. Logged with before and after. */
+export async function setMyProjectDetails(actor: Actor, id: string, input: ProjectDetailsInput) {
+  ensure(actor, "edit");
+  await getDb().transaction(async (tx) => {
+    const p = await loadMine(tx, actor, id);
+    const d = await resolveDetails(tx, actor, input);
+    await leadIsMember(tx, actor, id, d.leadUserId);
+    if (p.nicheId === d.nicheId && p.subNicheId === d.subNicheId && p.leadUserId === d.leadUserId) return;
+    await tx.update(projects).set(d).where(eq(projects.id, id));
+    await writeAudit(tx, actorRef(actor), {
+      action: "update",
+      entity: "partner_projects",
+      entityId: id,
+      summary: `Edited project: kind of work or lead changed for ${p.name}`,
+      before: { nicheId: p.nicheId, subNicheId: p.subNicheId, leadUserId: p.leadUserId },
+      after: d,
+    });
+  });
 }
 
 export async function renameMyProject(actor: Actor, id: string, rawName: string) {
@@ -168,14 +239,14 @@ export async function setMyProjectMembers(actor: Actor, id: string, employeeIds:
   });
 }
 
-/** An admin does the same for any project that belongs to a stream partner's stream. */
+/** An admin does the same for any project that belongs to a partner's stream. */
 export async function setProjectMembersAsAdmin(actor: Actor, projectId: string, employeeIds: string[]) {
   requireAdmin(actor);
   await getDb().transaction(async (tx) => {
     const [p] = await tx.select().from(projects).where(eq(projects.id, projectId)).for("update");
     if (!p) throw new RuleError("That project no longer exists.");
     const [holder] = await tx.select({ userId: streamPartnerStreams.userId }).from(streamPartnerStreams).where(eq(streamPartnerStreams.streamId, p.streamId));
-    if (!holder) throw new RuleError("That project's stream has no stream partner, so it has no employees to add.");
+    if (!holder) throw new RuleError("That project's stream has no partner, so it has no employees to add.");
     await applyMembers(tx, actor, p, holder.userId, employeeIds);
   });
 }

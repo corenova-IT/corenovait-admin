@@ -85,7 +85,7 @@ describe("seeing and creating projects", () => {
     expect(hiddenClash).toBe(visibleClash);
   });
 
-  it("only stream partners can use these", async () => {
+  it("only partners can use these", async () => {
     for (const who of [ids.owner, ids.staff, ids.oldPartner]) {
       await expect(pp.myProjects(await as(who)), who).rejects.toThrow(/permission/i);
       await expect(pp.createMyProject(await as(who), { streamId: S.upwork, name: "X" }), who).rejects.toThrow(/permission/i);
@@ -173,7 +173,7 @@ describe("putting employees on projects", () => {
     expect(await members(ownerMade)).toEqual([eA1, eA2].sort());
     await expect(pp.setProjectMembersAsAdmin(owner, ownerMade, [eB1])).rejects.toThrow(/no longer exists/);
     const orphanStream = await proj.createProject(owner, { streamId: (await t.db.select().from(t.schema.streams)).find((s) => s.name === "Website direct")!.id, name: "Nobody's" });
-    await expect(pp.setProjectMembersAsAdmin(owner, orphanStream, [])).rejects.toThrow(/no stream partner/i);
+    await expect(pp.setProjectMembersAsAdmin(owner, orphanStream, [])).rejects.toThrow(/no partner/i);
     await expect(pp.setProjectMembersAsAdmin(await as(ids.a), ownerMade, [])).rejects.toThrow(/permission|admins/i);
   });
 });

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ArchiveButton, ExpenseForm } from "@/components/partner/PartnerForms";
+import { BillButton } from "@/components/partner/BillButton";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { EmptyState } from "@/components/ui/States";
@@ -7,11 +8,11 @@ import { requirePerm } from "@/lib/auth/session";
 import { myExpenses, myFormChoices } from "@/lib/dal/partner-writes";
 import { fmtDate } from "@/lib/format";
 import { formatMoney, minorToInput, rateToInput } from "@/lib/money";
-import { archiveExpense, saveExpense } from "../actions";
+import { archiveExpense, makeExpenseBill, saveExpense } from "../actions";
 
 export const metadata = { title: "My expenses" };
 
-/** A stream partner's expenses in their own streams and countries. Archiving hides one; nothing is deleted. */
+/** A partner's expenses in their own streams and countries. Archiving hides one; nothing is deleted. */
 export default async function MyExpensesPage() {
   const actor = await requirePerm("stream_partner");
   const [rows, c] = await Promise.all([myExpenses(actor), myFormChoices(actor)]);
@@ -68,8 +69,11 @@ export default async function MyExpensesPage() {
                             isRecurring: r.isRecurring,
                             streamId: r.streamId,
                             countryCode: r.countryCode,
+                            projectId: r.projectId,
+                            receiptFileId: r.receiptFileId,
                           }}
                         />
+                        <BillButton id={r.id} action={makeExpenseBill} />
                         <ArchiveButton id={r.id} action={archiveExpense} label="Archive this expense" />
                       </div>
                     </details>

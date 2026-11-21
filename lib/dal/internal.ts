@@ -36,7 +36,7 @@ export async function loadPresetPerms(db: Db | Tx, presetId: string): Promise<Pe
 export const SCOPED_PRESETS = ["stream_partner", "employee"] as const;
 
 /**
- * Which rows a Stream partner / Employee may touch. Everyone else gets null.
+ * Which rows a Partner / Employee may touch. Everyone else gets null.
  * An Employee's partner and projects come from employee_assignments and project_members;
  * an Employee without a partner has an empty scope, which means they see nothing.
  */

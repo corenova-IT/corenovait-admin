@@ -5,8 +5,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { actorFor, createPerson, setupTestDatabase, userRow } from "./db";
 
 /**
- * Phase 1 of stream partners: the two new roles, the streams and countries an admin
- * gives a stream partner, and the shared scoped-query helper (lib/dal/scope.ts) that
+ * Phase 1 of partners: the two new roles, the streams and countries an admin
+ * gives a partner, and the shared scoped-query helper (lib/dal/scope.ts) that
  * decides which ROWS they may touch. Real MySQL, real sessions.
  */
 let t: Awaited<ReturnType<typeof setupTestDatabase>>;
@@ -85,7 +85,7 @@ describe("the roles", () => {
     expect((await userRow(t, ids.oldPartner)).mfaRequired).toBe(true);
   });
 
-  it("adds the Stream partner and Employee presets, each with only its own module", async () => {
+  it("adds the Partner and Employee presets, each with only its own module", async () => {
     for (const [id, module] of [["stream_partner", "stream_partner"], ["employee", "employee"]] as const) {
       const perms = await t.db.select().from(t.schema.presetPermissions).where(eq(t.schema.presetPermissions.presetId, id));
       expect(perms).toEqual([{ presetId: id, module, canView: true, canCreate: true, canEdit: true, canDelete: false, canExport: false, scope: "own" }]);
@@ -98,7 +98,7 @@ describe("the roles", () => {
     }
   });
 
-  it("requires two-factor for stream partners (not for employees)", async () => {
+  it("requires two-factor for partners (not for employees)", async () => {
     expect((await userRow(t, ids.sp1)).mfaRequired).toBe(true);
     expect((await userRow(t, ids.emp)).mfaRequired).toBe(false);
   });
@@ -125,7 +125,7 @@ describe("the roles", () => {
     await expect(team.setPermissions(owner, { userId: ids.emp, perms })).rejects.toThrow(/fixed/i);
     await expect(team.updatePreset(owner, { presetId: "stream_partner", perms })).rejects.toThrow(/can't be edited/i);
     await expect(team.updatePreset(owner, { presetId: "employee", perms })).rejects.toThrow(/can't be edited/i);
-    // a staff member can't be made into a "custom stream partner" either
+    // a staff member can't be made into a "custom partner" either
     const staff = await as(ids.staff);
     const viaCustom = { ...staff.perms, stream_partner: { view: true, create: true, edit: true, delete: false, export: false, scope: "own" as const } };
     await expect(team.setPermissions(owner, { userId: ids.staff, perms: viaCustom })).rejects.toThrow(/only come from those roles/i);
@@ -137,15 +137,15 @@ describe("the roles", () => {
 });
 
 describe("the Employee role", () => {
-  it("is only given by inviting someone as an employee of a stream partner", async () => {
+  it("is only given by inviting someone as an employee of a partner", async () => {
     const owner = await as(ids.owner);
-    await expect(team.inviteUser(owner, { email: "early.emp@example.test", fullName: "E", jobTitle: "", presetId: "employee" })).rejects.toThrow(/choose which stream partner/i);
+    await expect(team.inviteUser(owner, { email: "early.emp@example.test", fullName: "E", jobTitle: "", presetId: "employee" })).rejects.toThrow(/choose which partner/i);
     await expect(team.applyPreset(owner, { userId: ids.staff, presetId: "employee" })).rejects.toThrow(/invite them as an employee/i);
     expect((await userRow(t, ids.staff)).presetId).toBe("staff");
   });
 });
 
-describe("giving a stream partner streams and countries", () => {
+describe("giving a partner streams and countries", () => {
   it("only an admin can do it; a partner can't change their own", async () => {
     for (const who of [ids.staff, ids.sp1, ids.emp, ids.oldPartner]) {
       const a = await as(who);
@@ -202,12 +202,12 @@ describe("giving a stream partner streams and countries", () => {
     expect(await streamIdsOf(ids.sp3)).toEqual([]);
   });
 
-  it("refuses streams or countries that don't exist, and people who aren't stream partners", async () => {
+  it("refuses streams or countries that don't exist, and people who aren't partners", async () => {
     const owner = await as(ids.owner);
     await expect(assign.setAssignments(owner, { userId: ids.sp2, streamIds: [99999], countryCodes: ["AU"] })).rejects.toThrow(/choose streams from the list/i);
     await expect(assign.setAssignments(owner, { userId: ids.sp2, streamIds: [S.pph], countryCodes: ["ZZ"] })).rejects.toThrow(/choose countries from the list/i);
-    await expect(assign.setAssignments(owner, { userId: ids.staff, streamIds: [S.pph], countryCodes: ["GB"] })).rejects.toThrow(/only stream partners/i);
-    await expect(assign.setAssignments(owner, { userId: ids.emp, streamIds: [S.pph], countryCodes: ["GB"] })).rejects.toThrow(/only stream partners/i);
+    await expect(assign.setAssignments(owner, { userId: ids.staff, streamIds: [S.pph], countryCodes: ["GB"] })).rejects.toThrow(/only partners/i);
+    await expect(assign.setAssignments(owner, { userId: ids.emp, streamIds: [S.pph], countryCodes: ["GB"] })).rejects.toThrow(/only partners/i);
     expect(await streamIdsOf(ids.sp2)).toEqual([]);
   });
 
@@ -235,14 +235,14 @@ describe("giving a stream partner streams and countries", () => {
     const [ghost] = await t.db.select().from(t.schema.users).where(eq(t.schema.users.email, "second.partner@example.test"));
     expect(ghost).toBeUndefined();
 
-    // streams and countries belong to stream partners only
-    await expect(team.inviteUser(owner, { email: "x@example.test", fullName: "X", jobTitle: "", presetId: "staff", streamIds: [S.pph], countryCodes: [] })).rejects.toThrow(/only for stream partners/i);
-    // a stream partner invited with nothing assigned simply sees nothing until an admin assigns something
+    // streams and countries belong to partners only
+    await expect(team.inviteUser(owner, { email: "x@example.test", fullName: "X", jobTitle: "", presetId: "staff", streamIds: [S.pph], countryCodes: [] })).rejects.toThrow(/only for partners/i);
+    // a partner invited with nothing assigned simply sees nothing until an admin assigns something
     const blank = await team.inviteUser(owner, { email: "blank.partner@example.test", fullName: "Blank", jobTitle: "", presetId: "stream_partner" });
     expect(await streamIdsOf(blank.userId)).toEqual([]);
   });
 
-  it("frees the streams when someone stops being a stream partner (and says so in the log)", async () => {
+  it("frees the streams when someone stops being a partner (and says so in the log)", async () => {
     const owner = await as(ids.owner);
     const inv = await team.inviteUser(owner, { email: "leaving@example.test", fullName: "Leaving", jobTitle: "", presetId: "stream_partner", streamIds: [S.pph], countryCodes: ["GB"] });
     await team.applyPreset(owner, { userId: inv.userId, presetId: "staff" });
@@ -408,7 +408,7 @@ describe("the shared scoped-query helper", () => {
     expect(() => scope.assertStreamAllowed(d, S.upwork)).toThrow(scope.NotFound);
   });
 
-  it("is only for stream partners (and employees for their own helper)", async () => {
+  it("is only for partners (and employees for their own helper)", async () => {
     const cols = { streamId: t.schema.expenses.streamId, countryCode: t.schema.expenses.countryCode };
     for (const who of [ids.owner, ids.admin2, ids.staff, ids.oldPartner, ids.emp]) {
       const actor = await as(who);
@@ -446,14 +446,14 @@ describe("the shared scoped-query helper", () => {
 describe("the code", () => {
   const read = (rel: string) => readFileSync(path.resolve(import.meta.dirname, "../..", rel), "utf8");
 
-  it("reads a stream partner's data only through the shared helper", () => {
+  it("reads a partner's data only through the shared helper", () => {
     const src = read("lib/dal/stream-partners.ts");
     expect(src).toMatch(/from "\.\/scope"/);
     // it never touches a company table itself
     expect(src).not.toMatch(/incomeEntries|expenses\b|subscriptions|tasks\b|projects\b|incomePayments/);
   });
 
-  it("every data file written for stream partners and employees goes through the shared helper", () => {
+  it("every data file written for partners and employees goes through the shared helper", () => {
     const dir = path.resolve(import.meta.dirname, "../../lib/dal");
     const scoped = readdirSync(dir).filter((f) => /^(stream-partners|partner-|employee-)/.test(f));
     expect(scoped).toEqual(expect.arrayContaining(["stream-partners.ts", "partner-dashboard.ts"]));

@@ -12,7 +12,7 @@ export default async function PortalLayout({ children }: { children: React.React
   const name = actor.fullName || actor.email;
   const role = [actor.jobTitle, actor.presetName].filter(Boolean).join(" · ");
 
-  // stream partners and employees have no chat screen yet: keep their "online" dot fresh as they move around
+  // partners and employees have no chat screen yet: keep their "online" dot fresh as they move around
   if (actor.scoped) await touchPresence(actor);
   const [notifications, chat] = await Promise.all([unreadNotificationCount(actor), unreadChatTotal(actor)]);
   return (

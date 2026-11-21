@@ -62,10 +62,10 @@ const inviteSchema = z.object({
   fullName: z.string().trim().min(1, "Enter their name.").max(120),
   jobTitle: z.string().trim().max(120),
   presetId,
-  // only used for the Stream partner role; the data-access layer refuses them for any other role
+  // only used for the Partner role; the data-access layer refuses them for any other role
   streamIds: z.array(z.coerce.number().int().positive()).max(200).default([]),
   countryCodes: z.array(z.string().regex(/^[A-Z]{2,8}$/)).max(300).default([]),
-  // only used for the Employee role: which stream partner they work for
+  // only used for the Employee role: which partner they work for
   partnerUserId: z.union([z.literal("").transform(() => undefined), z.string().uuid()]).optional(),
 });
 
@@ -95,7 +95,7 @@ export async function inviteMember(_prev: TeamState, formData: FormData): Promis
   }
 }
 
-// ---------- streams and countries of a stream partner ----------
+// ---------- streams and countries of a partner ----------
 export async function saveAssignments(_prev: TeamState, formData: FormData): Promise<TeamState> {
   const parsed = z
     .object({

@@ -6,6 +6,7 @@ import { actorWithPerm, errorMessage } from "@/lib/auth/session";
 import type { Actor } from "@/lib/dal/guard";
 import * as lists from "@/lib/dal/lists";
 import { updateCompanyTimezone } from "@/lib/dal/settings";
+import * as nicheDal from "@/lib/dal/niches";
 import { setShiftFlagHours } from "@/lib/dal/shifts";
 
 /**
@@ -79,6 +80,37 @@ export async function deleteListItem(_prev: ListState, fd: FormData): Promise<Li
       else await lists.deleteCategory(g.actor, id);
     }
     return done("Deleted.");
+  } catch (e) {
+    return { error: errorMessage(e) };
+  }
+}
+
+export async function saveNicheItem(_prev: ListState, fd: FormData): Promise<ListState> {
+  const g = await guard();
+  if (!g.actor) return { error: g.error };
+  const k = z.enum(["niche", "sub"]).safeParse(fd.get("kind"));
+  if (!k.success) return { error: "Something went wrong. Refresh and try again." };
+  const id = Number(str(fd, "id")) || null;
+  try {
+    if (k.data === "niche") await nicheDal.saveNiche(g.actor, { id, name: str(fd, "name") });
+    else await nicheDal.saveSubNiche(g.actor, { id, nicheId: Number(str(fd, "nicheId")), name: str(fd, "name") });
+    revalidatePath("/settings");
+    return { ok: "Saved." };
+  } catch (e) {
+    return { error: errorMessage(e) };
+  }
+}
+
+export async function setNicheItemActive(_prev: ListState, fd: FormData): Promise<ListState> {
+  const g = await guard();
+  if (!g.actor) return { error: g.error };
+  const k = z.enum(["niche", "sub"]).safeParse(fd.get("kind"));
+  const id = Number(str(fd, "id"));
+  if (!k.success || !Number.isInteger(id) || id <= 0) return { error: "Something went wrong. Refresh and try again." };
+  try {
+    await nicheDal.setNicheActive(g.actor, { kind: k.data, id, active: fd.get("active") === "true" });
+    revalidatePath("/settings");
+    return { ok: "Saved." };
   } catch (e) {
     return { error: errorMessage(e) };
   }

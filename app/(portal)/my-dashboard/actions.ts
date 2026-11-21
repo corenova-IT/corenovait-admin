@@ -7,12 +7,16 @@ import * as emp from "@/lib/dal/partner-employees";
 import * as pay from "@/lib/dal/employee-pay";
 import * as shiftDal from "@/lib/dal/shifts";
 import * as pp from "@/lib/dal/partner-projects";
+import * as ded from "@/lib/dal/income-deductions";
+import { deductionItemsFromForm } from "@/lib/deduction-form";
 import { payInputFromForm } from "@/lib/pay-form";
 import * as w from "@/lib/dal/partner-writes";
 import { inviteEmail, sendMail } from "@/lib/email";
+import { RuleError } from "@/lib/dal/guard";
+import { limiters, slowDown } from "@/lib/rate-limit";
 
 /**
- * A stream partner's own expenses, subscriptions and tasks. Permission first, then the form, then the
+ * A partner's own expenses, subscriptions and tasks. Permission first, then the form, then the
  * data-access layer (which checks the stream, country and project against their assignment again).
  */
 export type PartnerState = { ok?: string; error?: string };
@@ -108,8 +112,22 @@ export async function saveProject(_prev: PartnerState, fd: FormData): Promise<Pa
   if (id && !uuid.safeParse(id).success) return { error: "That no longer exists." };
   try {
     if (id) await pp.renameMyProject(g.actor, id, str(fd, "name"));
-    else await pp.createMyProject(g.actor, { streamId: Number(str(fd, "streamId")), name: str(fd, "name") });
+    else await pp.createMyProject(g.actor, { streamId: Number(str(fd, "streamId")), name: str(fd, "name"), nicheId: str(fd, "nicheId"), subNicheId: str(fd, "subNicheId"), newSubNiche: str(fd, "newSubNiche"), leadUserId: str(fd, "leadUserId") || null });
     return done(id ? "Project saved." : "Project added.");
+  } catch (e) {
+    return { error: errorMessage(e) };
+  }
+}
+
+/** The kind of work (niche and sub-category, including one the partner types in) and the lead. */
+export async function saveProjectKind(_prev: PartnerState, fd: FormData): Promise<PartnerState> {
+  const g = await actorWithPerm("stream_partner", "edit");
+  if (!g.actor) return { error: g.error };
+  const id = uuid.safeParse(fd.get("id"));
+  if (!id.success) return { error: "That no longer exists." };
+  try {
+    await pp.setMyProjectDetails(g.actor, id.data, { nicheId: str(fd, "nicheId"), subNicheId: str(fd, "subNicheId"), newSubNiche: str(fd, "newSubNiche"), leadUserId: str(fd, "leadUserId") || null });
+    return done("Saved.");
   } catch (e) {
     return { error: errorMessage(e) };
   }
@@ -145,6 +163,29 @@ export async function setProjectActive(_prev: PartnerState, fd: FormData): Promi
   }
 }
 
+/** The document on an expense form (an invoice or receipt), if one was chosen. The server checks its type and size again. */
+async function documentFrom(fd: FormData, userId: string): Promise<{ name: string; bytes: Buffer } | undefined> {
+  const f = fd.get("attachment");
+  if (!f || typeof f === "string" || f.size === 0) return undefined;
+  const rl = limiters.uploadPerUser.hit(userId);
+  if (!rl.ok) throw new RuleError(slowDown("uploads", rl.retryAfterSec));
+  return { name: f.name, bytes: Buffer.from(await f.arrayBuffer()) };
+}
+
+/** Makes a simple bill (PDF) for one of THEIR expenses and keeps it with the expense. */
+export async function makeExpenseBill(_prev: PartnerState, fd: FormData): Promise<PartnerState> {
+  const g = await actorWithPerm("stream_partner", "edit");
+  if (!g.actor) return { error: g.error };
+  const id = uuid.safeParse(fd.get("id"));
+  if (!id.success) return { error: "That no longer exists." };
+  try {
+    const r = await w.generateMyExpenseBill(g.actor, id.data);
+    return done(`Bill ${r.billNumber} created.`);
+  } catch (e) {
+    return { error: errorMessage(e) };
+  }
+}
+
 export async function saveExpense(_prev: PartnerState, fd: FormData): Promise<PartnerState> {
   const g = await actorWithPerm("stream_partner", "create");
   if (!g.actor) return { error: g.error };
@@ -161,10 +202,12 @@ export async function saveExpense(_prev: PartnerState, fd: FormData): Promise<Pa
     isRecurring: fd.get("isRecurring") === "on",
     countryCode: str(fd, "countryCode") || null,
     streamId: str(fd, "streamId") || null,
+    projectId: str(fd, "projectId") || null,
   };
   try {
-    if (id) await w.updateMyExpense(g.actor, id, input);
-    else await w.createMyExpense(g.actor, input);
+    const doc = await documentFrom(fd, g.actor.userId);
+    if (id) await w.updateMyExpense(g.actor, id, input, doc);
+    else await w.createMyExpense(g.actor, input, doc);
     return done(id ? "Expense saved." : "Expense added.");
   } catch (e) {
     return { error: errorMessage(e) };
@@ -270,6 +313,20 @@ export async function archiveTask(_prev: PartnerState, fd: FormData): Promise<Pa
   try {
     await w.archiveMyTask(g.actor, id.data);
     return done("Task archived.");
+  } catch (e) {
+    return { error: errorMessage(e) };
+  }
+}
+
+/** Taxes and fees on one of THEIR payments (their stream and country only; the server checks it again). */
+export async function saveDeductions(_prev: PartnerState, fd: FormData): Promise<PartnerState> {
+  const g = await actorWithPerm("stream_partner", "edit");
+  if (!g.actor) return { error: g.error };
+  const id = uuid.safeParse(fd.get("entryId"));
+  if (!id.success) return { error: "That no longer exists." };
+  try {
+    await ded.setDeductions(g.actor, id.data, deductionItemsFromForm(fd));
+    return done("Taxes and fees saved.");
   } catch (e) {
     return { error: errorMessage(e) };
   }

@@ -11,7 +11,7 @@ import { archiveSubscription, markSubscriptionPaid, saveSubscription } from "../
 
 export const metadata = { title: "My subscriptions" };
 
-/** A stream partner's subscriptions and renewals. Archiving cancels one; nothing is deleted. */
+/** A partner's subscriptions and renewals. Archiving cancels one; nothing is deleted. */
 export default async function MySubscriptionsPage() {
   const actor = await requirePerm("stream_partner");
   const [rows, c] = await Promise.all([mySubscriptions(actor), myFormChoices(actor)]);

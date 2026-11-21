@@ -14,7 +14,7 @@ import { redirect } from "next/navigation";
 
 export const metadata = { title: "Partners" };
 
-/** Admin only: every stream partner, with this period's figures. Respects what the Owner hides from the admin. */
+/** Admin only: every partner, with this period's figures. Respects what the Owner hides from the admin. */
 export default async function PartnersPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const actor = await requirePerm("team");
   if (!actor.isAdmin) redirect("/no-access?module=team");
@@ -44,7 +44,7 @@ export default async function PartnersPage({ searchParams }: { searchParams: Pro
 
   return (
     <>
-      <PageHeader title="Partners" subtitle={`Stream partners · revenue and profit ${from} to ${to} · in ${baseCurrency}`} />
+      <PageHeader title="Partners" subtitle={`Partners · revenue and profit ${from} to ${to} · in ${baseCurrency}`} />
       <Card className="mb-6">
         <form method="get" className="grid gap-4 @min-[34rem]:grid-cols-2 @min-[52rem]:grid-cols-5 @min-[52rem]:items-end">
           <Field label="Stream" htmlFor="p-stream">
@@ -82,11 +82,11 @@ export default async function PartnersPage({ searchParams }: { searchParams: Pro
         </form>
       </Card>
       <Card>
-        <CardHeader title="Stream partners" subtitle="Click a name for their page. Revenue is paid income only." />
+        <CardHeader title="Partners" subtitle="Click a name for their page. Revenue is paid income only." />
         {rows.length === 0 ? (
-          <EmptyState title="No stream partners">Invite someone with the Stream partner role on the Team page, then give them a stream and a country.</EmptyState>
+          <EmptyState title="No partners">Invite someone with the Partner role on the Team page, then give them a stream and a country.</EmptyState>
         ) : (
-          <DataTable caption="Stream partners" columns={columns} rows={rows} rowKey={(p) => p.id} />
+          <DataTable caption="Partners" columns={columns} rows={rows} rowKey={(p) => p.id} />
         )}
       </Card>
     </>

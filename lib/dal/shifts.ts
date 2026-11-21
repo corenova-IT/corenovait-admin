@@ -16,7 +16,7 @@ import { NotFound, partnerScope } from "./scope";
  *
  * - One open shift per person, enforced by the database (unique key on user + open_key).
  * - A shift that stays open longer than settings.shift_flag_hours is FLAGGED as a forgotten clock-out. The
- *   employee can't clock out of it (or start a new one) themselves; their stream partner or an admin corrects
+ *   employee can't clock out of it (or start a new one) themselves; their partner or an admin corrects
  *   it. A correction needs a reason, can't overlap another shift or end in the future, and is logged (who,
  *   when, why, before and after) in the shifts row AND the audit log, where the partner and admins see it.
  * - Hours count CLOSED shifts, attributed to the day they started (company time zone). An open shift counts

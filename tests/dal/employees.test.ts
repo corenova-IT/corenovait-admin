@@ -70,7 +70,7 @@ describe("a partner inviting an employee", () => {
     await expect(emp.inviteMyEmployee(await as(ids.bare), person("e3@example.test"))).rejects.toThrow(/no longer exists/);
   });
 
-  it("is only for stream partners", async () => {
+  it("is only for partners", async () => {
     for (const who of [ids.owner, ids.staff, ids.oldPartner]) {
       await expect(emp.inviteMyEmployee(await as(who), person(`x-${who.slice(0, 4)}@example.test`)), who).rejects.toThrow(/permission/i);
     }
@@ -78,10 +78,10 @@ describe("a partner inviting an employee", () => {
 });
 
 describe("an admin inviting an employee", () => {
-  it("must choose a stream partner, and can choose any", async () => {
+  it("must choose a partner, and can choose any", async () => {
     const owner = await as(ids.owner);
-    await expect(team.inviteUser(owner, { ...person("a1@example.test"), presetId: "employee" })).rejects.toThrow(/choose which stream partner/i);
-    await expect(team.inviteUser(owner, { ...person("a2@example.test"), presetId: "employee", partnerUserId: ids.staff })).rejects.toThrow(/choose a stream partner/i);
+    await expect(team.inviteUser(owner, { ...person("a1@example.test"), presetId: "employee" })).rejects.toThrow(/choose which partner/i);
+    await expect(team.inviteUser(owner, { ...person("a2@example.test"), presetId: "employee", partnerUserId: ids.staff })).rejects.toThrow(/choose a partner/i);
     await expect(team.inviteUser(owner, { ...person("a3@example.test"), presetId: "staff", partnerUserId: ids.a })).rejects.toThrow(/only be chosen for employees/i);
     const inv = await team.inviteUser(owner, { ...person("a4@example.test"), presetId: "employee", partnerUserId: ids.b });
     expect(await partnerOf(inv.userId)).toBe(ids.b);

@@ -129,7 +129,7 @@ describe("a partner's page", () => {
     expect(d.employees).toEqual([]);
   });
 
-  it("gives the same answer for someone who isn't a stream partner as for someone who doesn't exist", async () => {
+  it("gives the same answer for someone who isn't a partner as for someone who doesn't exist", async () => {
     const owner = await as(ids.owner);
     const outcome = async (id: string) => ap.partnerDetail(owner, id).catch((e: Error) => e);
     const staff = await outcome(ids.staff);

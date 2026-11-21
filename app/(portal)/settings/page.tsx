@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 import { ListEditor } from "@/components/settings/ListEditor";
+import { NicheEditor } from "@/components/settings/NicheEditor";
 import { ShiftFlagForm } from "@/components/settings/ShiftFlagForm";
+import { nichesForAdmin } from "@/lib/dal/niches";
 import { TimezoneForm } from "@/components/settings/TimezoneForm";
 import { currentShiftFlagHours } from "@/lib/dal/shifts";
 import { Card, CardHeader } from "@/components/ui/Card";
@@ -8,14 +10,14 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { requirePerm } from "@/lib/auth/session";
 import { settingsLists } from "@/lib/dal/lists";
 import { getCompanySettings, timeZones } from "@/lib/dal/settings";
-import { deleteListItem, saveListItem, saveShiftFlagHours, saveTimezone, setListItemActive } from "./actions";
+import { deleteListItem, saveListItem, saveNicheItem, saveShiftFlagHours, saveTimezone, setListItemActive, setNicheItemActive } from "./actions";
 
 export const metadata = { title: "Settings" };
 
 export default async function SettingsPage() {
   const actor = await requirePerm("settings");
   if (!actor.isAdmin) redirect("/no-access?module=settings");
-  const [l, company, flagHours] = await Promise.all([settingsLists(actor), getCompanySettings(actor), currentShiftFlagHours(actor)]);
+  const [l, company, flagHours, nicheRows] = await Promise.all([settingsLists(actor), getCompanySettings(actor), currentShiftFlagHours(actor), nichesForAdmin(actor)]);
   const actions = { save: saveListItem, toggle: setListItemActive, remove: deleteListItem };
 
   return (
@@ -27,6 +29,10 @@ export default async function SettingsPage() {
           <div className="max-w-xl">
             <TimezoneForm current={company.timezone} zones={timeZones()} action={saveTimezone} />
           </div>
+        </Card>
+        <Card className="@min-[60rem]:col-span-2">
+          <CardHeader title="Kinds of work" subtitle="Niches and their sub-categories, offered when a partner adds a project. Partners can also add their own sub-category; archive the ones you don't want offered. Projects that already use one keep it." />
+          <NicheEditor niches={nicheRows} save={saveNicheItem} toggle={setNicheItemActive} />
         </Card>
         <Card className="@min-[60rem]:col-span-2">
           <CardHeader title="Forgotten clock-outs" subtitle="An employee shift that stays open longer than this is flagged. Its partner or an admin then corrects it, and the correction is logged." />

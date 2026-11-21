@@ -24,7 +24,7 @@ export const metadata = { title: "Partner" };
 type Payment = DashboardData["upcomingPayments"][number];
 type Task = DashboardData["tasks"]["upcoming"][number];
 
-/** Admin only: one stream partner's page. The same figures the partner sees, plus the log of what they changed. */
+/** Admin only: one partner's page. The same figures the partner sees, plus the log of what they changed. */
 export default async function PartnerPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Record<string, string | undefined>> }) {
   const actor = await requirePerm("team");
   if (!actor.isAdmin) redirect("/no-access?module=team");

@@ -46,13 +46,13 @@ export type TeamMember = {
 export type TeamPreset = { id: string; name: string; description: string; perms: PermMap; editable: boolean; memberCount: number };
 
 /**
- * The Stream partner and Employee presets are fixed: what they can open comes from the preset alone,
+ * The Partner and Employee presets are fixed: what they can open comes from the preset alone,
  * and which rows they see comes from lib/dal/scope.ts. Handing one of them a company-wide module
  * (transactions, payments, tasks…) would make older code return rows outside their streams.
  */
 const LOCKED_PRESETS = new Set(["admin", "custom", ...SCOPED_PRESETS]);
-/** An employee always works for one stream partner, so the role is only given by inviting them (and choosing the partner). */
-const EMPLOYEE_VIA_INVITE = "Invite them as an employee instead, so they are tied to a stream partner.";
+/** An employee always works for one partner, so the role is only given by inviting them (and choosing the partner). */
+const EMPLOYEE_VIA_INVITE = "Invite them as an employee instead, so they are tied to a partner.";
 const isScopedModule = (m: string) => m === "stream_partner" || m === "employee";
 
 /**
@@ -119,12 +119,12 @@ export async function inviteUser(
   const email = input.email.trim().toLowerCase();
   if (input.presetId === "custom") throw new RuleError("Invite with a preset, then customise their permissions.");
   if (input.presetId === "employee") {
-    if (!input.partnerUserId) throw new RuleError("Choose which stream partner this employee works for.");
+    if (!input.partnerUserId) throw new RuleError("Choose which partner this employee works for.");
     return inviteEmployeeAsAdmin(actor, { email, fullName: input.fullName, jobTitle: input.jobTitle, partnerUserId: input.partnerUserId });
   }
   if (input.partnerUserId) throw new RuleError("A partner can only be chosen for employees.");
   const wantsAssignments = (input.streamIds?.length ?? 0) > 0 || (input.countryCodes?.length ?? 0) > 0;
-  if (wantsAssignments && input.presetId !== "stream_partner") throw new RuleError("Streams and countries are only for stream partners.");
+  if (wantsAssignments && input.presetId !== "stream_partner") throw new RuleError("Streams and countries are only for partners.");
   try {
     assertRealEmailInProduction(email);
   } catch (e) {
@@ -192,7 +192,7 @@ export async function applyPreset(actor: Actor, input: { userId: string; presetI
     if (!preset) throw new RuleError("Choose a role.");
     if (u.presetId === "admin" && preset.id !== "admin") await assertNotLastAdmin(tx, u.id);
     const before = permSnapshot(await loadUserPerms(tx, u.id));
-    // someone who stops being a stream partner no longer holds streams or countries (logged)
+    // someone who stops being a partner no longer holds streams or countries (logged)
     if (u.presetId === "stream_partner" && preset.id !== "stream_partner") await releaseAssignments(tx, actor, { id: u.id, email: u.email });
     if (u.presetId === "employee" && preset.id !== "employee") await releaseEmployee(tx, actor, { id: u.id, email: u.email });
     await copyPresetToUser(tx, u.id, preset.id);
@@ -212,10 +212,10 @@ export async function setPermissions(actor: Actor, input: { userId: string; perm
   const u = await loadTarget(input.userId);
   guardOwner(actor, u, "role");
   if ((SCOPED_PRESETS as readonly string[]).includes(u.presetId)) {
-    throw new RuleError("A stream partner's or employee's permissions are fixed. Change their role instead.");
+    throw new RuleError("A partner's or employee's permissions are fixed. Change their role instead.");
   }
   const grantsScopedModule = Object.entries(input.perms).some(([m, p]) => isScopedModule(m) && (p.view || p.create || p.edit || p.delete || p.export));
-  if (grantsScopedModule) throw new RuleError("The stream partner and employee pages can only come from those roles.");
+  if (grantsScopedModule) throw new RuleError("The partner and employee pages can only come from those roles.");
   await getDb().transaction(async (tx) => {
     if (u.presetId === "admin") await assertNotLastAdmin(tx, u.id);
     const before = permSnapshot(await loadUserPerms(tx, u.id));

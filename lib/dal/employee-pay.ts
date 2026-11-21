@@ -12,7 +12,7 @@ import { NotFound, notHiddenFrom, partnerScope, streamRowsWhere } from "./scope"
 
 /**
  * Employee pay: a fixed monthly amount, or a fixed amount for one project. Set by the employee's
- * stream partner OR an admin; both are logged. The employee never sees any of it.
+ * partner OR an admin; both are logged. The employee never sees any of it.
  *
  * Counted exactly once. Pay lives ONLY in employee_pay_plans / employee_pay_records: it is never also
  * written as an expense, so the Finances expense list has none of it. Every screen that shows a partner's
@@ -70,7 +70,7 @@ export async function ensureMonthlyPay(db: Db | Tx, today?: string): Promise<num
 }
 
 /**
- * Who may set this employee's pay, and which streams and countries it may land under. A stream partner:
+ * Who may set this employee's pay, and which streams and countries it may land under. A partner:
  * their own employee only (anyone else is NotFound). An admin: any employee that has a partner.
  */
 async function payContext(tx: Tx | Db, actor: Actor, employeeId: string) {
@@ -83,11 +83,11 @@ async function payContext(tx: Tx | Db, actor: Actor, employeeId: string) {
       .from(employeeAssignments)
       .innerJoin(users, eq(users.id, employeeAssignments.employeeUserId))
       .where(and(eq(employeeAssignments.employeeUserId, employeeId), eq(users.presetId, "employee")));
-    if (!a) throw new RuleError("That person isn't an employee of a stream partner.");
+    if (!a) throw new RuleError("That person isn't an employee of a partner.");
     partnerId = a.partner;
   } else {
     if (actor.presetId !== "stream_partner") throw new AccessDenied();
-    partnerScope(actor); // stream partner with two-factor done
+    partnerScope(actor); // partner with two-factor done
     await ownEmployee(tx, actor, employeeId);
     partnerId = actor.userId;
   }

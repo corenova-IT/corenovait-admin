@@ -9,10 +9,14 @@ import { RuleError, requirePerm, type Actor } from "./guard";
 import { CYCLE_LABEL, companyToday, subscriptionInput, type SubscriptionInput } from "./payments";
 import { nextCycleDate } from "@/lib/dates";
 import { ownEmployee } from "./partner-employees";
+import { saveUpload } from "./files";
+import { simplePdf } from "@/lib/pdf";
+import { formatMoney } from "@/lib/money";
+import type { Attachment } from "./finance";
 import { NotFound, assertCountryAllowed, assertStreamAllowed, moneyRowsWhere, notHiddenFrom, partnerScope, streamRowsWhere } from "./scope";
 
 /**
- * What a Stream partner may add, edit and archive: expenses, subscriptions and tasks in their own
+ * What a Partner may add, edit and archive: expenses, subscriptions and tasks in their own
  * streams (and countries, for money). Every row is found through lib/dal/scope.ts; the stream, country
  * and project in a form are never trusted, they are checked against the partner's assignment here.
  *
@@ -21,7 +25,9 @@ import { NotFound, assertCountryAllowed, assertStreamAllowed, moneyRowsWhere, no
  * - "Delete" is an archive: the row stays in the database (an expense or task gets archived_at; a
  *   subscription becomes cancelled) and drops out of lists and totals.
  * - Every add, edit and archive writes the audit log (shown to the admin as "Changes made").
- * - No file attachments for partners (a plan decision).
+ * - Documents: a partner can attach an invoice or receipt to an expense of theirs, or have a simple bill made for it.
+ *   The file is stored under the stream_partner module and only served to that partner (their own expense) and to
+ *   admins who can see transactions (not for a project hidden from them): see partner-files.ts.
  */
 const { expenses, subscriptions, tasks, projects, streams, projectMembers, employeeAssignments, users } = schema;
 
@@ -48,34 +54,88 @@ function money(actor: Actor, v: { streamId?: number | null; countryCode: string 
   return { streamId: v.streamId, countryCode: v.countryCode };
 }
 
-export async function createMyExpense(actor: Actor, input: ExpenseInput): Promise<string> {
+/** A project on an expense must be one of the partner's own (in the expense's stream, not hidden from them): anything else is "not found". */
+async function checkOwnProject(db: Db | Tx, actor: Actor, projectId: string | null | undefined, streamId: number) {
+  if (!projectId) return;
+  const [p] = await db
+    .select({ id: projects.id })
+    .from(projects)
+    .where(and(eq(projects.id, projectId), eq(projects.streamId, streamId), streamRowsWhere(actor, { streamId: projects.streamId }), notHiddenFrom(db, actor, projects.id)));
+  if (!p) throw new NotFound();
+}
+
+export async function createMyExpense(actor: Actor, input: ExpenseInput, attachment?: Attachment): Promise<string> {
   ensure(actor, "create");
   const values = expenseValues(input);
   const where = money(actor, values);
   const db = getDb();
   values.category = await checkExpenseRefs(db, { ...values, ...where });
+  await checkOwnProject(db, actor, values.projectId, where.streamId);
   const id = crypto.randomUUID();
+  const file = attachment ? await saveUpload(actor, { module: "stream_partner", entityType: "expenses", entityId: id, ...attachment }) : null;
   await db.transaction(async (tx) => {
-    await tx.insert(expenses).values({ id, ...values, ...where, createdBy: actor.userId });
+    await tx.insert(expenses).values({ id, ...values, ...where, receiptFileId: file?.id ?? null, createdBy: actor.userId });
     const [after] = await tx.select().from(expenses).where(eq(expenses.id, id));
     await writeAudit(tx, actorRef(actor), { action: "create", entity: "expenses", entityId: id, summary: `Added expense: ${values.vendor || values.category}`, after });
   });
   return id;
 }
 
-export async function updateMyExpense(actor: Actor, id: string, input: ExpenseInput) {
+export async function updateMyExpense(actor: Actor, id: string, input: ExpenseInput, attachment?: Attachment) {
   ensure(actor, "edit");
   const values = expenseValues(input);
   const where = money(actor, values);
   const db = getDb();
+  if (attachment) {
+    const [own] = await db.select({ id: expenses.id }).from(expenses).where(and(eq(expenses.id, id), expenseOwn(actor), isNull(expenses.archivedAt)));
+    if (!own) throw new NotFound();
+  }
+  const file = attachment ? await saveUpload(actor, { module: "stream_partner", entityType: "expenses", entityId: id, ...attachment }) : null;
   await db.transaction(async (tx) => {
     const [before] = await tx.select().from(expenses).where(and(eq(expenses.id, id), expenseOwn(actor), isNull(expenses.archivedAt))).for("update");
     if (!before) throw new NotFound();
     values.category = await checkExpenseRefs(tx, { ...values, ...where }, before.category);
-    await tx.update(expenses).set({ ...values, ...where }).where(eq(expenses.id, id));
+    await checkOwnProject(tx, actor, values.projectId, where.streamId);
+    await tx.update(expenses).set({ ...values, ...where, ...(file ? { receiptFileId: file.id } : {}) }).where(eq(expenses.id, id));
     const [after] = await tx.select().from(expenses).where(eq(expenses.id, id));
     await writeAudit(tx, actorRef(actor), { action: "update", entity: "expenses", entityId: id, summary: `Edited expense: ${after.vendor || after.category}`, before, after });
   });
+}
+
+/**
+ * A simple bill for one of their expenses (company name, a bill number, the date, the items and the amount), as a
+ * PDF kept with the expense. It replaces the expense's current document (the old file stays stored).
+ */
+export async function generateMyExpenseBill(actor: Actor, id: string): Promise<{ fileId: string; billNumber: string }> {
+  ensure(actor, "edit");
+  const db = getDb();
+  const [e] = await db.select().from(expenses).where(and(eq(expenses.id, id), expenseOwn(actor), isNull(expenses.archivedAt)));
+  if (!e) throw new NotFound();
+  const [s] = await db.select({ company: schema.settings.companyName }).from(schema.settings).where(eq(schema.settings.id, 1));
+  const billNumber = `BILL-${e.expenseDate.replaceAll("-", "")}-${e.id.slice(0, 6).toUpperCase()}`;
+  const item = [e.vendor, e.description].filter(Boolean).join(" - ") || e.category;
+  const total = formatMoney(e.amountMinor, e.currency);
+  const bytes = simplePdf([
+    { text: s?.company || "CoreNovaIT", y: 780, size: 20, bold: true },
+    { text: "BILL", y: 750, size: 14, bold: true },
+    { text: `Bill number: ${billNumber}`, y: 720 },
+    { text: `Date: ${e.expenseDate}`, y: 704 },
+    { text: `Prepared by: ${actor.fullName || actor.email}`, y: 688 },
+    { text: "Item", y: 640, bold: true },
+    { text: "Category", x: 320, y: 640, bold: true },
+    { text: "Amount", x: 460, y: 640, bold: true },
+    { text: item.slice(0, 60), y: 620 },
+    { text: e.category.slice(0, 24), x: 320, y: 620 },
+    { text: total, x: 460, y: 620 },
+    { text: "Total", x: 380, y: 570, size: 13, bold: true },
+    { text: total, x: 460, y: 570, size: 13, bold: true },
+  ]);
+  const file = await saveUpload(actor, { module: "stream_partner", entityType: "expenses", entityId: id, name: `${billNumber}.pdf`, bytes });
+  await db.transaction(async (tx) => {
+    await tx.update(expenses).set({ receiptFileId: file.id }).where(eq(expenses.id, id));
+    await writeAudit(tx, actorRef(actor), { action: "update", entity: "expenses", entityId: id, summary: `Generated a bill (${billNumber}) for expense: ${e.vendor || e.category}`, before: { receiptFileId: e.receiptFileId }, after: { receiptFileId: file.id } });
+  });
+  return { fileId: file.id, billNumber };
 }
 
 export async function archiveMyExpense(actor: Actor, id: string) {

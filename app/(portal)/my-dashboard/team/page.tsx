@@ -22,7 +22,7 @@ import { addEmployeePay, correctEmployeeShift, inviteEmployee, markEmployeePayPa
 
 export const metadata = { title: "My team" };
 
-/** A stream partner's own employees: invite them, and see their projects, tasks and whether they are online. */
+/** A partner's own employees: invite them, and see their projects, tasks and whether they are online. */
 export default async function MyTeamPage() {
   const actor = await requirePerm("stream_partner");
   const mine = await myAssignments(actor);

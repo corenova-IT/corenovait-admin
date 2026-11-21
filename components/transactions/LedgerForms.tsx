@@ -237,6 +237,16 @@ export function ExpenseForm({ row, lookups, action, onSaved }: { row?: ExpenseVi
             ))}
           </Select>
         </Field>
+        <Field label="Project" htmlFor={`${p}-project`} className="sm:col-span-2" hint="Optional. Tag the cost to a project to see what that project cost us. If the cost has no stream it takes the project's stream.">
+          <Select id={`${p}-project`} name="projectId" defaultValue={row?.projectId ?? ""}>
+            <option value="">No project</option>
+            {lookups.projects.map((x) => (
+              <option key={x.id} value={x.id}>
+                {x.name}
+              </option>
+            ))}
+          </Select>
+        </Field>
         <Field label="Country" htmlFor={`${p}-country`} className="sm:col-span-2" hint="Leave as Shared for costs the whole company carries. A country view on Home only counts that country's costs.">
           <Select id={`${p}-country`} name="countryCode" defaultValue={row?.countryCode ?? ""}>
             <option value="">Shared (all countries)</option>

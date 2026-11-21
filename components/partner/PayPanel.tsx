@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Field, FormMessage, Input, Select } from "@/components/ui/Field";
 
 /**
- * Employee pay, for the employee's stream partner and for admins (never the employee). The actions are passed in:
+ * Employee pay, for the employee's partner and for admins (never the employee). The actions are passed in:
  * the partner's and the admin's both end up in lib/dal/employee-pay.ts, which checks everything again.
  */
 export type PayState = { ok?: string; error?: string };

@@ -10,6 +10,7 @@ import { saveUpload } from "./files";
 import { rateToDecimal, toSafeNumber } from "./internal";
 import { snapshotShares } from "./shares";
 import { incomeVisible, projectHiddenFromActor } from "./visibility";
+import { notHiddenFrom } from "./scope";
 
 /**
  * Income and expenses (module "transactions").
@@ -45,8 +46,11 @@ async function incomeRowAllowed(db: Db | Tx, actor: Actor, row: { createdBy: str
   return rowAllowed(actor, "transactions", { ownerId: row.createdBy, assigneeId });
 }
 
-/** Archived expenses stay in the database but drop out of every list, total and lookup. */
-const expenseScope = (actor: Actor) => and(scopeWhere(actor, "transactions", { owner: expenses.createdBy }), isNull(expenses.archivedAt));
+/**
+ * Archived expenses stay in the database but drop out of every list, total and lookup. A cost tagged to a project the
+ * Owner hid from this person is hidden from them too, like that project's income.
+ */
+const expenseScope = (actor: Actor) => and(scopeWhere(actor, "transactions", { owner: expenses.createdBy }), isNull(expenses.archivedAt), notHiddenFrom(getDb(), actor, expenses.projectId));
 
 const likeTerm = (q: string) => `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -441,6 +445,8 @@ export const expenseInput = z.object({
   countryCode: z.string().trim().toUpperCase().max(8).nullable().optional(),
   /** blank = a company-wide cost, visible to admins only; a stream puts it under that stream's partner */
   streamId: z.preprocess((v) => (v === "" || v === undefined ? null : v), z.coerce.number().int().positive().nullable()).optional(),
+  /** the project this cost belongs to: it counts towards what that project cost us */
+  projectId: z.preprocess((v) => (v === "" || v === undefined ? null : v), z.string().uuid().nullable()).optional(),
   notes: z.string().trim().max(5000).optional(),
 });
 export type ExpenseInput = z.input<typeof expenseInput>;
@@ -459,8 +465,22 @@ export function expenseValues(input: ExpenseInput) {
     countryCode: v.countryCode || null,
     // left alone when the caller doesn't send it (a CSV import, an older form)
     ...(v.streamId !== undefined ? { streamId: v.streamId } : {}),
+    ...(v.projectId !== undefined ? { projectId: v.projectId } : {}),
     notes: v.notes || null,
   };
+}
+
+/**
+ * An admin tags an expense to a project. The project must exist; if the expense already has a stream it must be the
+ * project's stream, and if it has none it takes the project's stream (so the partner of that stream sees the cost).
+ */
+export async function checkExpenseProject(db: Db | Tx, actor: Actor, v: { projectId?: string | null; streamId?: number | null }) {
+  if (!v.projectId) return;
+  if (await projectHiddenFromActor(db, actor, v.projectId)) throw new RuleError("Choose a project from the list, or leave it blank.");
+  const [p] = await db.select({ streamId: projects.streamId }).from(projects).where(eq(projects.id, v.projectId));
+  if (!p) throw new RuleError("Choose a project from the list, or leave it blank.");
+  if (v.streamId && v.streamId !== p.streamId) throw new RuleError("That project is in a different stream. Choose the same stream, or leave the stream blank.");
+  v.streamId = p.streamId;
 }
 
 /** Category must be on the list; country must exist (or be blank for shared). */
@@ -481,6 +501,7 @@ export async function createExpense(actor: Actor, input: ExpenseInput, attachmen
   requirePerm(actor, "transactions", "create");
   const values = expenseValues(input);
   values.category = await checkExpenseRefs(getDb(), values);
+  await checkExpenseProject(getDb(), actor, values);
   const id = crypto.randomUUID();
   const file = attachment ? await saveUpload(actor, { module: "transactions", entityType: "expenses", entityId: id, ...attachment }) : null;
   await getDb().transaction(async (tx) => {
@@ -499,6 +520,7 @@ export async function updateExpense(actor: Actor, id: string, input: ExpenseInpu
   if (!current || !rowAllowed(actor, "transactions", { ownerId: current.createdBy })) throw new AccessDenied("That expense doesn't exist or isn't yours to change.");
   // an archived category may stay on an older expense, but can't be newly chosen
   values.category = await checkExpenseRefs(db, values, current.category);
+  await checkExpenseProject(db, actor, values);
   const file = attachment ? await saveUpload(actor, { module: "transactions", entityType: "expenses", entityId: id, ...attachment }) : null;
   await db.transaction(async (tx) => {
     const [before] = await tx.select().from(expenses).where(eq(expenses.id, id)).for("update");
@@ -729,6 +751,13 @@ export async function incomeRecordHidden(actor: Actor, entityId: string): Promis
   return !!row && (await projectHiddenFromActor(db, actor, row.projectId));
 }
 
+/** Same rule for a receipt on a cost tagged to a project the Owner hid from this person: final, no fallback. */
+export async function expenseRecordHidden(actor: Actor, entityId: string): Promise<boolean> {
+  const db = getDb();
+  const [row] = await db.select({ projectId: expenses.projectId }).from(expenses).where(eq(expenses.id, entityId));
+  return !!row && (await projectHiddenFromActor(db, actor, row.projectId));
+}
+
 /** Used by the file download check: may this person see the record a receipt belongs to? */
 export async function financeRecordVisible(actor: Actor, entityType: string, entityId: string): Promise<boolean> {
   const db = getDb();
@@ -737,8 +766,8 @@ export async function financeRecordVisible(actor: Actor, entityType: string, ent
     return !!row && (await incomeRowAllowed(db, actor, row));
   }
   if (entityType === "expenses") {
-    const [row] = await db.select({ createdBy: expenses.createdBy }).from(expenses).where(eq(expenses.id, entityId));
-    return !!row && rowAllowed(actor, "transactions", { ownerId: row.createdBy });
+    const [row] = await db.select({ createdBy: expenses.createdBy, projectId: expenses.projectId }).from(expenses).where(eq(expenses.id, entityId));
+    return !!row && !(await projectHiddenFromActor(db, actor, row.projectId)) && rowAllowed(actor, "transactions", { ownerId: row.createdBy });
   }
   return false;
 }

@@ -184,14 +184,16 @@ describe("guarded pages, opened by a staff user", () => {
     ["/streams/representatives", () => import("@/app/(portal)/streams/representatives/page"), {}],
     ["/streams/projects (owner only)", () => import("@/app/(portal)/streams/projects/page"), {}],
     ["/partner (partners only)", () => import("@/app/(portal)/partner/page"), {}],
-    ["/my-dashboard (stream partners only)", () => import("@/app/(portal)/my-dashboard/page"), {}],
+    ["/my-dashboard (partners only)", () => import("@/app/(portal)/my-dashboard/page"), {}],
     ["/work (employees only)", () => import("@/app/(portal)/work/page"), {}],
-    ["/my-dashboard/expenses (stream partners only)", () => import("@/app/(portal)/my-dashboard/expenses/page"), {}],
-    ["/my-dashboard/subscriptions (stream partners only)", () => import("@/app/(portal)/my-dashboard/subscriptions/page"), {}],
-    ["/my-dashboard/tasks (stream partners only)", () => import("@/app/(portal)/my-dashboard/tasks/page"), {}],
-    ["/my-dashboard/team (stream partners only)", () => import("@/app/(portal)/my-dashboard/team/page"), {}],
-    ["/my-dashboard/projects (stream partners only)", () => import("@/app/(portal)/my-dashboard/projects/page"), {}],
-    ["/messages (stream partners and employees only)", () => import("@/app/(portal)/messages/page"), { searchParams: Promise.resolve({}) }],
+    ["/my-dashboard/expenses (partners only)", () => import("@/app/(portal)/my-dashboard/expenses/page"), {}],
+    ["/my-dashboard/subscriptions (partners only)", () => import("@/app/(portal)/my-dashboard/subscriptions/page"), {}],
+    ["/my-dashboard/tasks (partners only)", () => import("@/app/(portal)/my-dashboard/tasks/page"), {}],
+    ["/my-dashboard/team (partners only)", () => import("@/app/(portal)/my-dashboard/team/page"), {}],
+    ["/my-dashboard/projects (partners only)", () => import("@/app/(portal)/my-dashboard/projects/page"), {}],
+    ["/my-dashboard/money (partners only)", () => import("@/app/(portal)/my-dashboard/money/page"), { searchParams: Promise.resolve({}) }],
+    ["/project-money (finance admins only)", () => import("@/app/(portal)/project-money/page"), { searchParams: Promise.resolve({}) }],
+    ["/messages (partners and employees only)", () => import("@/app/(portal)/messages/page"), { searchParams: Promise.resolve({}) }],
     ["/partners/chats (admins only)", () => import("@/app/(portal)/partners/chats/page"), {}],
     ["/archive (admins only)", () => import("@/app/(portal)/archive/page"), {}],
     ["/employees (admins only)", () => import("@/app/(portal)/employees/page"), { searchParams: Promise.resolve({}) }],
@@ -235,7 +237,7 @@ describe("guarded pages, opened by a staff user", () => {
     }
   });
 
-  it("a stream partner is sent from /home to /my-dashboard, can open it, and nothing else", async () => {
+  it("a partner is sent from /home to /my-dashboard, can open it, and nothing else", async () => {
     const sp = await createPerson(t, { email: "streampartner@example.test", preset: "stream_partner" });
     const { SESSION_COOKIE } = await import("@/lib/auth/session");
     jar.set(SESSION_COOKIE, await sessionFor(t, sp.id, { mfaVerified: true }));

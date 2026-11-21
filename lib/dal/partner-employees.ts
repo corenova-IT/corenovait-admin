@@ -11,12 +11,12 @@ import { copyPresetToUser } from "./internal";
 import { NotFound, notHiddenFrom, partnerScope, streamRowsWhere } from "./scope";
 
 /**
- * Employees: hired people who log in. Each works for exactly ONE stream partner (the primary key on
+ * Employees: hired people who log in. Each works for exactly ONE partner (the primary key on
  * employee_assignments.employee_user_id is what enforces that).
  *
- * - A stream partner can invite employees only as the Employee preset, only for themselves, and can
+ * - A partner can invite employees only as the Employee preset, only for themselves, and can
  *   see and manage only their own employees. They can never give anyone more than Employee.
- * - An admin can also invite an employee and assign them to any stream partner.
+ * - An admin can also invite an employee and assign them to any partner.
  * - Every invite and assignment is written to the audit log.
  * - Someone else's employee, and someone who doesn't exist, look exactly the same ("That no longer exists.").
  */
@@ -33,7 +33,7 @@ export async function createEmployee(tx: Tx, actor: Actor, input: NewEmployee & 
     throw new RuleError((e as Error).message);
   }
   const [partner] = await tx.select({ id: users.id, presetId: users.presetId, status: users.status }).from(users).where(eq(users.id, input.partnerUserId)).for("update");
-  if (!partner || partner.presetId !== "stream_partner" || partner.status === "deactivated") throw new RuleError("Choose a stream partner for this employee.");
+  if (!partner || partner.presetId !== "stream_partner" || partner.status === "deactivated") throw new RuleError("Choose a partner for this employee.");
   const [clash] = await tx.select({ id: users.id }).from(users).where(eq(users.email, email));
   if (clash) throw new RuleError("That email already has an account.");
   const userId = crypto.randomUUID();
@@ -53,7 +53,7 @@ export async function createEmployee(tx: Tx, actor: Actor, input: NewEmployee & 
   return { userId, email, name: input.fullName, token };
 }
 
-/** A stream partner invites an employee of their own. */
+/** A partner invites an employee of their own. */
 export async function inviteMyEmployee(actor: Actor, input: NewEmployee) {
   requirePerm(actor, "stream_partner", "create");
   const scope = partnerScope(actor);
@@ -61,7 +61,7 @@ export async function inviteMyEmployee(actor: Actor, input: NewEmployee) {
   return getDb().transaction((tx) => createEmployee(tx, actor, { ...input, partnerUserId: actor.userId }));
 }
 
-/** An admin invites an employee and chooses which stream partner they work for. */
+/** An admin invites an employee and chooses which partner they work for. */
 export async function inviteEmployeeAsAdmin(actor: Actor, input: NewEmployee & { partnerUserId: string }) {
   requireAdmin(actor);
   return getDb().transaction((tx) => createEmployee(tx, actor, input));
@@ -94,14 +94,14 @@ export async function releaseEmployee(tx: Tx, actor: Actor, target: { id: string
   await tx.update(employeePayPlans).set({ active: false }).where(and(eq(employeePayPlans.employeeUserId, target.id), eq(employeePayPlans.active, true)));
 }
 
-/** Admin: move an employee to another stream partner (they leave their projects, which belong to the old partner's streams). */
+/** Admin: move an employee to another partner (they leave their projects, which belong to the old partner's streams). */
 export async function reassignEmployee(actor: Actor, input: { employeeId: string; partnerUserId: string }) {
   requireAdmin(actor);
   await getDb().transaction(async (tx) => {
     const [emp] = await tx.select({ id: users.id, email: users.email, presetId: users.presetId }).from(users).where(eq(users.id, input.employeeId)).for("update");
     if (!emp || emp.presetId !== "employee") throw new RuleError("That person isn't an employee.");
     const [partner] = await tx.select({ id: users.id, presetId: users.presetId }).from(users).where(eq(users.id, input.partnerUserId));
-    if (!partner || partner.presetId !== "stream_partner") throw new RuleError("Choose a stream partner for this employee.");
+    if (!partner || partner.presetId !== "stream_partner") throw new RuleError("Choose a partner for this employee.");
     const [current] = await tx.select({ partner: employeeAssignments.partnerUserId }).from(employeeAssignments).where(eq(employeeAssignments.employeeUserId, emp.id)).for("update");
     if (current?.partner === partner.id) return;
     await tx.delete(projectMembers).where(eq(projectMembers.userId, emp.id));

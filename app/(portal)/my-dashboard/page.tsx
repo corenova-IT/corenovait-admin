@@ -16,7 +16,7 @@ export const metadata = { title: "My dashboard" };
 type Payment = DashboardData["upcomingPayments"][number];
 type Task = DashboardData["tasks"]["upcoming"][number];
 
-/** A stream partner's own page. Everything on it comes through lib/dal/scope.ts: only their streams and countries. */
+/** A partner's own page. Everything on it comes through lib/dal/scope.ts: only their streams and countries. */
 export default async function MyDashboardPage() {
   const actor = await requirePerm("stream_partner");
   const [mine, d] = await Promise.all([myAssignments(actor), myDashboard(actor)]);

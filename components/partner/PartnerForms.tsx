@@ -1,10 +1,10 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Field, FormMessage, Input, Select, Textarea } from "@/components/ui/Field";
 
-/** The three forms a stream partner uses: expenses, subscriptions and tasks. The server checks everything again. */
+/** The three forms a partner uses: expenses, subscriptions and tasks. The server checks everything again. */
 export type PartnerState = { ok?: string; error?: string };
 export type PartnerAction = (prev: PartnerState, fd: FormData) => Promise<PartnerState>;
 export type Choices = {
@@ -47,7 +47,7 @@ function StreamCountry({ p, c, streamId, countryCode }: { p: string; c: Choices;
   );
 }
 
-export type ExpenseRow = { id: string; expenseDate: string; category: string; vendor: string; description: string; amount: string; currency: string; fxRateToBase: string; isRecurring: boolean; streamId: number | null; countryCode: string | null };
+export type ExpenseRow = { id: string; expenseDate: string; category: string; vendor: string; description: string; amount: string; currency: string; fxRateToBase: string; isRecurring: boolean; streamId: number | null; countryCode: string | null; projectId: string | null; receiptFileId?: string | null };
 
 export function ExpenseForm({ c, row, action, idPrefix }: { c: Choices; row?: ExpenseRow; action: PartnerAction; idPrefix: string }) {
   const [state, formAction, pending] = useActionState(action, {});
@@ -85,6 +85,20 @@ export function ExpenseForm({ c, row, action, idPrefix }: { c: Choices; row?: Ex
         <label htmlFor={`${p}-rec`} className="text-sm text-ink">Recurring</label>
       </div>
       <StreamCountry p={p} c={c} streamId={row?.streamId} countryCode={row?.countryCode} />
+      <Field label="Project" htmlFor={`${p}-project`} hint="Optional. Tag a cost to a project to see what that project cost. It must be in the same stream." className="sm:col-span-2">
+        <Select id={`${p}-project`} name="projectId" defaultValue={row?.projectId ?? ""}>
+          <option value="">No project (office, equipment, other costs)</option>
+          {c.projects.map((x) => (
+            <option key={x.id} value={x.id}>{x.name}</option>
+          ))}
+        </Select>
+      </Field>
+      <Field label="Invoice or receipt" htmlFor={`${p}-doc`} hint={row?.receiptFileId ? "A document is already attached. Choosing another one replaces it (the old one stays stored). PDF, PNG, JPG or WebP." : "Optional. PDF, PNG, JPG or WebP, up to 10 MB."} className="sm:col-span-2">
+        <Input id={`${p}-doc`} name="attachment" type="file" accept="application/pdf,image/png,image/jpeg,image/webp" />
+        {row?.receiptFileId && (
+          <a href={`/api/files/${row.receiptFileId}?download=1`} className="mt-1 text-sm text-accent-text hover:underline">Download the attached document</a>
+        )}
+      </Field>
       <div className="flex flex-col gap-3 sm:col-span-2">
         <Msg state={state} />
         <Button type="submit" disabled={pending} className="self-start">{pending ? "Saving…" : row ? "Save expense" : "Add expense"}</Button>
@@ -233,8 +247,44 @@ export function MarkPaidForm({ id, action }: { id: string; action: PartnerAction
   );
 }
 
-/** Create a project, or rename one. */
-export function ProjectForm({ c, row, action, idPrefix }: { c: Choices; row?: { id: string; name: string }; action: PartnerAction; idPrefix: string }) {
+export type NicheChoice = { id: number; name: string; subs: Array<{ id: number; name: string; isCustom: boolean }> };
+export type LeadChoice = { id: string; name: string };
+
+/** Niche, then its sub-category, with a box to add your own sub-category if the right one isn't listed. */
+export function NichePicker({ niches, nicheId, subNicheId, idPrefix }: { niches: NicheChoice[]; nicheId?: number | null; subNicheId?: number | null; idPrefix: string }) {
+  const [niche, setNiche] = useState<string>(nicheId ? String(nicheId) : "");
+  const subs = niches.find((n) => String(n.id) === niche)?.subs ?? [];
+  return (
+    <>
+      <Field label="Kind of work" htmlFor={`${idPrefix}-niche`}>
+        <Select id={`${idPrefix}-niche`} name="nicheId" value={niche} onChange={(e) => setNiche(e.target.value)}>
+          <option value="">Not set</option>
+          {niches.map((n) => (
+            <option key={n.id} value={n.id}>{n.name}</option>
+          ))}
+        </Select>
+      </Field>
+      {niche && (
+        <>
+          <Field label="Sub-category" htmlFor={`${idPrefix}-sub`}>
+            <Select id={`${idPrefix}-sub`} name="subNicheId" key={niche} defaultValue={subs.some((x) => x.id === subNicheId) ? String(subNicheId) : ""}>
+              <option value="">Not set</option>
+              {subs.map((x) => (
+                <option key={x.id} value={x.id}>{x.name}{x.isCustom ? " (added by a partner)" : ""}</option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Or add your own" htmlFor={`${idPrefix}-new-sub`} hint="Type a new sub-category; it is saved for next time.">
+            <Input id={`${idPrefix}-new-sub`} name="newSubNiche" maxLength={80} placeholder="e.g. Webflow" />
+          </Field>
+        </>
+      )}
+    </>
+  );
+}
+
+/** Create a project (with its kind of work and lead), or rename one. */
+export function ProjectForm({ c, row, action, idPrefix, niches, leads }: { c: Choices; row?: { id: string; name: string }; action: PartnerAction; idPrefix: string; niches?: NicheChoice[]; leads?: LeadChoice[] }) {
   const [state, formAction, pending] = useActionState(action, {});
   return (
     <form action={formAction} className="flex flex-wrap items-end gap-3" noValidate>
@@ -251,7 +301,39 @@ export function ProjectForm({ c, row, action, idPrefix }: { c: Choices; row?: { 
       <Field label="Project name" htmlFor={`${idPrefix}-name`} className="min-w-56 flex-1">
         <Input id={`${idPrefix}-name`} name="name" required maxLength={120} defaultValue={row?.name} />
       </Field>
+      {!row && niches && <NichePicker niches={niches} idPrefix={idPrefix} />}
+      {!row && leads && (
+        <Field label="Led by" htmlFor={`${idPrefix}-lead`} hint="You, unless you pick someone else.">
+          <Select id={`${idPrefix}-lead`} name="leadUserId" defaultValue="">
+            <option value="">Me</option>
+            {leads.map((l) => (
+              <option key={l.id} value={l.id}>{l.name}</option>
+            ))}
+          </Select>
+        </Field>
+      )}
       <Button type="submit" disabled={pending}>{pending ? "Saving…" : row ? "Rename" : "Add project"}</Button>
+      <div className="basis-full"><Msg state={state} /></div>
+    </form>
+  );
+}
+
+/** Change an existing project's kind of work and lead. */
+export function ProjectKindForm({ project, niches, leads, action }: { project: { id: string; nicheId: number | null; subNicheId: number | null; leadId: string | null }; niches: NicheChoice[]; leads: LeadChoice[]; action: PartnerAction }) {
+  const [state, formAction, pending] = useActionState(action, {});
+  return (
+    <form action={formAction} className="flex flex-wrap items-end gap-3" noValidate>
+      <input type="hidden" name="id" value={project.id} />
+      <NichePicker niches={niches} nicheId={project.nicheId} subNicheId={project.subNicheId} idPrefix={`kind-${project.id}`} />
+      <Field label="Led by" htmlFor={`lead-${project.id}`}>
+        <Select id={`lead-${project.id}`} name="leadUserId" defaultValue={project.leadId && leads.some((l) => l.id === project.leadId) ? project.leadId : ""}>
+          <option value="">Me</option>
+          {leads.map((l) => (
+            <option key={l.id} value={l.id}>{l.name}</option>
+          ))}
+        </Select>
+      </Field>
+      <Button type="submit" variant="secondary" disabled={pending}>{pending ? "Saving…" : "Save kind of work and lead"}</Button>
       <div className="basis-full"><Msg state={state} /></div>
     </form>
   );

@@ -70,9 +70,9 @@ function InviteDrawer({ open, onClose, presets, action, options, partners }: { o
         </Field>
         {role === "stream_partner" && <AssignmentFields key={formKey} options={options} idPrefix="inv" />}
         {role === "employee" && (
-          <Field label="Works for" htmlFor="inv-partner" hint="An employee works for exactly one stream partner.">
+          <Field label="Works for" htmlFor="inv-partner" hint="An employee works for exactly one partner.">
             <Select id="inv-partner" name="partnerUserId" required defaultValue="">
-              <option value="" disabled>Choose a stream partner</option>
+              <option value="" disabled>Choose a partner</option>
               {partners.map((p) => (
                 <option key={p.id} value={p.id}>{p.name || p.email}</option>
               ))}
