@@ -4,11 +4,12 @@ Branch: `feature/stream-partners`. Spec: [stream-partners-spec.md](stream-partne
 
 Approval gate: Phase N+1 starts only when this file contains the line "Phase N approved by Umair".
 
-## Current status (updated end of run 7)
-- Phases 1, 2 and 3 approved. **Phase 4 is finished** (all steps ticked; report below). All four phases are now built. Nothing is waiting on an approval gate. Admin unarchive (the last agreed item) is also done. What is left is YOUR review and local testing, your review of the three migration files, and a deploy only when you say so.
+## Current status (updated end of run 8)
+- Phases 1, 2 and 3 approved. **Phase 4 is finished** (all steps ticked; report below). All four phases are now built. Nothing is waiting on an approval gate. Admin unarchive (the last agreed item) is also done. What is left is YOUR review and local testing, your review of the four migration files, and a deploy only when you say so.
 - Test status: typecheck clean; full suite ****534 passed, 0 failed** (44 files)**.
-- Blockers: none. Not pushed, not deployed. The migrations `drizzle/0013_stream_partners.sql`, `0014_employees.sql` and `0015_shifts.sql` are files only: none has been run on a real database (only on throwaway test databases by the test suite).
-- Needs your eyes: the three migration files, and the "What I was unsure about" lists in the Phase 3 and Phase 4 reports.
+- Run 8 added the extra features (see "Extra features report"). Test status: typecheck clean; full suite **575 passed, 0 failed** (48 files).
+- Blockers: none. The feature branch is pushed (on your instruction); `main` is untouched and nothing is deployed. The migrations `0013` to `0016` are files only: none has been run on a real database (only on throwaway test databases by the test suite).
+- Needs your eyes: the four migration files, the question about two roles both named "Partner", and the "What I was unsure about" lists in the Phase 3 and Phase 4 reports.
 
 ## Answers received after the Phase 2 report
 1. Budgets: **skip for now** (no budgets are built or shown).
@@ -289,6 +290,41 @@ Only adds things; no existing row changes.
 8. **Not checked in a browser.** Pages and forms are covered by tests and the type checker only; please click through them.
 9. **Still later (agreed):** admin "unarchive" for archived expenses, tasks and cancelled subscriptions. Budgets are skipped.
 
+## Extra features report (run 8): rename, kinds of work, project lead, revenue overview, documents
+
+Requested in chat after Phase 4. Not part of the four phases, so no approval gate applies. Pushed to the feature branch only (never to `main`, so nothing deploys).
+
+### What changed
+- **Rename:** the "Stream partner" role is now shown as **Partner** everywhere on screen. Internal ids (`stream_partner`) are unchanged, so no data moves. Admin stays Admin (the earlier Admin/Director idea was dropped on your instruction).
+- **Kinds of work (niches):** Motion graphics, Web development (WordPress, Shopify, Wix, Square, Other), App development (CRM, SaaS, Mobile app, Other), 3D. A partner picks a niche and a sub-category on each project, or types their own sub-category, which is saved, shared and never duplicated (any capitals). Admins manage the lists in Settings > Kinds of work. Code: `lib/dal/niches.ts`, `components/settings/NicheEditor.tsx`.
+- **Project lead:** each project has a lead (the partner by default, or one of their employees) plus the employees working on it (the existing project members). Shown on the project list.
+- **Taxes and fees on each payment:** three labelled boxes (platform fee such as Upwork or Fiverr, withdrawal tax, VAT or transfer charge) plus "add another" for anything else, entered as the real amounts. The partner can set them on payments in their own streams and countries; admins on any payment they can see. Validated, every change logged. Code: `lib/dal/income-deductions.ts`, `components/partner/DeductionsEditor.tsx`.
+- **Revenue overview:** per project, total amount (in the payment currencies and in the base currency), taxes and fees, amount after them, what the project cost, and profit. Partner view `/my-dashboard/money` (own streams and countries only); admin view `/project-money` (filter by stream, country, partner and dates). Code: `lib/dal/project-money.ts`, `components/partner/ProjectMoneyView.tsx`.
+- **Profit now subtracts taxes and fees** on the partner dashboard and in admin Finances (new "taxes and fees" CSV column), as a separate line, so revenue still means the gross amount paid.
+- **Project cost** = pay for people on the project + expenses tagged to it. Partners and admins can tag any expense to a project (admin expense form and partner form both have a Project field). Costs with no project (office, laptop, internet) stay in the overall totals.
+- **Documents and bills for partner expenses:** a partner can attach an invoice or receipt (PDF, PNG, JPG or WebP, up to 10 MB) to an expense, or press "Make a bill (PDF)" to create a simple bill (company name, bill number, date, item, amount). Only that partner and admins who can see transactions can download them; everyone else gets "not found". Code: `lib/pdf.ts`, `generateMyExpenseBill` and `partnerExpenseFileVisible` in `lib/dal/partner-writes.ts`, a new branch in `lib/dal/files.ts`.
+- **Owner-hidden projects now also hide their costs:** an expense tagged to a project the Owner hid from an admin is hidden from that admin (ledger, totals, receipt download, tagging). This closes a gap the new project tag would otherwise have opened.
+
+### Migration summary (`drizzle/0016_projects_niches_money.sql`, a file only, never run on a real database)
+Adds tables `niches`, `sub_niches`, `income_deductions`; columns `projects.niche_id / sub_niche_id / lead_user_id`, `income_entries.deductions_minor` and a generated `net_base_minor`, `expenses.project_id`; a check that deductions never exceed the payment; seeds the four niches and their sub-categories; renames the role preset's stored name to "Partner" and refreshes the Employee role description. Additive only. Nothing was dropped or rewritten.
+
+### How to test it yourself, in plain words (local database)
+1. Sign in as an admin. Settings > Kinds of work: check the four niches; add a sub-category.
+2. Sign in as a partner. Projects: add a project, pick Web development and WordPress (or type a new one), choose a lead. Edit the kind of work on an old project.
+3. Expenses: add one tagged to a project, attach a PNG or PDF, then open it and press "Make a bill (PDF)" and download it.
+4. As an admin add a paid payment for the partner's stream and country (Transactions), then as the partner open Revenue overview > the project > Taxes and fees: fill the platform fee, withdrawal tax and VAT boxes. Check total, deducted, after, cost and profit.
+5. As an admin open Project revenue, filter by partner, and check the same numbers. As another partner, check none of this shows.
+
+### What I was unsure about
+- **Two roles are now both called "Partner".** The old revenue-share role was already named Partner and you told me not to change it, so on the role pickers there are two entries with the same name. Tell me if you want the old one shown with a different name (for example "Revenue-share partner"); I did not touch it.
+- **"Niche while making new streams":** I built the niche on each project (that is how you described Hamza and Andrew using it). A default niche on the stream itself is not built.
+- The starting sub-categories for Motion graphics and 3D, and "Mobile app", are my suggestions: edit them in Settings.
+- **Tax and fee amounts are typed in by the team.** I did not look up real tax rates (they change by country and platform); you said the team could handle it.
+- **Monthly salaries are not split across projects**, so they are not in any single project's cost; they are in the overall Costs total and shown as "not tied to a project". Pay entered for a specific project is in that project's cost.
+- A partner can change only the taxes and fees on an income entry, nothing else about it.
+- The old document attachments rule ("no attachments for partners") is reversed by your request; files are only served to that partner and permitted admins.
+- Not clicked through in a browser: covered by tests and the type checker.
+
 ## Run log
 
 ### Run 1 (2026-11-18)
@@ -318,3 +354,6 @@ Phase 3 approved in chat by Umair ("start phase 4"); approval line recorded. Bui
 
 ### Run 7 (2026-11-20)
 Built admin unarchive (the last agreed item): `/archive` page, restore for expenses, tasks and cancelled subscriptions, logged, admin only, Owner-hidden tasks respected. Full suite result is in the status line above.
+
+### Run 8 (2026-11-21)
+Extra features after Phase 4 (rename to Partner, kinds of work, project lead, taxes and fees, revenue overview, expense tagging, documents and bills; report above). Migration file `drizzle/0016_projects_niches_money.sql` (a file only). Full suite: typecheck clean; full suite **575 passed, 0 failed** (48 files). You said "do it and push the changes": pushed the feature branch only; `main` untouched, nothing deployed, no migration run on any real database.
