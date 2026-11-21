@@ -138,7 +138,7 @@ describe("the Owner overview", () => {
   it("offers every person for the preview picker", async () => {
     const { people } = await overview.ownerOverview(await as(ids.owner));
     expect(people.map((p) => p.email).sort()).toEqual(["admin2@example.test", "owner@example.test", "partner1@example.test", "partner2@example.test", "staff@example.test", "viewer@example.test"]);
-    expect(people.find((p) => p.email === "partner1@example.test")!.role).toBe("Partner");
+    expect(people.find((p) => p.email === "partner1@example.test")!.role).toBe("Revenue-share partner");
   });
 });
 

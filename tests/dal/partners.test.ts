@@ -91,10 +91,10 @@ afterAll(() => t?.cleanup());
 const shareRows = async (entryId: string) =>
   (await t.db.select().from(t.schema.incomeShares).where(eq(t.schema.incomeShares.incomeEntryId, entryId))).map((r) => `${r.representativeId}:${r.shareRate}`).sort();
 
-describe("the Partner role", () => {
+describe("the Revenue-share partner role", () => {
   it("exists with only 'My earnings', and needs two-factor", async () => {
     const [preset] = await t.db.select().from(t.schema.rolePresets).where(eq(t.schema.rolePresets.id, "partner"));
-    expect(preset.name).toBe("Partner");
+    expect(preset.name).toBe("Revenue-share partner");
     const perms = await t.db.select().from(t.schema.presetPermissions).where(eq(t.schema.presetPermissions.presetId, "partner"));
     expect(perms.map((p) => [p.module, p.canView, p.canCreate, p.canEdit, p.canDelete, p.canExport])).toEqual([["partner", true, false, false, false, false]]);
     expect((await userRow(t, ids.p1)).mfaRequired).toBe(true);

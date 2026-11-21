@@ -75,9 +75,9 @@ beforeAll(async () => {
 afterAll(() => t?.cleanup());
 
 describe("the roles", () => {
-  it("leaves the old Partner preset exactly as it was", async () => {
+  it("leaves the old revenue-share preset as it was (only its on-screen name differs)", async () => {
     const [preset] = await t.db.select().from(t.schema.rolePresets).where(eq(t.schema.rolePresets.id, "partner"));
-    expect(preset).toMatchObject({ id: "partner", name: "Partner", sort: 36 });
+    expect(preset).toMatchObject({ id: "partner", name: "Revenue-share partner", sort: 36 });
     const perms = await t.db.select().from(t.schema.presetPermissions).where(eq(t.schema.presetPermissions.presetId, "partner"));
     expect(perms).toEqual([{ presetId: "partner", module: "partner", canView: true, canCreate: false, canEdit: false, canDelete: false, canExport: false, scope: "own" }]);
     const person = await as(ids.oldPartner);

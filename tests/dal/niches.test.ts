@@ -167,11 +167,11 @@ describe("admins keeping the lists tidy", () => {
 });
 
 describe("the rename", () => {
-  it("shows the role as Partner, and leaves the older revenue Partner role exactly as it was", async () => {
+  it("shows the new role as Partner, and the older revenue-share role as Revenue-share partner (same id, permissions and order)", async () => {
     const [sp] = await t.db.select().from(t.schema.rolePresets).where(eq(t.schema.rolePresets.id, "stream_partner"));
     expect(sp.name).toBe("Partner");
     const [old] = await t.db.select().from(t.schema.rolePresets).where(eq(t.schema.rolePresets.id, "partner"));
-    expect(old).toMatchObject({ name: "Partner", sort: 36 });
+    expect(old).toMatchObject({ id: "partner", name: "Revenue-share partner", sort: 36 });
     expect(old.description).toMatch(/their own share/i);
     const [emp1] = await t.db.select().from(t.schema.rolePresets).where(eq(t.schema.rolePresets.id, "employee"));
     expect(emp1.description).toMatch(/Works for one partner/);

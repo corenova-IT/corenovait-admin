@@ -9,7 +9,7 @@ Approval gate: Phase N+1 starts only when this file contains the line "Phase N a
 - Test status: typecheck clean; full suite ****534 passed, 0 failed** (44 files)**.
 - Run 8 added the extra features (see "Extra features report"). Test status: typecheck clean; full suite **575 passed, 0 failed** (48 files).
 - Blockers: none. The feature branch is pushed (on your instruction); `main` is untouched and nothing is deployed. The migrations `0013` to `0016` are files only: none has been run on a real database (only on throwaway test databases by the test suite).
-- Needs your eyes: the four migration files, the question about two roles both named "Partner", and the "What I was unsure about" lists in the Phase 3 and Phase 4 reports.
+- Needs your eyes: the four migration files, and the "What I was unsure about" lists in the Phase 3 and Phase 4 reports.
 
 ## Answers received after the Phase 2 report
 1. Budgets: **skip for now** (no budgets are built or shown).
@@ -316,7 +316,7 @@ Adds tables `niches`, `sub_niches`, `income_deductions`; columns `projects.niche
 5. As an admin open Project revenue, filter by partner, and check the same numbers. As another partner, check none of this shows.
 
 ### What I was unsure about
-- **Two roles are now both called "Partner".** The old revenue-share role was already named Partner and you told me not to change it, so on the role pickers there are two entries with the same name. Tell me if you want the old one shown with a different name (for example "Revenue-share partner"); I did not touch it.
+- **Two roles named Partner: resolved on your instruction.** The older revenue-share role is now shown as "Revenue-share partner" (label only: its id `partner`, permissions and sort order are unchanged); the stream role stays "Partner". All screens read the stored role name, so dropdowns, user lists, invites and the audit log follow it; the rename is in `drizzle/0016_projects_niches_money.sql` (still a file only).
 - **"Niche while making new streams":** I built the niche on each project (that is how you described Hamza and Andrew using it). A default niche on the stream itself is not built.
 - The starting sub-categories for Motion graphics and 3D, and "Mobile app", are my suggestions: edit them in Settings.
 - **Tax and fee amounts are typed in by the team.** I did not look up real tax rates (they change by country and platform); you said the team could handle it.
@@ -357,3 +357,4 @@ Built admin unarchive (the last agreed item): `/archive` page, restore for expen
 
 ### Run 8 (2026-11-21)
 Extra features after Phase 4 (rename to Partner, kinds of work, project lead, taxes and fees, revenue overview, expense tagging, documents and bills; report above). Migration file `drizzle/0016_projects_niches_money.sql` (a file only). Full suite: typecheck clean; full suite **575 passed, 0 failed** (48 files). You said "do it and push the changes": pushed the feature branch only; `main` untouched, nothing deployed, no migration run on any real database.
+Follow-up (2026-11-21): renamed the old role's label to "Revenue-share partner" and updated the tests. Full suite 575 passed, 0 failed.

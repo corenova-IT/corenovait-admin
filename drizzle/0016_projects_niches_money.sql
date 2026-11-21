@@ -51,6 +51,9 @@ CREATE INDEX `expense_project_idx` ON `expenses` (`project_id`);--> statement-br
 -- The role formerly shown as "Stream partner" is now shown as "Partner" (the permission ids stay the same).
 UPDATE `role_presets` SET `name` = 'Partner', `description` = 'Runs one or more revenue streams in assigned countries and sees only the data that matches both. Cannot enter income or change shares. Two-factor required.' WHERE `id` = 'stream_partner';
 --> statement-breakpoint
+-- The older revenue-share role keeps its id, permissions and sort order; only its on-screen name changes, so the two roles are told apart.
+UPDATE `role_presets` SET `name` = 'Revenue-share partner' WHERE `id` = 'partner';
+--> statement-breakpoint
 UPDATE `role_presets` SET `description` = 'Works for one partner on assigned projects: own tasks, own hours and chat only. Never sees money.' WHERE `id` = 'employee';
 --> statement-breakpoint
 -- Kinds of work. Admins can edit these lists in Settings, and anyone adding a project can add their own sub-category.
