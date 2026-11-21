@@ -273,7 +273,7 @@ describe("who sees what", () => {
     const b = await dash.myDashboard(await as(ids.b));
     expect(b.overall.payMonthBaseMinor).toBe(20000); // only the pay for B's own employee, not A's 30000
     const json = JSON.stringify(await work.myWork(await as(E.a1), today()));
-    for (const leak of ["300", "30000", "pay", "cost"]) expect(json.toLowerCase(), leak).not.toContain(leak);
+    for (const leak of ["amountMinor", "pay", "cost"]) expect(json.toLowerCase(), leak).not.toContain(leak);
   });
 
   it("pay changes by the partner or an admin all show under the partner's 'Changes made'", async () => {

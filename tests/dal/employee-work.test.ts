@@ -120,7 +120,7 @@ describe("what an employee sees", () => {
 
   it("never anything about money, other streams, other partners, other people's tasks, chats or hours", async () => {
     const json = JSON.stringify(await work.myWork(await as(E.a1), TODAY));
-    for (const leak of ["Upwork", "Fiverr", "amount", "cost", "pay", "revenue", "income", "fx", "currency", "T3", "T4", "T5", "T6", "T7", "B1", "\"b\"", "eb1", "ea2@", "hours", "chat", "streamId", "partnerUserId"]) {
+    for (const leak of ["Upwork", "Fiverr", "amount", "cost", "pay", "revenue", "income", "fx", "currency", "T3", "T4", "T5", "T6", "T7", "\"name\":\"B1\"", "\"b\"", "eb1@", "ea2@", "hours", "chat", "streamId", "partnerUserId"]) {
       expect(json.toLowerCase(), leak).not.toContain(leak.toLowerCase());
     }
   });

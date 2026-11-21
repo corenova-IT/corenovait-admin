@@ -193,6 +193,7 @@ describe("guarded pages, opened by a staff user", () => {
     ["/my-dashboard/projects (stream partners only)", () => import("@/app/(portal)/my-dashboard/projects/page"), {}],
     ["/messages (stream partners and employees only)", () => import("@/app/(portal)/messages/page"), { searchParams: Promise.resolve({}) }],
     ["/partners/chats (admins only)", () => import("@/app/(portal)/partners/chats/page"), {}],
+    ["/archive (admins only)", () => import("@/app/(portal)/archive/page"), {}],
     ["/employees (admins only)", () => import("@/app/(portal)/employees/page"), { searchParams: Promise.resolve({}) }],
     ["/employees/x (admins only)", () => import("@/app/(portal)/employees/[id]/page"), { params: Promise.resolve({ id: "x" }), searchParams: Promise.resolve({}) }],
     ["/partners/chats/x (admins only)", () => import("@/app/(portal)/partners/chats/[id]/page"), { params: Promise.resolve({ id: "x" }) }],

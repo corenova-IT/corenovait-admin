@@ -4,8 +4,8 @@ Branch: `feature/stream-partners`. Spec: [stream-partners-spec.md](stream-partne
 
 Approval gate: Phase N+1 starts only when this file contains the line "Phase N approved by Umair".
 
-## Current status (updated end of run 6)
-- Phases 1, 2 and 3 approved. **Phase 4 is finished** (all steps ticked; report below). All four phases are now built. Nothing is waiting on an approval gate; the only thing left is your review of Phase 4, then the "Later" item (admin unarchive).
+## Current status (updated end of run 7)
+- Phases 1, 2 and 3 approved. **Phase 4 is finished** (all steps ticked; report below). All four phases are now built. Nothing is waiting on an approval gate. Admin unarchive (the last agreed item) is also done. What is left is YOUR review and local testing, your review of the three migration files, and a deploy only when you say so.
 - Test status: typecheck clean; full suite ****534 passed, 0 failed** (44 files)**.
 - Blockers: none. Not pushed, not deployed. The migrations `drizzle/0013_stream_partners.sql`, `0014_employees.sql` and `0015_shifts.sql` are files only: none has been run on a real database (only on throwaway test databases by the test suite).
 - Needs your eyes: the three migration files, and the "What I was unsure about" lists in the Phase 3 and Phase 4 reports.
@@ -17,8 +17,9 @@ Approval gate: Phase N+1 starts only when this file contains the line "Phase N a
 4. Unarchive: **later, after Phase 4** (see "Later" below).
 Phase 2 is **not yet approved**: the line "Phase 2 approved by Umair" is still missing, so Phase 3 has not started.
 
-## Later (agreed, not started)
-- Admin "unarchive" for archived expenses and tasks (and cancelled subscriptions), logged. After Phase 4.
+## Later
+- Admin "unarchive": **done** (run 7). Archived items page at `/archive` (admins only): restores an expense or task (clears the archived date) or a cancelled subscription (active again); every restore is logged; a task under a project hidden from that admin is not listed or restorable. `lib/dal/archive.ts`, `tests/dal/unarchive.test.ts`.
+- Nothing else is queued. Budgets were skipped by decision.
 
 ## Status at the end of run 1 (2026-11-18)
 
@@ -314,3 +315,6 @@ Phase 3 approved by Umair
 
 ### Run 6 (2026-11-19)
 Phase 3 approved in chat by Umair ("start phase 4"); approval line recorded. Built and tested all of Phase 4 (migration file 0015, shifts, forgotten clock-out flag and logged corrections, admin Employees pages, Settings field) and wrote the Phase 4 report. One full-suite run hit database-setup timeouts on a slow machine (11 files, no assertion failures); the re-run result is in the status line above.
+
+### Run 7 (2026-11-20)
+Built admin unarchive (the last agreed item): `/archive` page, restore for expenses, tasks and cancelled subscriptions, logged, admin only, Owner-hidden tasks respected. Full suite result is in the status line above.
