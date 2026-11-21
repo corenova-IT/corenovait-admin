@@ -12,6 +12,11 @@ const nextConfig: NextConfig = {
     // receipts and invoices up to UPLOAD_MAX_MB (10 MB) plus the form fields
     serverActions: { bodySizeLimit: "12mb" },
     proxyClientMaxBodySize: "12mb",
+    // Hostinger's build machine reports dozens of CPUs but only lets the build start a few threads, so
+    // "Collecting page data" crashed with "OS can't spawn worker thread". A small fixed number of
+    // build workers keeps the build inside that limit.
+    cpus: 2,
+    workerThreads: false,
   },
   async headers() {
     return [
